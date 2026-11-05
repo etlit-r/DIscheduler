@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>セキュリティ方針｜DIscheduler</title>
+  <meta name="description" content="DIscheduler のセキュリティ方針。扱うデータ、保存期間、回答の公開範囲、主な対策、残っているリスク、脆弱性の報告窓口を公開しています。">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">本文へ移動</a>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="/">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="6" width="26" height="23" rx="5" fill="currentColor" opacity=".15"/><rect x="3" y="6" width="26" height="23" rx="5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M3 13h26M10 3v6M22 3v6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="m11 21 3.5 3.5L21.5 17" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        DIscheduler
+      </a>
+      <nav class="site-nav" aria-label="メインメニュー">
+        <ul>
+          <li class="nav-optional"><a href="/#features">機能</a></li>
+          <li class="nav-optional"><a href="/#how">使い方</a></li>
+          <li class="nav-optional"><a href="/#admin">管理者の方へ</a></li>
+          <li><a href="/security" aria-current="page">セキュリティ</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc">
+    <div class="container">
+      <nav class="toc" aria-label="目次">
+        <h2>目次</h2>
+        <ol>
+          <li><a href="#not-do">本アプリがしないこと</a></li>
+          <li><a href="#visibility">回答の公開範囲</a></li>
+          <li><a href="#data">保存するデータと期間</a></li>
+          <li><a href="#measures">主な対策</a></li>
+          <li><a href="#commands">コマンドの利用範囲</a></li>
+          <li><a href="#risks">残っているリスク</a></li>
+          <li><a href="#report">脆弱性の報告</a></li>
+          <li><a href="#history">改訂履歴</a></li>
+        </ol>
+      </nav>
+
+      <article class="doc-body">
+        <h1>セキュリティ方針</h1>
+        <p class="doc-meta">最終更新: 2026年11月5日</p>
+
+        <p>DIscheduler は Discord サーバー内の日程調整 Bot です。参加者の予定という個人に関わる情報を扱うため、セキュリティとプライバシーを最優先に設計しています。</p>
+        <p>仕組みを隠すことで守る設計はとらず、対策の内容はすべて公開しています。秘密にしているのは、鍵とトークンだけです。設計の詳細（脅威モデル・対策・残存リスク）は、<a href="https://github.com/yuka-okaniwa/DIscheduler/blob/main/docs/security-design.md" rel="noopener noreferrer">セキュリティ設計書</a>で公開しています。</p>
+
+        <section class="summary-box" aria-labelledby="summary-title">
+          <h2 id="summary-title">要点</h2>
+          <ul>
+            <li>回答は、その調整の参加者同士でだけ共有され、参加者以外からは見えません。</li>
+            <li>パスワードやログインを求めず、本人にだけ見えるメッセージで入力リンクを渡します。</li>
+            <li>保存するのは日程調整に必要なデータだけで、締切・確定から 6 ヶ月後に自動で削除します。</li>
+            <li>Bot には管理者権限を渡さず、必要な権限だけで動きます。</li>
+          </ul>
+        </section>
+
+        <h2 id="not-do">本アプリがしないこと</h2>
+        <ul>
+          <li>Discord のパスワード入力や OAuth ログインを求めません</li>
+          <li>管理者（Administrator）権限を要求しません</li>
+          <li>メッセージ本文を読みません（Message Content Intent 不使用）</li>
+          <li>メールアドレス・IP アドレス・アバター画像を保存しません</li>
+          <li><code>@everyone</code> / <code>@here</code> / ロールへのメンションをしません</li>
+          <li>外部の解析ツール・広告・CDN を読み込みません</li>
+        </ul>
+
+        <h2 id="visibility">回答の公開範囲</h2>
+        <p>個人ごとの回答（○△× とひとことコメント）は、日程を合わせるためにその調整の参加者同士で共有され、<strong>参加者以外（外部の人・同じサーバーの参加者でない人）からは見えません</strong>。</p>
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr><th scope="col">見る人・見る場所</th><th scope="col">見える内容</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">その調整の参加者・主催者</th><td>全員の回答とひとことコメント</td></tr>
+              <tr><th scope="row">チャンネルの募集メッセージ</th><td>候補ごとの ○ の人数と回答率だけ</td></tr>
+              <tr><th scope="row">確定のお知らせ・Discord イベント</th><td>確定した日時と参加者へのメンションだけ。イベントはサーバー内限定</td></tr>
+              <tr><th scope="row">参加者以外・サーバーの外の人</th><td>何も見えません（調整の URL を知っていても見えません）</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>公開用の閲覧リンクやエクスポート機能はありません。参加者から外された人は、その時点で画面を開けなくなります。運用者向けの閲覧画面も作らず、ログにも回答の内容は出しません。</p>
+
+        <h2 id="data">保存するデータと期間</h2>
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr><th scope="col">データ</th><th scope="col">保存期間</th></tr></thead>
+            <tbody>
+              <tr><td>Discord のサーバー ID・チャンネル ID・ユーザー ID・表示名（参加者のみ）</td><td>調整の削除まで（最長：締切/確定の 6 ヶ月後）</td></tr>
+              <tr><td>調整のタイトル・説明・候補日時</td><td>同上</td></tr>
+              <tr><td>各参加者の回答（○△×）とひとことコメント</td><td>同上（同じ調整の参加者全員に表示されます）</td></tr>
+              <tr><td>調整のタイムゾーン（主催者が設定）</td><td>同上</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>表示用のタイムゾーンの設定はあなたのブラウザ内にのみ保存され、サーバーには送信されません。</p>
+        <p>主催者はいつでも <code>/schedule manage</code> から調整を即時削除できます。Bot をサーバーから削除すると、そのサーバーのデータも削除されます。</p>
+
+        <h3>参加者を自動で設定するときの扱い</h3>
+        <p>参加者を自動で設定する方式（標準）では、サーバーのメンバー一覧（ユーザー ID・表示名・ロール）を Discord から取得します。このうち保存するのは参加者になった人の情報だけで、それ以外の人の情報は保存しません。主催者は、調整ごとに参加者を手動で選ぶ方式に切り替えることもできます。</p>
+
+        <h2 id="measures">主な対策</h2>
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr><th scope="col">分類</th><th scope="col">対策</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Discord 連携</th><td>すべてのリクエストを Ed25519 署名で検証し、リプレイ攻撃を防止</td></tr>
+              <tr><th scope="row">本人確認</th><td>本人にしか見えない Discord メッセージで、10 分有効・1 回限りの入力リンクを発行</td></tr>
+              <tr><th scope="row">セッション</th><td><code>HttpOnly</code> / <code>Secure</code> / <code>SameSite=Strict</code> Cookie、12 時間で失効、1 つの調整にのみ有効</td></tr>
+              <tr><th scope="row">Web 攻撃対策</th><td>厳格な CSP、CSRF トークン、Origin 検証、プリペアドステートメント、XSS 対策</td></tr>
+              <tr><th scope="row">アクセス制御</th><td>回答は参加者同士でのみ共有。確定・削除は主催者のみ</td></tr>
+              <tr><th scope="row">データ最小化</th><td>必要最小限のデータのみ保存し、締切・確定から 6 ヶ月後に自動で物理削除</td></tr>
+              <tr><th scope="row">可用性</th><td>Cloudflare の DDoS 保護、レート制限（調整の作成数制限を含む）、入力サイズ制限</td></tr>
+              <tr><th scope="row">開発プロセス</th><td>依存最小化、Dependabot、CodeQL、Secret scanning、ブランチ保護、SHA 固定の GitHub Actions</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>このページを含む公開ページも、アプリと同じ厳格な CSP で配信しています。外部のスクリプト・フォント・画像は読み込みません。</p>
+
+        <h2 id="commands">コマンドの利用範囲</h2>
+        <p>コマンドを使えるチャンネルはサーバー管理者が Discord 標準の「連携サービス」設定で指定し、そのチャンネルで打てる人はチャンネルの発言権限で決まります（どちらも Discord 側で強制されます）。許可されていないチャンネルや、発言権限のない人のコマンドは、Bot まで届きません。</p>
+        <p>乱用を防ぐため、調整の作成数に上限を設けています（1 人 1 時間に 10 件、サーバー全体で 1 日 100 件、1 チャンネルの進行中の調整は 20 件まで）。</p>
+
+        <h2 id="risks">残っているリスク</h2>
+        <p>対策をしても防ぎきれない点や、利便性のために選んだ点を公開しています。</p>
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr><th scope="col">項目</th><th scope="col">内容と対応</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">入力リンクの転送</th><td>参加者が自分の入力リンクを他人に渡すと、10 分以内に 1 回だけ、本人として閲覧・回答できてしまいます。リンクは 1 回限り・10 分・1 つの調整だけに有効にして影響を限っています。入力リンクは他人に渡さないでください。</td></tr>
+              <tr><th scope="row">保存期間</th><td>締切・確定から 6 ヶ月間は予定のデータが残ります。振り返りや再調整に使えるようにするための判断です。主催者はいつでも削除できます。</td></tr>
+              <tr><th scope="row">導入直後のコマンド</th><td>Bot を追加した直後は、すべてのチャンネルで、発言できる人がコマンドを使えます。使う場所を限る場合は、管理者が連携サービス設定でチャンネルを指定してください。</td></tr>
+              <tr><th scope="row">Cloudflare と Discord</th><td>データは Cloudflare に保存され、Discord を経由してやり取りします。両社のインフラや従業員がデータにアクセスできる可能性があり、この点は各社の方針に依拠しています。保存するデータを最小限にして影響を小さくしています。</td></tr>
+              <tr><th scope="row">無料プラン</th><td>稼働率の保証（SLA）はありません。</td></tr>
+              <tr><th scope="row">保存時の暗号化</th><td>保存データは Cloudflare 側で暗号化されます。アプリ側での追加の暗号化はしていません。保存するのが予定と表示名だけで、鍵の管理を複雑にするほうが事故のリスクが大きいと判断しました。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="report">脆弱性の報告</h2>
+        <p>脆弱性を発見した場合は、<strong>公開の Issue には書かず</strong>、GitHub の <a href="https://github.com/yuka-okaniwa/DIscheduler/security/advisories/new" rel="noopener noreferrer">Private vulnerability reporting</a>（リポジトリの Security タブ →「Report a vulnerability」）から報告してください。</p>
+        <ul>
+          <li>受領連絡: 3 営業日以内を目標</li>
+          <li>修正後、報告者の同意を得て、報告された脆弱性を GitHub Security Advisory として公開します</li>
+          <li>善意のセキュリティ調査は歓迎します。ただし他の利用者のデータへのアクセス、サービス妨害、ソーシャルエンジニアリングは行わないでください</li>
+        </ul>
+        <p>サポート対象は <code>main</code> ブランチの最新版のみです。</p>
+
+        <h2 id="history">改訂履歴</h2>
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr><th scope="col">日付</th><th scope="col">内容</th></tr></thead>
+            <tbody>
+              <tr><td>2026年11月5日</td><td>初版を公開</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>DIscheduler</p>
+      <ul>
+        <li><a href="/">トップ</a></li>
+        <li><a href="/security#report">脆弱性の報告</a></li>
+        <li><a href="https://github.com/yuka-okaniwa/DIscheduler" rel="noopener noreferrer">GitHub</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>

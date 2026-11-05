@@ -297,12 +297,17 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 
 | ID | 画面 | URL | 利用者 |
 |----|------|-----|--------|
+| S0 | Bot の案内（LP） | `/` | 公開 |
 | S1 | リンク検証（中継） | `/l#<token>` | 全員 |
 | S2 | 候補日時入力 | `/p/{pollId}/edit` | 主催者 |
 | S3 | 回答入力 | `/p/{pollId}/answer` | 参加者 |
 | S4 | 集計・確定 | `/p/{pollId}` | 参加者（全員が全員の ○△× を閲覧可。確定操作は主催者のみ） |
 | S5 | エラー（期限切れ等） | — | 全員 |
 | S6 | セキュリティ方針 | `/security` | 公開 |
+
+- S0 と S6 は静的ページ（`public/index.html`、`public/security.html`）として Workers Static Assets から配信する。JavaScript は使わず、アプリと同じ CSP を `public/_headers` で付与する。
+- **利用者向けのセキュリティ方針の正本は S6（`public/security.html`）とする。** リポジトリの `SECURITY.md` は、S6 へのリンクと脆弱性の報告窓口だけを載せる。
+- LP の「サーバーに追加する」リンクの `client_id` は `__DISCORD_APPLICATION_ID__` と書いておき、デプロイ時に環境変数 `DISCORD_APPLICATION_ID` の値に置き換える。
 
 ### 6.3 S2: 候補日時入力（主催者）
 
@@ -635,7 +640,7 @@ CREATE TABLE rate_limits (
 
 ```
 DIscheduler/
-├── SECURITY.md               # 公開セキュリティ方針・脆弱性報告窓口
+├── SECURITY.md               # 公開ページへのリンクと脆弱性報告窓口
 ├── README.md
 ├── docs/
 │   ├── design.md             # 本書
@@ -652,7 +657,13 @@ DIscheduler/
 │   ├── db/                   # D1 クエリ（プリペアドステートメントのみ）
 │   ├── security/             # ヘッダー・レート制限
 │   └── schemas/              # Valibot スキーマ
-├── web/                      # フロントエンド（Vite で public/ にビルド）
+├── public/                   # Workers Static Assets の配信元
+│   ├── index.html            # S0: Bot の案内（LP）
+│   ├── security.html         # S6: セキュリティ方針（公開の正本）
+│   ├── assets/site.css       # 公開ページ共通のスタイル
+│   ├── _headers              # 静的配信時のセキュリティヘッダー
+│   └── robots.txt            # / と /security 以外のクロールを拒否
+├── web/                      # アプリ画面（S1〜S5）のソース（Vite で public/app/ にビルド）
 ├── migrations/               # D1 マイグレーション
 ├── scripts/register-commands.ts
 ├── test/                     # Vitest + @cloudflare/vitest-pool-workers

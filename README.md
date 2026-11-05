@@ -7,7 +7,8 @@ Discord のチャンネル／ロールのメンバーで日程調整を行う Bo
 ## ドキュメント
 - [設計書](docs/design.md)
 - [セキュリティ設計書](docs/security-design.md)
-- [セキュリティ方針（公開）](SECURITY.md)
+- [セキュリティ方針（公開ページのソース）](public/security.html)
+- [Bot の案内ページ（LP）のソース](public/index.html)
 
 ## サーバー管理者の方へ
 コマンドを使えるチャンネルは、Discord の「サーバー設定 → 連携サービス → DIscheduler」で指定できます。そのチャンネルで誰がコマンドを打てるかは、チャンネルの発言権限で制限してください。手順は [設計書](docs/design.md) の §5.4.1 を参照してください。

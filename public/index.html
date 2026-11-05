@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DIscheduler｜Discord の日程調整 Bot</title>
+  <meta name="description" content="Discord のチャンネルやロールのメンバーで日程調整ができる Bot。候補日時の入力、○△×での回答、確定日時の Discord イベント登録まで、Discord の中で完結します。">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">本文へ移動</a>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="/">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="6" width="26" height="23" rx="5" fill="currentColor" opacity=".15"/><rect x="3" y="6" width="26" height="23" rx="5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M3 13h26M10 3v6M22 3v6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="m11 21 3.5 3.5L21.5 17" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        DIscheduler
+      </a>
+      <nav class="site-nav" aria-label="メインメニュー">
+        <ul>
+          <li class="nav-optional"><a href="#features">機能</a></li>
+          <li class="nav-optional"><a href="#how">使い方</a></li>
+          <li class="nav-optional"><a href="#admin">管理者の方へ</a></li>
+          <li><a href="/security">セキュリティ</a></li>
+          <li><a class="btn btn-primary btn-small" href="https://discord.com/oauth2/authorize?client_id=__DISCORD_APPLICATION_ID__&amp;scope=bot+applications.commands&amp;permissions=17600775998464" rel="noopener noreferrer">追加する</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="container">
+        <div>
+          <p class="eyebrow">Discord の日程調整 Bot</p>
+          <h1>メンバーの予定合わせを、Discord の中で。</h1>
+          <p class="lead">チャンネルやロールのメンバーが最初から参加者に入った状態で、日程調整を始められます。候補日時の入力から回答、確定、Discord イベントの登録まで、外部サービスへの登録なしで使えます。</p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="https://discord.com/oauth2/authorize?client_id=__DISCORD_APPLICATION_ID__&amp;scope=bot+applications.commands&amp;permissions=17600775998464" rel="noopener noreferrer">サーバーに追加する</a>
+            <a class="btn btn-secondary" href="/security">セキュリティ方針を見る</a>
+          </div>
+          <p class="hero-note">無料で使えます。管理者権限は求めません。</p>
+        </div>
+
+        <figure class="mock" aria-label="集計画面のイメージ">
+          <div class="mock-head">
+            <span class="mock-title">定例会</span>
+            <span class="mock-meta">回答 9 / 12 名</span>
+          </div>
+          <div class="mock-scroll">
+            <table>
+              <thead>
+                <tr><th scope="col">候補日時</th><th scope="col">○</th><th scope="col">△</th><th scope="col">×</th><th scope="col">未回答</th></tr>
+              </thead>
+              <tbody>
+                <tr class="best"><td><span class="star" aria-label="最有力候補">★</span> 11/11(水) 20:00</td><td><span class="mark mark-ok">8</span></td><td><span class="mark mark-maybe">1</span></td><td><span class="mark mark-ng">0</span></td><td>3</td></tr>
+                <tr><td>11/4(水) 20:00</td><td><span class="mark mark-ok">5</span></td><td><span class="mark mark-maybe">2</span></td><td><span class="mark mark-ng">2</span></td><td>3</td></tr>
+                <tr><td>11/12(木) 20:00</td><td><span class="mark mark-ok">3</span></td><td><span class="mark mark-maybe">1</span></td><td><span class="mark mark-ng">5</span></td><td>3</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <figcaption class="mock-foot">★ は × が最も少なく ○ が最も多い候補です</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="features" aria-labelledby="features-title">
+      <div class="container">
+        <h2 id="features-title">できること</h2>
+        <p class="section-lead">主催者も参加者も、迷わず操作できることを重視しています。スマートフォンの Discord アプリからでも使えます。</p>
+        <div class="grid grid-4">
+          <article class="card">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 14.2a5 5 0 0 1 4.5 4.8"/></svg></span>
+            <h3>参加者を自動で設定</h3>
+            <p>コマンドを打ったチャンネルのメンバー、または指定したロールのメンバーが、最初から参加者に入ります。手動で選ぶこともできます。</p>
+          </article>
+          <article class="card">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4M8 14h2M14 14h2M8 17.5h2"/></svg></span>
+            <h3>候補日時はまとめて入力</h3>
+            <p>カレンダーで日付を複数選び、時間帯を一度に当てはめられます。10 件の候補も数タップで作れます。</p>
+          </article>
+          <article class="card">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="3"/><path d="M9.5 15 12 9l2.5 6zM17 9.5l5 5M22 9.5l-5 5"/></svg></span>
+            <h3>回答は ○△× をタップ</h3>
+            <p>募集メッセージのボタンから、自分専用の入力画面が開きます。ログインやアカウント登録はいりません。</p>
+          </article>
+          <article class="card">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="m9 15.5 2 2 4-4"/></svg></span>
+            <h3>確定したらイベントに</h3>
+            <p>主催者が日時を確定すると、チャンネルにお知らせが投稿されます。Discord のイベントとして登録することもできます。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="how" aria-labelledby="how-title">
+      <div class="container">
+        <h2 id="how-title">使い方</h2>
+        <p class="section-lead">日程調整は 4 つのステップで終わります。</p>
+        <ol class="steps">
+          <li>
+            <h3>調整を作る<span class="who">主催者</span></h3>
+            <p>チャンネルで <code>/schedule create</code> を実行し、タイトルを入力します。ロールを指定すると、そのロールのメンバーが参加者になります。</p>
+          </li>
+          <li>
+            <h3>候補日時を入れる<span class="who">主催者</span></h3>
+            <p>本人にだけ表示されるリンクから入力画面を開き、候補日時を選んで公開します。チャンネルに募集メッセージが投稿されます。</p>
+          </li>
+          <li>
+            <h3>都合を答える<span class="who">参加者</span></h3>
+            <p>募集メッセージの［回答する］を押し、候補ごとに ○・△・× を選んで保存します。ほかの参加者の回答も見られます。</p>
+          </li>
+          <li>
+            <h3>日時を確定する<span class="who">主催者</span></h3>
+            <p>集計表から日時を選んで確定します。未回答の人へのリマインドや、Discord イベントの登録もここからできます。</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="admin" aria-labelledby="admin-title">
+      <div class="container">
+        <h2 id="admin-title">サーバー管理者の方へ</h2>
+        <p class="section-lead">Bot に渡す権限は必要なものだけです。コマンドを使えるチャンネルは、Discord の標準機能で指定できます。</p>
+
+        <div class="grid grid-2">
+          <div>
+            <h3>Bot に渡す権限</h3>
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr><th scope="col">権限</th><th scope="col">用途</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row">チャンネルを見る <span class="tag tag-required">必須</span></th><td>投稿先のチャンネルを確認する</td></tr>
+                  <tr><th scope="row">メッセージを送信 <span class="tag tag-required">必須</span></th><td>募集・確定のお知らせを投稿する</td></tr>
+                  <tr><th scope="row">埋め込みリンク <span class="tag tag-required">必須</span></th><td>候補日時と集計を見やすく表示する</td></tr>
+                  <tr><th scope="row">イベントの作成 <span class="tag tag-optional">任意</span></th><td>確定した日時を Discord イベントに登録する</td></tr>
+                  <tr><th scope="row">イベントの管理 <span class="tag tag-optional">任意</span></th><td>Bot が作ったイベントを編集・削除する</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="term">管理者（Administrator）権限は求めません。イベントの権限を外して追加しても、日程調整そのものは使えます。</p>
+          </div>
+
+          <div>
+            <h3>コマンドを使えるチャンネルの指定</h3>
+            <ol class="howto">
+              <li>「サーバー設定」→「連携サービス」→「DIscheduler」を開きます。</li>
+              <li>「チャンネル」で「すべてのチャンネル」をオフにし、コマンドを使わせたいチャンネルを追加します。</li>
+              <li>「ロールとメンバー」は変更しません（<code>@everyone</code> のまま）。</li>
+              <li>そのチャンネルで誰がコマンドを打てるかは、チャンネルの権限「メッセージを送信」「アプリコマンドを使用」で制限します。</li>
+            </ol>
+            <div class="callout">
+              <p>追加した直後は、すべてのチャンネルで、発言できる人がコマンドを使えます。使う場所を限りたい場合は、追加したあとに上の手順で設定してください。乱用を防ぐため、調整の作成数には上限があります（1 人 1 時間に 10 件、サーバー全体で 1 日 100 件、1 チャンネルの進行中の調整は 20 件まで）。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="security" aria-labelledby="security-title">
+      <div class="container">
+        <h2 id="security-title">セキュリティとプライバシー</h2>
+        <p class="section-lead">参加者の予定という個人に関わる情報を扱うため、セキュリティを最優先に設計しています。対策の内容はすべて公開しています。</p>
+        <div class="grid grid-2">
+          <div class="card">
+            <h3>この Bot がしないこと</h3>
+            <ul class="check-list">
+              <li>Discord のパスワード入力やログインを求めません</li>
+              <li>管理者権限を求めません</li>
+              <li>メッセージの本文を読みません</li>
+              <li>メールアドレス・IP アドレスを保存しません</li>
+              <li><code>@everyone</code> やロールへのメンションをしません</li>
+              <li>外部の解析ツールや広告を読み込みません</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>回答とデータの扱い</h3>
+            <ul class="check-list">
+              <li>回答は、その調整の参加者同士でだけ共有されます</li>
+              <li>参加者以外の人には、URL を知っていても見えません</li>
+              <li>チャンネルには、候補ごとの人数だけを表示します</li>
+              <li>入力リンクは本人だけに表示され、10 分有効・1 回限りです</li>
+              <li>データは締切・確定から 6 ヶ月後に自動で削除されます</li>
+              <li>主催者はいつでも調整を削除できます</li>
+            </ul>
+          </div>
+        </div>
+        <p class="cta-row"><a class="btn btn-secondary" href="/security">セキュリティ方針の全文を読む</a></p>
+      </div>
+    </section>
+
+    <section class="section section-alt faq" id="faq" aria-labelledby="faq-title">
+      <div class="container">
+        <h2 id="faq-title">よくある質問</h2>
+        <details>
+          <summary>料金はかかりますか？</summary>
+          <p>かかりません。Cloudflare の無料枠だけで動かしています。</p>
+        </details>
+        <details>
+          <summary>参加者はログインやアカウント登録が必要ですか？</summary>
+          <p>必要ありません。募集メッセージの［回答する］を押すと、本人にだけ見えるメッセージで入力リンクが届きます。そのリンクを開けば、そのまま回答できます。</p>
+        </details>
+        <details>
+          <summary>自分の回答は誰に見えますか？</summary>
+          <p>その調整の参加者と主催者に見えます。日程を合わせるために、誰がどの日に参加できるかを共有する仕組みです。参加者以外の人や、サーバーの外の人からは見えません。</p>
+        </details>
+        <details>
+          <summary>海外のメンバーがいても使えますか？</summary>
+          <p>使えます。日時は、見ている人のブラウザのタイムゾーンで表示されます。分からない場合は日本時間で表示し、画面から切り替えることもできます。</p>
+        </details>
+        <details>
+          <summary>データはいつ消えますか？</summary>
+          <p>締切日または確定日から 6 ヶ月後に、自動で削除されます。主催者はそれより前でもいつでも削除できます。Bot をサーバーから外した場合も、そのサーバーのデータは削除されます。</p>
+        </details>
+        <details>
+          <summary>セキュリティの問題を見つけたらどうすればいいですか？</summary>
+          <p>公開の場には書かず、<a href="/security#report">セキュリティ方針の「脆弱性の報告」</a>にある窓口から知らせてください。</p>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>DIscheduler</p>
+      <ul>
+        <li><a href="/security">セキュリティ方針</a></li>
+        <li><a href="/security#report">脆弱性の報告</a></li>
+        <li><a href="https://github.com/yuka-okaniwa/DIscheduler" rel="noopener noreferrer">GitHub</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>
