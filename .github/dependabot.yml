@@ -1,0 +1,10 @@
+# 依存の更新（docs/security-design.md §5）
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

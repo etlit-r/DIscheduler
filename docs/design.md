@@ -667,8 +667,11 @@ DIscheduler/
 ├── migrations/               # D1 マイグレーション
 ├── scripts/register-commands.ts
 ├── test/                     # Vitest + @cloudflare/vitest-pool-workers
-├── wrangler.toml
-└── .github/workflows/        # CI（test, typecheck, audit, CodeQL, deploy）
+├── wrangler.jsonc            # Cloudflare Workers の設定
+└── .github/
+    ├── workflows/deploy.yml  # main マージ時のデプロイ（承認制）
+    ├── workflows/            # CI（test, typecheck, audit, CodeQL）※実装時に追加
+    └── dependabot.yml        # Action の更新
 ```
 
 ---
@@ -697,3 +700,50 @@ DIscheduler/
 | 6 | ドメイン | `*.workers.dev` を使用（独自ドメインなし） | §9 |
 
 - Server Members Intent は Bot の導入サーバーが 100 未満なら Discord の審査なしで、Developer Portal の設定だけで有効化できる。100 サーバー以上になる場合は Discord への申請が必要。
+
+---
+
+## 14. デプロイ
+
+GitHub Actions から Cloudflare Workers にデプロイする（`.github/workflows/deploy.yml`）。
+
+```mermaid
+flowchart LR
+  PR[PR を作成] --> M[main にマージ]
+  M --> W[Deploy ワークフロー起動]
+  W --> A{production 環境の<br/>承認}
+  A -- 承認 --> R[招待リンクに<br/>Application ID を埋め込む]
+  R --> D[wrangler deploy]
+  D --> CF[(Cloudflare Workers<br/>*.workers.dev)]
+```
+
+### 14.1 初回の準備
+
+**Cloudflare**
+1. 無料アカウントを作り、「Workers & Pages」で `workers.dev` のサブドメインを決める（公開 URL は `https://discheduler.<サブドメイン>.workers.dev`）。
+2. Account ID を控える。
+3. 「My Profile → API Tokens → Create Token」でテンプレート「Edit Cloudflare Workers」を選び、Account Resources を自分のアカウントだけに限り、有効期限（最長 1 年）を付けてトークンを作る。
+
+**GitHub**（リポジトリの Settings → Environments → `production`）
+
+| 種類 | 名前 | 値 |
+|------|------|----|
+| 保護ルール | Required reviewers | 承認者（自分） |
+| 保護ルール | Deployment branches | `main` のみ |
+| Environment secret | `CLOUDFLARE_API_TOKEN` | 上で作った API トークン |
+| Environment secret | `CLOUDFLARE_ACCOUNT_ID` | Account ID |
+| Environment variable | `DISCORD_APPLICATION_ID` | Discord Developer Portal の Application ID（公開値） |
+
+### 14.2 ワークフローの安全策
+- `permissions: contents: read` のみ。`actions/checkout` は `persist-credentials: false` で GitHub トークンを残さない。
+- サードパーティの Action はコミット SHA で固定し、Dependabot（`.github/dependabot.yml`）で週次に更新 PR を作る。
+- wrangler のバージョンを固定する（`wranglerVersion`）。
+- `DISCORD_APPLICATION_ID` は数字 17〜20 桁であることを確かめてから置き換える。置き換え漏れがあればデプロイを止める。
+- 同時に 2 つのデプロイが走らないよう `concurrency` で直列化する。
+- プレビュー URL は無効（`preview_urls: false`）にし、公開されるのは `workers.dev` の本番 URL だけにする。
+- Bot トークンなどの秘密の値は GitHub に置かず、Worker 実装後に `wrangler secret put` で Cloudflare に直接登録する。
+
+### 14.3 実装開始後に追加するもの
+- デプロイ前に `npm ci --ignore-scripts`、型検査、テスト、`npm audit` を実行するジョブ（失敗したらデプロイしない）
+- D1 のマイグレーション（`wrangler d1 migrations apply --remote`）
+- スラッシュコマンドの登録（`scripts/register-commands.ts`）
