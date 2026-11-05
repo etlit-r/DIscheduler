@@ -1,0 +1,14 @@
+// Cloudflare Workers の設定（docs/design.md §14）
+// 現時点では public/ の静的ページ（LP・セキュリティ方針）だけを配信する。
+// Worker の実装を始めたら "main" と D1 などのバインディングを追加する。
+{
+  "name": "discheduler",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./public",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none"
+  }
+}
