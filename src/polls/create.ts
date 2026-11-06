@@ -2,6 +2,7 @@
 import type { Env } from "../core/env";
 import { defaultChoiceStatements, hitRateLimit, rateLimitResetIn, type PollRow } from "../db";
 import { extractParticipants, fetchMember, type Candidate } from "../discord/members";
+import { getGuildSettings } from "../guilds/settings";
 import { DAY, nowSec, randomId } from "../core/lib";
 
 export const DRAFT_TTL = 3 * DAY;
@@ -33,7 +34,8 @@ async function findEmptyDraft(db: D1Database, organizerId: string, channelId: st
     .first<PollRow>();
 }
 
-export async function createOrReuseDraft(env: Env, o: CreateOptions): Promise<CreateResult> {
+export async function createOrReuseDraft(env: Env, opts: CreateOptions): Promise<CreateResult> {
+  let o = opts;
   const db = env.DB;
   const now = nowSec();
   const hasOptions = o.title !== null || o.members !== null || o.roleId !== null || o.deadlineDays !== null;
@@ -59,12 +61,29 @@ export async function createOrReuseDraft(env: Env, o: CreateOptions): Promise<Cr
     return { ok: false, message: "このチャンネルの進行中の調整が多すぎます（20 件まで）。不要な調整を削除してください。" };
   }
 
+  // コマンドで指定がなければ、サーバーの既定値を使う（§5.3.1）
+  let usedDefaultRole = false;
+  if (o.members === null && o.roleId === null) {
+    const def = await getGuildSettings(db, o.guildId);
+    if (def.mode === "manual") o = { ...o, members: "manual" };
+    else if (def.mode === "role" && def.roleId) {
+      o = { ...o, roleId: def.roleId };
+      usedDefaultRole = true;
+    }
+  }
   const targetType = o.members === "manual" ? "manual" : o.roleId ? "role" : "channel";
   let notice: string | null = null;
   let participants: Candidate[] = [];
   let finalTarget: "channel" | "role" | "manual" = targetType;
   if (targetType !== "manual") {
-    const r = await extractParticipants(env, o.guildId, o.channelId, o.roleId);
+    let r = await extractParticipants(env, o.guildId, o.channelId, o.roleId);
+    if (r.ok && r.members.length === 0 && usedDefaultRole) {
+      // 既定のロールが削除された・誰も持っていない場合は、チャンネルのメンバーにする
+      r = await extractParticipants(env, o.guildId, o.channelId, null);
+      finalTarget = "channel";
+      o = { ...o, roleId: null };
+      notice = "サーバーの既定のロールを持つメンバーがいないため、このチャンネルのメンバーを参加者にしました。";
+    }
     if (r.ok) {
       participants = r.members;
     } else {

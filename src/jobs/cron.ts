@@ -52,9 +52,10 @@ async function cleanup(env: Env, now: number): Promise<void> {
       if (batch.length < 200) break;
       after = batch[batch.length - 1]!.id;
     }
-    const stored = await db.prepare("SELECT DISTINCT guild_id FROM polls").all<{ guild_id: string }>();
+    const stored = await db.prepare("SELECT guild_id FROM polls UNION SELECT guild_id FROM guild_settings").all<{ guild_id: string }>();
     for (const g of stored.results) {
       if (guilds.has(g.guild_id)) continue;
+      await db.prepare("DELETE FROM guild_settings WHERE guild_id = ?").bind(g.guild_id).run();
       const polls = await db.prepare("SELECT id FROM polls WHERE guild_id = ?").bind(g.guild_id).all<{ id: string }>();
       for (const p of polls.results) await deletePollData(db, p.id);
     }
