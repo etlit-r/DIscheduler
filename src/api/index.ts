@@ -30,7 +30,7 @@ import { buildDeletedMessage, buildMentionMessage, buildPollMessage, escapeMarkd
 import { discord, DiscordError, type DiscordChannel, type DiscordRole } from "../discord/rest";
 import { AppError, DAY, nowSec, randomId, timingSafeEqual } from "../core/lib";
 import { DEFAULT_DEADLINE_DAYS, resetParticipants, RETENTION } from "../polls/create";
-import { canAnswer, effectiveStatus, LIMITS } from "../shared/model";
+import { canAnswer, effectiveStatus, LIMITS, UNANSWERED } from "../shared/model";
 import { isValidTimeZone, nextCronAt } from "../shared/time";
 import { syncAfterAnswer, syncNow } from "../polls/sync";
 import { AnswersBody, ChoicesBody, FixBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
@@ -94,8 +94,8 @@ api.post("/session", async (c) => {
 
 const polls = new Hono<{ Bindings: Env; Variables: Vars }>();
 
+// Hono の "/:id/*" は "/:id" にも一致するので、1 つだけ登録する（2 回実行しない）
 polls.use("/:id/*", loadSession);
-polls.use("/:id", loadSession);
 
 async function loadSession(c: C, next: () => Promise<void>) {
   const id = c.req.param("id") ?? "";
@@ -159,7 +159,7 @@ polls.get("/:id", async (c) => {
       fixedAt: poll.fixed_at,
       choicesVersion: poll.choices_version,
       updatedAt: poll.updated_at,
-      messageUrl: poll.message_id ? messageLink(poll.guild_id, poll.channel_id, poll.message_id) : null,
+      messageUrl: poll.message_id && !poll.message_id.startsWith("pending:") ? messageLink(poll.guild_id, poll.channel_id, poll.message_id) : null,
       lastSyncedAt: isOrganizer ? poll.last_synced_at : null,
       pendingChanges: pending,
       nextAutoSyncAt: isOrganizer ? nextCronAt(now) : null,
@@ -421,20 +421,32 @@ polls.post("/:id/publish", async (c) => {
   if (participants.length === 0) throw new AppError(400, "no_participants", "参加者を 1 人以上入れてください。");
   const deadlineAt = poll.deadline_at && poll.deadline_at > now ? poll.deadline_at : now + DEFAULT_DEADLINE_DAYS * DAY;
   const published: PollRow = { ...poll, status: "open", deadline_at: deadlineAt };
+  // 同時に 2 回公開されても 1 回だけ投稿するよう、投稿の前に権利を取る（60 秒より古い取りかけは取り直せる）
+  const lock = `pending:${now}`;
+  const claimed = await db
+    .prepare(
+      "UPDATE polls SET message_id = ? WHERE id = ? AND status = 'draft' " +
+        "AND (message_id IS NULL OR (message_id LIKE 'pending:%' AND CAST(substr(message_id, 9) AS INTEGER) < ?))",
+    )
+    .bind(lock, poll.id, now - 60)
+    .run();
+  if (claimed.meta.changes !== 1) throw new AppError(409, "publishing", "公開の処理中です。少し待ってから画面を再読み込みしてください。");
+  const release = () => db.prepare("UPDATE polls SET message_id = NULL WHERE id = ? AND message_id = ?").bind(poll.id, lock).run();
   let messageId: string;
   try {
     const msg = buildPollMessage({ poll: published, slots, choices, participants, answers: [], now });
     const res = await discord<{ id: string }>(c.env, "POST", `/channels/${poll.channel_id}/messages`, msg);
     messageId = res.id;
   } catch (e) {
+    await release();
     if (e instanceof DiscordError && (e.status === 403 || e.status === 404)) {
       throw new AppError(502, "discord_forbidden", "チャンネルに投稿できませんでした。Bot がこのチャンネルを見る権限・メッセージを送信する権限を持っているか確認してください。");
     }
     throw e;
   }
   await db
-    .prepare("UPDATE polls SET status = 'open', deadline_at = ?, message_id = ?, last_synced_at = ?, updated_at = ?, purge_after = ? WHERE id = ? AND status = 'draft'")
-    .bind(deadlineAt, messageId, now, now, deadlineAt + RETENTION, poll.id)
+    .prepare("UPDATE polls SET status = 'open', deadline_at = ?, message_id = ?, last_synced_at = ?, updated_at = ?, purge_after = ? WHERE id = ? AND status = 'draft' AND message_id = ?")
+    .bind(deadlineAt, messageId, now, now, deadlineAt + RETENTION, poll.id, lock)
     .run();
   return c.json({ ok: true, redirect: `/p/${poll.id}/done?kind=published` });
 });
@@ -472,11 +484,12 @@ polls.put("/:id/answers/me", async (c) => {
   for (const a of body.answers) {
     const prev = old.get(a.slotId);
     if (prev && prev.choice_id === a.choiceId) continue;
-    // 確定後に変えた場合は、確定時点の選択肢を残す（元に戻したら消す）
+    // 確定後に変えた場合は、確定時点の選択肢を残す（元に戻したら消す）。
+    // 確定時点で未回答だった場合は、空文字（UNANSWERED）を残す
     let prevChoice: string | null = prev?.prev_choice_id ?? null;
     if (isFixed) {
-      const atFix = prev ? (prev.prev_choice_id ?? prev.choice_id) : null;
-      prevChoice = atFix === a.choiceId ? null : (atFix ?? "none");
+      const atFix = prev ? (prev.prev_choice_id ?? prev.choice_id) : UNANSWERED;
+      prevChoice = atFix === a.choiceId ? null : atFix;
     }
     stmts.push(
       db
@@ -484,11 +497,14 @@ polls.put("/:id/answers/me", async (c) => {
           "INSERT INTO answers (poll_id, slot_id, user_id, choice_id, prev_choice_id, updated_at) VALUES (?, ?, ?, ?, ?, ?) " +
             "ON CONFLICT(slot_id, user_id) DO UPDATE SET choice_id = excluded.choice_id, prev_choice_id = excluded.prev_choice_id, updated_at = excluded.updated_at",
         )
-        .bind(poll.id, a.slotId, session.user_id, a.choiceId, prevChoice === "none" ? null : prevChoice, now),
+        .bind(poll.id, a.slotId, session.user_id, a.choiceId, prevChoice, now),
     );
   }
-  for (const [slotId] of old) {
-    if (!seen.has(slotId)) stmts.push(db.prepare("DELETE FROM answers WHERE slot_id = ? AND user_id = ?").bind(slotId, session.user_id));
+  // 確定後は、送られなかった候補の回答を消さない（確定時点の回答の記録が消えてしまうため）
+  if (!isFixed) {
+    for (const [slotId] of old) {
+      if (!seen.has(slotId)) stmts.push(db.prepare("DELETE FROM answers WHERE slot_id = ? AND user_id = ?").bind(slotId, session.user_id));
+    }
   }
   stmts.push(
     db.prepare("UPDATE participants SET comment = ?, answered_at = ? WHERE poll_id = ? AND user_id = ?").bind(body.comment || null, body.answers.length > 0 ? now : null, poll.id, session.user_id),
@@ -530,6 +546,14 @@ polls.post("/:id/fix", async (c) => {
   if (body.event) {
     const err = await upsertEvent(c.env, poll, slot, body.event);
     if (err) warnings.push(err);
+  } else if (poll.discord_event_id) {
+    // 登録済みのイベントが古い日時のまま残らないよう、イベントを外したら削除する
+    try {
+      await discord(c.env, "DELETE", `/guilds/${poll.guild_id}/scheduled-events/${poll.discord_event_id}`);
+    } catch (e) {
+      if (!(e instanceof DiscordError && e.status === 404)) warnings.push("登録済みの Discord イベントを削除できませんでした。Discord で削除してください。");
+    }
+    await db.prepare("UPDATE polls SET discord_event_id = NULL WHERE id = ?").bind(poll.id).run();
   }
   return c.json({ ok: true, redirect: `/p/${poll.id}/done?kind=fixed`, warnings });
 });

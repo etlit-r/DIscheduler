@@ -7,7 +7,7 @@ import { AppError, isQuotaError, nowSec, QUOTA_MESSAGE } from "../core/lib";
 import { createOrReuseDraft } from "../polls/create";
 import { buildSettingsMessage, canManageGuild, getGuildSettings, saveGuildSettings, type DefaultMode } from "../guilds/settings";
 import { canAnswer, effectiveStatus } from "../shared/model";
-import { sanitizeDisplayName } from "../shared/text";
+import { sanitizeDisplayName, sanitizeLine } from "../shared/text";
 import { syncCommands } from "./commands";
 import { PERM } from "./members";
 import { escapeMarkdown, messageLink, NO_MENTIONS } from "./messages";
@@ -131,7 +131,8 @@ function strOption(i: Interaction, name: string): string | null {
 
 async function handleCreate(env: Env, i: Interaction, origin: string, guildId: string, channelId: string, userId: string): Promise<void> {
   const rawTitle = strOption(i, "title");
-  const title = rawTitle ? sanitizeDisplayName(rawTitle, 100) : null;
+  // 空白だけなどで空になったら、タイトルなし（Web 画面で入力する）として扱う
+  const title = rawTitle ? sanitizeLine(rawTitle, 100) || null : null;
   const members = strOption(i, "members");
   const roleId = strOption(i, "role");
   const deadline = intOption(i, "deadline");

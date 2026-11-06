@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bestSlotId, effectiveStatus, tally } from "../src/shared/model";
-import { isSafeChoiceText, sanitizeDisplayName } from "../src/shared/text";
+import { isSafeChoiceText, sanitizeDisplayName, sanitizeLine } from "../src/shared/text";
 import { epochToZoned, nextCronAt, zonedToEpoch } from "../src/shared/time";
 import { canViewChannel } from "../src/discord/members";
 import { escapeMarkdown } from "../src/discord/messages";
@@ -62,6 +62,10 @@ describe("文字列の検証（security-design §4.4）", () => {
     expect(sanitizeDisplayName("abc‮def\n")).toBe("abcdef");
     expect(Array.from(sanitizeDisplayName("あ".repeat(100))).length).toBe(64);
     expect(sanitizeDisplayName("​")).toBe("（名前なし）");
+  });
+  it("空白や見えない文字だけのタイトルは空になる", () => {
+    expect(sanitizeLine("  \u200b ", 100)).toBe("");
+    expect(sanitizeLine(" 定例会 ", 100)).toBe("定例会");
   });
   it("選択肢にメンション・カスタム絵文字の記法は使えない", () => {
     expect(isSafeChoiceText("○")).toBe(true);

@@ -481,7 +481,22 @@ export async function editPage(pollId: string): Promise<void> {
 
   function draw(): void {
     setTitle(isDraft ? "新しい日程調整" : `${d.poll.title ?? ""} の編集`);
-    const titleIn = h("input", { type: "text", id: "title", value: title, maxLength: LIMITS.titleMax, required: true, autocomplete: "off", onInput: () => (title = titleIn.value) });
+    const titleIn = h("input", {
+      type: "text",
+      id: "title",
+      value: title,
+      maxLength: LIMITS.titleMax,
+      required: true,
+      autocomplete: "off",
+      onInput: () => {
+        title = titleIn.value;
+        // 入力のたびに画面全体を描き直さず、公開ボタンと案内だけを更新する
+        if (publishBtn) publishBtn.disabled = !canPublish();
+        publishHint.hidden = !isDraft || canPublish();
+      },
+    });
+    const canPublish = () => title.trim().length > 0 && slots.length > 0;
+    const publishHint = h("p", { class: "muted small right", hidden: !isDraft || canPublish() }, "公開するには、タイトルと候補日時（1 件以上）が必要です。");
     const descIn = h("textarea", { id: "desc", rows: 3, maxLength: LIMITS.descriptionMax, onInput: () => (description = descIn.value) });
     descIn.value = description;
     const tzSel = timeZoneSelect(tz, (v) => {
@@ -508,7 +523,7 @@ export async function editPage(pollId: string): Promise<void> {
       ? h("button", {
           type: "button",
           class: "btn btn-primary",
-          disabled: !title.trim() || slots.length === 0,
+          disabled: !canPublish(),
           onClick: () => run(async () => {
             await save();
             const r = await request<{ redirect: string }>("POST", `/api/polls/${pollId}/publish`, {});
@@ -549,7 +564,7 @@ export async function editPage(pollId: string): Promise<void> {
           saveBtn,
           publishBtn,
         ),
-        isDraft && (!title.trim() || slots.length === 0) ? h("p", { class: "muted small right" }, "公開するには、タイトルと候補日時（1 件以上）が必要です。") : null,
+        publishHint,
         h(
           "section",
           { class: "card danger-zone" },
