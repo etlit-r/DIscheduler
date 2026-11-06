@@ -41,6 +41,26 @@ jobs:
             exit 1
           fi
 
+      - name: 寄付リンクを埋め込む（未設定なら寄付の欄を消す）
+        env:
+          DONATION_URL: ${{ vars.DONATION_URL }}
+        run: |
+          if [[ -z "$DONATION_URL" ]]; then
+            # <!-- donation:start --> ～ <!-- donation:end --> を削除
+            perl -0pi -e 's/<!-- donation:start -->.*?<!-- donation:end -->//gs' public/index.html
+          else
+            # https の URL で、使える文字だけで構成されているかを確かめる（HTML と置換の書き換えを防ぐ）
+            if [[ ! "$DONATION_URL" =~ ^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/-]*)?$ ]]; then
+              echo "::error::Environment variable DONATION_URL の形式が正しくありません"
+              exit 1
+            fi
+            sed -i "s#__DONATION_URL__#${DONATION_URL}#g" public/index.html
+          fi
+          if grep -q "__DONATION_URL__" public/index.html; then
+            echo "::error::寄付リンクの置き換えに失敗しました"
+            exit 1
+          fi
+
       - name: Cloudflare Workers へデプロイ
         id: deploy
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
