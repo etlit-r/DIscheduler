@@ -213,8 +213,8 @@ stateDiagram-v2
 | 脆弱性監視 | Dependabot（セキュリティアップデート＋週次バージョン更新）、CI で `npm audit --audit-level=high` |
 | 静的解析 | GitHub CodeQL、ESLint（セキュリティルール）、TypeScript `strict` |
 | GitHub Actions | サードパーティ Action は **コミット SHA で固定**。`permissions:` を最小化（既定 `contents: read`） |
-| ブランチ保護 | `main` への直接 push 禁止、PR レビュー必須、CI 成功必須 |
-| デプロイ | `main` マージ時のみ GitHub Actions からデプロイ。手動承認付きの `production` Environment を使用 |
+| ブランチ保護 | `master` への直接 push 禁止、PR レビュー必須、CI 成功必須 |
+| デプロイ | `master` マージ時のみ GitHub Actions からデプロイ。手動承認付きの `production` Environment を使用 |
 | シークレット検出 | GitHub Secret scanning ＋ Push protection |
 
 ---
