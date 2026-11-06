@@ -5,6 +5,7 @@ import { issueLink } from "../auth";
 import { getParticipant, getPoll, hitRateLimit } from "../db";
 import { AppError, isQuotaError, nowSec, QUOTA_MESSAGE } from "../core/lib";
 import { createOrReuseDraft } from "../polls/create";
+import { buildSettingsMessage, canManageGuild, getGuildSettings, saveGuildSettings, type DefaultMode } from "../guilds/settings";
 import { canAnswer, effectiveStatus } from "../shared/model";
 import { sanitizeDisplayName } from "../shared/text";
 import { syncCommands } from "./commands";
@@ -84,6 +85,9 @@ export async function handleInteraction(env: Env, ctx: Ctx, i: Interaction, orig
   if (i.type === 3) {
     const id = i.data?.custom_id ?? "";
     if (id === "help") return ephemeral(helpText(origin));
+    if (id === "settings" || id === "settings_mode" || id === "settings_role") {
+      return handleSettings(env, i, id, guildId, userId);
+    }
     if (id === "list") {
       background(env, ctx, i, () => handleList(env, i, guildId, channelId));
       return deferred();
@@ -141,7 +145,7 @@ async function handleCreate(env: Env, i: Interaction, origin: string, guildId: s
     deadlineDays: deadline && deadline >= 1 && deadline <= 90 ? Math.floor(deadline) : null,
   });
   if (!result.ok) {
-    await editOriginal(env, i, result.message, menuRow());
+    await editOriginal(env, i, result.message, menuRow(isAdmin(i)));
     return;
   }
   const url = await issueLink(env.DB, origin, result.pollId, userId, "organizer", "edit");
@@ -152,21 +156,46 @@ async function handleCreate(env: Env, i: Interaction, origin: string, guildId: s
   if (result.notice) lines.push("", `⚠️ ${result.notice}`);
   await editOriginal(env, i, lines.join("\n"), [
     { type: 1, components: [linkButton("調整を作成する", url)] },
-    ...menuRow(),
+    ...menuRow(isAdmin(i)),
   ]);
 }
 
-function menuRow() {
-  return [
-    {
-      type: 1,
-      components: [
-        { type: 2, style: 2, label: "このチャンネルの調整", custom_id: "list" },
-        { type: 2, style: 2, label: "自分の調整を管理", custom_id: "manage" },
-        { type: 2, style: 2, label: "使い方", custom_id: "help" },
-      ],
-    },
+function isAdmin(i: Interaction): boolean {
+  return canManageGuild(i.member?.permissions);
+}
+
+function menuRow(admin: boolean) {
+  const buttons: unknown[] = [
+    { type: 2, style: 2, label: "このチャンネルの調整", custom_id: "list" },
+    { type: 2, style: 2, label: "自分の調整を管理", custom_id: "manage" },
+    { type: 2, style: 2, label: "使い方", custom_id: "help" },
   ];
+  // サーバー管理の権限がある人にだけ、既定値の設定を出す（§5.3.1）
+  if (admin) buttons.push({ type: 2, style: 2, label: "サーバーの既定値", custom_id: "settings" });
+  return [{ type: 1, components: buttons }];
+}
+
+/** サーバーの既定値の表示・変更。権限は署名済みの Interaction の permissions で毎回確かめる */
+async function handleSettings(env: Env, i: Interaction, id: string, guildId: string, userId: string): Promise<Response> {
+  if (!isAdmin(i)) return ephemeral("サーバーの既定値を変更できるのは、「サーバー管理」の権限を持つメンバーだけです。");
+  const current = await getGuildSettings(env.DB, guildId);
+  if (id === "settings") return json({ type: 4, data: { ...buildSettingsMessage(current, current.roleId, null), flags: EPHEMERAL } });
+
+  let next: { mode: DefaultMode; roleId: string | null } = { mode: current.mode, roleId: current.roleId };
+  let note: string | null = null;
+  if (id === "settings_mode") {
+    const v = i.data?.values?.[0];
+    if (v !== "channel" && v !== "role" && v !== "manual") return ephemeral("この操作には対応していません。");
+    next = { mode: v, roleId: v === "role" ? current.roleId : null };
+    if (v === "role" && !current.roleId) note = "下の欄でロールを選んでください。ロールを選ぶまでは、チャンネルのメンバーが参加者になります。";
+  } else {
+    const roleId = i.data?.values?.[0] ?? null;
+    if (roleId !== null && !/^\d{17,20}$/.test(roleId)) return ephemeral("この操作には対応していません。");
+    next = roleId ? { mode: "role", roleId } : { mode: current.mode === "role" ? "channel" : current.mode, roleId: null };
+  }
+  await saveGuildSettings(env.DB, guildId, next, userId);
+  const saved = await getGuildSettings(env.DB, guildId);
+  return json({ type: 7, data: buildSettingsMessage(saved, saved.roleId, note ?? "保存しました。") });
 }
 
 async function handlePollButton(
@@ -289,6 +318,7 @@ export function helpText(origin: string): string {
     "・入力リンクは本人専用で、10 分有効・1 回限りです。他の人に渡さないでください。",
     "・回答はその調整の参加者同士で共有され、参加者以外には見えません。",
     "・サーバー管理者は「サーバー設定 → 連携サービス → DIscheduler」で、コマンドを使えるチャンネルを指定できます。",
+    "・サーバー管理者は `/schedule` の［サーバーの既定値］で、参加者の決め方（チャンネル・ロール・手動）の既定値を決められます。",
     "",
     `案内: ${origin}/`,
     `セキュリティ方針: ${origin}/security`,
