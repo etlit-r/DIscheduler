@@ -1,0 +1,255 @@
+// S4: 集計・確定（docs/design.md §6.5）
+import { loadPoll, request, type PollData } from "../api";
+import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, STATUS_LABEL, statusBanner, syncPanel, viewerTimeZone } from "../common";
+import { h, notice, render, setTitle } from "../dom";
+import { bestSlotId, compareSlots, tally } from "../../../src/shared/model";
+
+export async function summaryPage(pollId: string): Promise<void> {
+  let data: PollData;
+  try {
+    data = await loadPoll(pollId);
+  } catch (e) {
+    return showError(e);
+  }
+  rememberDonation(data.donationUrl);
+  let sortByScore = false;
+  let fixTarget: string | null = null;
+  let message: HTMLElement | null = null;
+
+  const reload = async (msg?: HTMLElement) => {
+    try {
+      data = await loadPoll(pollId);
+      message = msg ?? null;
+      draw();
+    } catch (e) {
+      showError(e);
+    }
+  };
+  mountViewerTzSwitch(() => draw());
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void reload(message ?? undefined);
+  });
+
+  function draw(): void {
+    const d = data;
+    const tz = viewerTimeZone();
+    const isOrganizer = d.me.role === "organizer";
+    setTitle(d.poll.title ?? "集計");
+    const slots = d.slots.map((s) => ({ id: s.id, startAt: s.startAt }));
+    const t = tally(slots, d.choices, d.answers);
+    const best = bestSlotId(slots, t);
+    const order = [...d.slots];
+    if (sortByScore) order.sort((a, b) => compareSlots(a, t.get(a.id)!, b, t.get(b.id)!));
+    const answered = new Set(d.answers.map((a) => a.userId));
+    const nameOf = new Map(d.participants.map((p) => [p.userId, p.displayName]));
+    const choiceById = new Map(d.choices.map((c) => [c.id, c]));
+    const canFix = isOrganizer && (d.poll.status === "open" || d.poll.status === "closed" || d.poll.status === "fixed");
+
+    // 候補ごとの集計表
+    const head = h("tr", {}, h("th", { scope: "col" }, "候補"), ...d.choices.map((c) => h("th", { scope: "col" }, choiceMark(c))), h("th", { scope: "col" }, "未回答"), canFix ? h("th", { scope: "col" }, h("span", { class: "visually-hidden" }, "操作")) : null);
+    const body = h("tbody");
+    for (const s of order) {
+      const tt = t.get(s.id)!;
+      const st = slotText(s, d.poll.timezone, tz);
+      const isFixed = s.id === d.poll.fixedSlotId;
+      const changed = isFixed && d.poll.fixedAt
+        ? d.answers.filter((a) => a.slotId === s.id && a.prevChoiceId !== null && a.prevChoiceId !== a.choiceId)
+        : [];
+      body.appendChild(
+        h(
+          "tr",
+          { class: isFixed ? "is-fixed" : s.id === best ? "is-best" : "" },
+          h(
+            "th",
+            { scope: "row" },
+            isFixed ? h("span", { class: "badge badge-fixed" }, "確定") : s.id === best ? h("span", { class: "star", aria: { label: "最有力候補" } }, "★ ") : null,
+            st.main,
+            st.sub ? h("span", { class: "slot-sub" }, st.sub) : null,
+            changed.length
+              ? h(
+                  "span",
+                  { class: "changed-note" },
+                  "確定後に変更: ",
+                  changed
+                    .map((a) => `${nameOf.get(a.userId) ?? "?"}（${choiceById.get(a.prevChoiceId!)?.symbol ?? "?"}→${choiceById.get(a.choiceId)?.symbol ?? "?"}、${dateTimeText(a.updatedAt, tz)}）`)
+                    .join("、"),
+                )
+              : null,
+          ),
+          ...d.choices.map((c) => h("td", { class: "num" }, String(tt.byChoice[c.id] ?? 0))),
+          h("td", { class: "num" }, String(d.participants.length - tt.answered)),
+          canFix
+            ? h(
+                "td",
+                {},
+                h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { fixTarget = s.id; draw(); } }, isFixed ? "確定し直す" : "確定"),
+              )
+            : null,
+        ),
+      );
+    }
+    const table = h("div", { class: "table-wrap" }, h("table", { class: "data tally-table" }, h("thead", {}, head), body));
+
+    // メンバー別の表
+    const matrixHead = h("tr", {}, h("th", { scope: "col" }, "メンバー"), ...d.slots.map((s) => h("th", { scope: "col" }, slotText(s, d.poll.timezone, tz).main)));
+    const matrixBody = h("tbody");
+    for (const p of d.participants) {
+      matrixBody.appendChild(
+        h(
+          "tr",
+          { class: p.userId === d.me.userId ? "is-me" : "" },
+          h("th", { scope: "row" }, p.displayName, p.comment ? h("span", { class: "slot-sub" }, p.comment) : null),
+          ...d.slots.map((s) => {
+            const a = d.answers.find((x) => x.slotId === s.id && x.userId === p.userId);
+            const c = a ? choiceById.get(a.choiceId) : undefined;
+            return h("td", { class: "num" }, c ? choiceMark(c) : h("span", { class: "muted" }, "—"));
+          }),
+        ),
+      );
+    }
+    const matrix = h(
+      "details",
+      { class: "card" },
+      h("summary", {}, "メンバー別に表示"),
+      h("p", { class: "muted small" }, "参加者全員が、全員の回答とひとことを見られます。"),
+      h("div", { class: "table-wrap matrix" }, h("table", { class: "data" }, h("thead", {}, matrixHead), matrixBody)),
+    );
+
+    const unanswered = d.participants.filter((p) => !answered.has(p.userId));
+
+    render(
+      document.getElementById("app")!,
+      h(
+        "section",
+        { class: "page" },
+        h("h1", {}, d.poll.title ?? "日程調整", " ", h("span", { class: "tag tag-optional" }, STATUS_LABEL[d.poll.status] ?? "")),
+        h("p", { class: "meta" }, `回答 ${answered.size}/${d.participants.length} 名`, d.poll.deadlineAt ? h("span", {}, h("span", { class: "sep" }, "／"), `締切 ${dateTimeText(d.poll.deadlineAt, tz)}`) : null),
+        d.poll.description ? h("p", { class: "description" }, d.poll.description) : null,
+        statusBanner(d),
+        message,
+        h(
+          "div",
+          { class: "row" },
+          d.me.isParticipant && d.poll.status !== "draft" ? h("a", { class: "btn btn-primary", href: `/p/${pollId}/answer` }, "回答する・変更する") : null,
+          isOrganizer ? h("a", { class: "btn btn-secondary", href: `/p/${pollId}/edit` }, "調整を編集する") : null,
+          h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => void reload() }, "↻ 更新"),
+        ),
+        fixTarget ? fixPanel(d, fixTarget, () => { fixTarget = null; draw(); }) : null,
+        h(
+          "div",
+          { class: "row" },
+          h("span", { class: "muted small" }, "並び順:"),
+          h("button", { type: "button", class: `btn btn-small ${sortByScore ? "btn-secondary" : "btn-primary"}`, aria: { pressed: String(!sortByScore) }, onClick: () => { sortByScore = false; draw(); } }, "日時順"),
+          h("button", { type: "button", class: `btn btn-small ${sortByScore ? "btn-primary" : "btn-secondary"}`, aria: { pressed: String(sortByScore) }, onClick: () => { sortByScore = true; draw(); } }, "点数の高い順"),
+        ),
+        table,
+        h("p", { class: "muted small" }, "★ は最有力候補です（「参加できない」が最も少なく、点数の合計が最も大きい候補）。"),
+        matrix,
+        h(
+          "section",
+          { class: "card" },
+          h("h2", { class: "card-title" }, `未回答（${unanswered.length} 名）`),
+          h("p", {}, unanswered.length ? unanswered.map((p) => p.displayName).join("、") : "全員が回答しました。"),
+          isOrganizer && unanswered.length && d.poll.status !== "draft" ? remindButton(d, (m) => void reload(m)) : null,
+        ),
+        syncPanel(d, () => void reload(notice("ok", "募集メッセージを更新しました。"))),
+      ),
+    );
+  }
+
+  function remindButton(d: PollData, done: (m: HTMLElement) => void): HTMLElement {
+    const btn = h(
+      "button",
+      {
+        type: "button",
+        class: "btn btn-secondary btn-small",
+        onClick: async () => {
+          if (!confirm("未回答の人にメンション付きでリマインドを投稿します。よろしいですか？（12 時間に 1 回まで）")) return;
+          btn.disabled = true;
+          try {
+            const r = await request<{ count: number }>("POST", `/api/polls/${d.poll.id}/remind`, {});
+            done(notice("ok", `${r.count} 名にリマインドしました。`));
+          } catch (e) {
+            done(notice("error", e instanceof Error ? e.message : "リマインドできませんでした。"));
+          }
+        },
+      },
+      "未回答者にリマインド",
+    );
+    return btn;
+  }
+
+  draw();
+}
+
+function fixPanel(d: PollData, slotId: string, cancel: () => void): HTMLElement {
+  const slot = d.slots.find((s) => s.id === slotId)!;
+  const tz = viewerTimeZone();
+  const mention = h("input", { type: "checkbox", id: "fix-mention", checked: true });
+  const useEvent = h("input", { type: "checkbox", id: "fix-event", checked: d.poll.hasEvent });
+  const typeVoice = h("input", { type: "radio", name: "ev-type", id: "ev-voice", value: "voice" });
+  const typeExternal = h("input", { type: "radio", name: "ev-type", id: "ev-external", value: "external", checked: true });
+  const voiceSel = h("select", { id: "ev-channel" }, h("option", { value: "" }, "読み込み中…"));
+  const location = h("input", { type: "text", id: "ev-location", maxLength: 100, value: "Discord", autocomplete: "off" });
+  const status = h("p", { role: "status", class: "muted" });
+  let voiceLoaded = false;
+  const loadVoice = async () => {
+    if (voiceLoaded) return;
+    voiceLoaded = true;
+    try {
+      const r = await request<{ channels: { id: string; name: string }[] }>("GET", `/api/polls/${d.poll.id}/voice-channels`);
+      render(voiceSel, h("option", { value: "" }, "選んでください"), ...r.channels.map((c) => h("option", { value: c.id }, c.name)));
+    } catch {
+      render(voiceSel, h("option", { value: "" }, "読み込めませんでした"));
+    }
+  };
+  typeVoice.addEventListener("change", () => void loadVoice());
+  const submit = h(
+    "button",
+    {
+      type: "button",
+      class: "btn btn-primary",
+      onClick: async () => {
+        submit.disabled = true;
+        status.textContent = "確定しています…";
+        try {
+          const r = await request<{ redirect: string; warnings: string[] }>("POST", `/api/polls/${d.poll.id}/fix`, {
+            slotId,
+            mention: mention.checked,
+            event: useEvent.checked
+              ? { type: typeVoice.checked ? "voice" : "external", channelId: typeVoice.checked ? voiceSel.value || null : null, location: typeVoice.checked ? null : location.value.trim() || "Discord" }
+              : null,
+          });
+          try {
+            sessionStorage.setItem("dis.warnings", JSON.stringify(r.warnings));
+          } catch {
+            /* 無視 */
+          }
+          window.location.assign(r.redirect);
+        } catch (e) {
+          status.textContent = e instanceof Error ? e.message : "確定できませんでした。";
+          submit.disabled = false;
+        }
+      },
+    },
+    "この日時で確定",
+  );
+  return h(
+    "section",
+    { class: "card fix-panel", aria: { label: "日時の確定" } },
+    h("h2", { class: "card-title" }, "日時を確定する"),
+    h("p", {}, h("strong", {}, slotText(slot, d.poll.timezone, tz).main)),
+    h("div", { class: "field-inline" }, mention, h("label", { for: "fix-mention" }, "参加者にメンション付きでお知らせする")),
+    h("div", { class: "field-inline" }, useEvent, h("label", { for: "fix-event" }, d.poll.hasEvent ? "Discord イベントを更新する" : "Discord イベントとして登録する")),
+    h(
+      "fieldset",
+      { class: "sub-fields" },
+      h("legend", {}, "イベントの場所"),
+      h("div", { class: "field-inline" }, typeExternal, h("label", { for: "ev-external" }, "場所を入力"), location),
+      h("div", { class: "field-inline" }, typeVoice, h("label", { for: "ev-voice" }, "ボイスチャンネル"), voiceSel),
+    ),
+    h("p", { class: "muted small" }, "確定後も、参加者は回答を変更できます。変更があればこの画面に表示されます。"),
+    h("div", { class: "row row-end" }, h("button", { type: "button", class: "btn btn-secondary", onClick: cancel }, "キャンセル"), submit),
+    status,
+  );
+}
