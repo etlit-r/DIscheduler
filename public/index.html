@@ -101,11 +101,11 @@
         <ol class="steps">
           <li>
             <h3>調整を作る<span class="who">主催者</span></h3>
-            <p>チャンネルで <code>/schedule create</code> を実行し、タイトルを入力します。ロールを指定すると、そのロールのメンバーが参加者になります。</p>
+            <p>チャンネルで <code>/schedule</code>（または <code>/poll</code>）と入力して実行します。本人にだけ表示されるリンクから、タイトルや参加者を設定します。</p>
           </li>
           <li>
             <h3>候補日時を入れる<span class="who">主催者</span></h3>
-            <p>本人にだけ表示されるリンクから入力画面を開き、候補日時を選んで公開します。チャンネルに募集メッセージが投稿されます。</p>
+            <p>同じ画面で候補日時を選び、公開します。チャンネルに募集メッセージが投稿されます。</p>
           </li>
           <li>
             <h3>都合を答える<span class="who">参加者</span></h3>
@@ -195,7 +195,11 @@
         <h2 id="faq-title">よくある質問</h2>
         <details>
           <summary>料金はかかりますか？</summary>
-          <p>かかりません。Cloudflare の無料枠だけで動かしています。</p>
+          <p>かかりません。Cloudflare の無料枠だけで動かしています。<!-- donation:start -->運営を支援していただける方は、<a href="#support">運営の支援</a>からお願いします（任意です）。<!-- donation:end --></p>
+        </details>
+        <details>
+          <summary>使えなくなることはありますか？</summary>
+          <p>あります。利用が多く、Cloudflare の無料枠（1 日あたりのリクエスト数やデータベースの読み書きの上限）を超えた日は、その日の残りの時間は使えなくなります。無料枠は毎日 日本時間の午前 9 時（UTC 0 時）にリセットされ、そこから使えるようになります。無料枠を超えても料金はかからず、入力済みの回答も消えません。<!-- donation:start -->使えなくなる日が続くようなら、有料プランへの切り替えを考えています。<a href="#support">運営の支援</a>もご検討ください。<!-- donation:end --></p>
         </details>
         <details>
           <summary>参加者はログインやアカウント登録が必要ですか？</summary>
@@ -219,6 +223,17 @@
         </details>
       </div>
     </section>
+
+    <!-- donation:start -->
+    <section class="section donation" id="support" aria-labelledby="support-title">
+      <div class="container">
+        <h2 id="support-title">運営の支援</h2>
+        <p class="section-lead">DIscheduler は無料で使えます。運営費は Cloudflare の無料枠に収めていますが、利用が増えて無料枠を超えるようになったときは、有料プラン（月 5 ドル程度）に切り替えて使える状態を保ちたいと考えています。役に立ったと思っていただけたら、支援していただけるとうれしいです。</p>
+        <p><a class="btn btn-secondary" href="__DONATION_URL__" rel="noopener noreferrer">運営を支援する</a></p>
+        <p class="term">支援は任意です。支援の有無で使える機能は変わりません。リンク先は外部の支援サービスで、このサイトから支援サービスへ情報は送りません。</p>
+      </div>
+    </section>
+    <!-- donation:end -->
   </main>
 
   <footer class="site-footer">
@@ -227,6 +242,7 @@
       <ul>
         <li><a href="/security">セキュリティ方針</a></li>
         <li><a href="/security#report">脆弱性の報告</a></li>
+        <!-- donation:start --><li><a href="#support">運営の支援</a></li><!-- donation:end -->
         <li><a href="https://github.com/yuka-okaniwa/DIscheduler" rel="noopener noreferrer">GitHub</a></li>
       </ul>
     </div>
