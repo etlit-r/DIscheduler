@@ -320,3 +320,7 @@ ol.howto li { margin: 6px 0; }
   .site-nav a { padding: 8px 6px; font-size: 0.9rem; }
   .brand { font-size: 1rem; }
 }
+
+/* 運営の支援 */
+.donation .section-lead { margin-bottom: 20px; }
+.donation p:last-child { margin-top: 12px; }
