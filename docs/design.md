@@ -576,8 +576,12 @@ S2 の [変更] を押すと、ひな形から選ぶか、自分で編集でき�
 - 寄付は任意で、寄付の有無で機能は変えないことを、リンクの近くに書く。
 - 外部の支援サービスのボタンやウィジェット（スクリプト・iframe・画像）は埋め込まず、自前のボタンからの **ただのリンク** にする。CSP を緩めず、`Referrer-Policy: no-referrer` により、どの画面から来たかも支援サービスに送らない。
 - リンク先の URL は GitHub の Environment variable `DONATION_URL` で設定する。
-  - 静的ページ（S0）: デプロイ時に `__DONATION_URL__` を置き換える。未設定なら `<!-- donation:start -->` ～ `<!-- donation:end -->` の範囲を削除し、寄付の欄を出さない。
-  - アプリ画面（S5・S7）: Worker の環境変数として渡し、未設定なら表示しない。
+  - 静的ページ（S0・S6）: デプロイ時に `scripts/prepare-public.sh` が切り替える。
+    - `<!-- donation:start -->` ～ `<!-- donation:end -->`: 寄付リンクがあるときだけ残す（LP の「運営の支援」欄、フッターのリンク、FAQ の支援の一文、セキュリティ方針の寄付リンクの説明）
+    - `<!-- no-donation:start -->` ～ `<!-- no-donation:end -->`: 寄付リンクがないときだけ残す（必要になったときに使う）
+    - 目印のコメントは公開するページから取り除く。置き換え漏れがあればデプロイを止める。
+  - アプリ画面（S5・S7）: Worker の環境変数として渡し、未設定なら寄付の行を表示しない。
+  - 後から `DONATION_URL` を設定・変更・削除したときは、GitHub の Actions →「Deploy」→「Run workflow」で `main` を再デプロイすると反映される。
   - `https://` で始まり、決まった文字だけでできた URL かを確かめてから使う（置換や HTML の書き換えを防ぐ）。
 - 支援サービス（GitHub Sponsors、Ko-fi など）は運営者が選ぶ。
 
@@ -945,6 +949,7 @@ flowchart LR
 | Environment variable | `DONATION_URL` | 寄付リンクの URL（任意。未設定なら寄付の欄を出さない） |
 
 ### 14.2 ワークフローの安全策
+- 静的ページへの設定値（招待リンクの Application ID、寄付リンク）の埋め込みは `scripts/prepare-public.sh` で行う。値の形式を検証し、不正なら止める。
 - `permissions: contents: read` のみ。`actions/checkout` は `persist-credentials: false` で GitHub トークンを残さない。
 - サードパーティの Action はコミット SHA で固定し、Dependabot（`.github/dependabot.yml`）で週次に更新 PR を作る。
 - wrangler のバージョンを固定する（`wranglerVersion`）。
