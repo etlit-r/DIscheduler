@@ -1,9 +1,9 @@
 // 募集メッセージの更新（docs/design.md §5.5）
-import type { Env } from "./env";
-import { getAnswers, getChoices, getParticipants, getPoll, getSlots } from "./db";
-import { buildPollMessage } from "./discord/messages";
-import { discord, DiscordError } from "./discord/rest";
-import { nowSec, sleep } from "./lib";
+import type { Env } from "../core/env";
+import { getAnswers, getChoices, getParticipants, getPoll, getSlots } from "../db";
+import { buildPollMessage } from "../discord/messages";
+import { discord, DiscordError } from "../discord/rest";
+import { nowSec, sleep } from "../core/lib";
 
 export const SYNC_INTERVAL = 30;
 

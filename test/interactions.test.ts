@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { Env } from "../src/env";
+import type { Env } from "../src/core/env";
 import { ALICE, call, CHANNEL, GUILD, mockDiscord, ORGANIZER, ORIGIN, OUTSIDER, seedPoll, testEnv } from "./helpers";
 
 let keys: CryptoKeyPair;

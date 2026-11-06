@@ -1,10 +1,10 @@
 // Discord Interaction の処理（docs/design.md §4, §8.3）
 // ユーザー ID は必ず署名済みの Interaction 本体の値を使い、custom_id の値は信用しない。
-import type { Env } from "../env";
+import type { Env } from "../core/env";
 import { issueLink } from "../auth";
 import { getParticipant, getPoll, hitRateLimit } from "../db";
-import { AppError, isQuotaError, nowSec, QUOTA_MESSAGE } from "../lib";
-import { createOrReuseDraft } from "../polls";
+import { AppError, isQuotaError, nowSec, QUOTA_MESSAGE } from "../core/lib";
+import { createOrReuseDraft } from "../polls/create";
 import { canAnswer, effectiveStatus } from "../shared/model";
 import { sanitizeDisplayName } from "../shared/text";
 import { syncCommands } from "./commands";

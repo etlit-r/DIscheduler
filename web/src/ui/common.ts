@@ -1,7 +1,7 @@
 // 画面共通の部品
-import { ApiError, request, type PollData } from "./api";
-import { h, notice, render } from "./dom";
-import { DEFAULT_TIMEZONE, formatDateTime, formatSlot, isValidTimeZone, zoneAbbr, type SlotTime } from "../../src/shared/time";
+import { ApiError, request, type PollData } from "../lib/api";
+import { h, notice, render } from "../lib/dom";
+import { DEFAULT_TIMEZONE, formatDateTime, formatSlot, isValidTimeZone, zoneAbbr, type SlotTime } from "../../../src/shared/time";
 
 const TZ_KEY = "dis.viewerTz";
 

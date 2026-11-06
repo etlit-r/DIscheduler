@@ -1,6 +1,6 @@
 import "./app.css";
-import { ApiError } from "./api";
-import { showError } from "./common";
+import { ApiError } from "./lib/api";
+import { showError } from "./ui/common";
 import { answerPage } from "./pages/answer";
 import { donePage } from "./pages/done";
 import { editPage } from "./pages/edit";

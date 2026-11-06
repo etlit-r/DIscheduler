@@ -1,8 +1,8 @@
 // S1: リンク中継（docs/design.md §6.8）
 // トークンは URL フラグメントにあるので、サーバーのログや Referer には残らない。
 // 読み取ったらすぐに URL から消し、POST でセッションに交換する。
-import { request } from "../api";
-import { showError } from "../common";
+import { request } from "../lib/api";
+import { showError } from "../ui/common";
 
 export async function linkPage(): Promise<void> {
   const m = /(?:^#|&)t=([A-Za-z0-9_-]{43})(?:&|$)/.exec(location.hash);

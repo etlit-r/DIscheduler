@@ -1,7 +1,7 @@
 // Web API（docs/design.md §8）
 import { Hono, type Context } from "hono";
 import * as v from "valibot";
-import type { Env } from "../env";
+import type { Env } from "../core/env";
 import {
   clearSessionCookie,
   consumeLink,
@@ -28,11 +28,11 @@ import {
 import { fetchMember, searchMembers } from "../discord/members";
 import { buildDeletedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink } from "../discord/messages";
 import { discord, DiscordError, type DiscordChannel, type DiscordRole } from "../discord/rest";
-import { AppError, DAY, nowSec, randomId, timingSafeEqual } from "../lib";
-import { DEFAULT_DEADLINE_DAYS, resetParticipants, RETENTION } from "../polls";
+import { AppError, DAY, nowSec, randomId, timingSafeEqual } from "../core/lib";
+import { DEFAULT_DEADLINE_DAYS, resetParticipants, RETENTION } from "../polls/create";
 import { canAnswer, effectiveStatus, LIMITS } from "../shared/model";
 import { isValidTimeZone, nextCronAt } from "../shared/time";
-import { syncAfterAnswer, syncNow } from "../sync";
+import { syncAfterAnswer, syncNow } from "../polls/sync";
 import { AnswersBody, ChoicesBody, FixBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
 
 type Vars = { session: SessionRow; poll: PollRow };
