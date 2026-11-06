@@ -26,40 +26,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: 招待リンクに Application ID を埋め込む
+      - name: 静的ページに設定値を埋め込む（招待リンク・寄付リンク）
         env:
-          APP_ID: ${{ vars.DISCORD_APPLICATION_ID }}
-        run: |
-          # 数字以外の値が入っていたら止める（置換による書き換えを防ぐ）
-          if [[ ! "$APP_ID" =~ ^[0-9]{17,20}$ ]]; then
-            echo "::error::Environment variable DISCORD_APPLICATION_ID が未設定か、形式が正しくありません"
-            exit 1
-          fi
-          sed -i "s/__DISCORD_APPLICATION_ID__/${APP_ID}/g" public/index.html
-          if grep -q "__DISCORD_APPLICATION_ID__" public/index.html; then
-            echo "::error::招待リンクの置き換えに失敗しました"
-            exit 1
-          fi
-
-      - name: 寄付リンクを埋め込む（未設定なら寄付の欄を消す）
-        env:
+          DISCORD_APPLICATION_ID: ${{ vars.DISCORD_APPLICATION_ID }}
           DONATION_URL: ${{ vars.DONATION_URL }}
-        run: |
-          if [[ -z "$DONATION_URL" ]]; then
-            # <!-- donation:start --> ～ <!-- donation:end --> を削除
-            perl -0pi -e 's/<!-- donation:start -->.*?<!-- donation:end -->//gs' public/index.html
-          else
-            # https の URL で、使える文字だけで構成されているかを確かめる（HTML と置換の書き換えを防ぐ）
-            if [[ ! "$DONATION_URL" =~ ^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/-]*)?$ ]]; then
-              echo "::error::Environment variable DONATION_URL の形式が正しくありません"
-              exit 1
-            fi
-            sed -i "s#__DONATION_URL__#${DONATION_URL}#g" public/index.html
-          fi
-          if grep -q "__DONATION_URL__" public/index.html; then
-            echo "::error::寄付リンクの置き換えに失敗しました"
-            exit 1
-          fi
+        run: bash scripts/prepare-public.sh public
 
       - name: Cloudflare Workers へデプロイ
         id: deploy
