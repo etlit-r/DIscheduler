@@ -61,7 +61,7 @@ flowchart LR
 |----|------|------|
 | S-1 | 第三者が `/discord/interactions` に偽の Interaction を送り、他人として操作 | **Ed25519 署名検証**（`X-Signature-Ed25519` / `X-Signature-Timestamp`）を Web Crypto で実施。検証前に本文をパースしない。失敗時は 401。タイムスタンプが ±5 分を超えたら拒否（リプレイ対策） |
 | S-2 | 入力リンクの横取り・推測による他人の回答改ざん | トークンは CSPRNG（`crypto.getRandomValues`）で 256bit 生成。**ephemeral メッセージ**で本人にのみ表示。**10 分で失効・1 回限り**。DB には SHA-256 ハッシュのみ保存。URL フラグメントに置きサーバーログ・Referer に残さない |
-| S-3 | セッション Cookie の窃取 | `__Host-sid; Secure; HttpOnly; SameSite=Strict; Path=/`。有効期限 12 時間・延長なし。**1 調整にスコープ**し、窃取時の影響を当該調整に限定。DB にはハッシュのみ保存 |
+| S-3 | セッション Cookie の窃取 | `__Host-s_{pollId}; Secure; HttpOnly; SameSite=Strict; Path=/`。有効期限 12 時間・延長なし。**1 調整にスコープ**し、窃取時の影響を当該調整に限定。DB にはハッシュのみ保存 |
 | S-4 | 主催者になりすまして確定・削除 | 主催者権限はセッション発行時に `polls.organizer_id` と Interaction の `user.id` の一致で付与。API ごとに `role = organizer` を再確認 |
 | S-5 | 偽の DIscheduler サイトへの誘導（フィッシング） | 公式ドメインを README・［使い方］ボタン・`/security` に明記。本アプリは **Discord のパスワードや OAuth 同意を一切求めない** ことを周知 |
 
@@ -89,7 +89,7 @@ flowchart LR
 | I-2 | 調整 ID の推測による列挙 | ID は 128bit ランダム。ただし **ID を知っていてもセッションがなければ何も見えない**（ID を秘密情報として扱わない設計） |
 | I-3 | XSS による情報窃取 | 後述 §4.2 の CSP、DOM への挿入は `textContent` のみ（`innerHTML` 禁止を ESLint で強制）、Trusted Types を有効化 |
 | I-4 | ログ・エラーからの漏えい | ログに個人情報・トークン・Cookie を出力しない（ロガーで既知キーをマスク）。エラー応答は汎用メッセージと相関 ID のみ。スタックトレースを返さない |
-| I-5 | Bot トークン等の漏えい | Cloudflare の **Secrets**（`wrangler secret put`）で管理し、リポジトリ・`wrangler.toml`・CI ログに含めない。GitHub の Secret scanning / Push protection を有効化。漏えい時の手順は §7 |
+| I-5 | Bot トークン等の漏えい | Cloudflare の **Secrets**（ダッシュボードで登録）で管理し、リポジトリ・`wrangler.jsonc`・GitHub・CI ログに含めない。コマンドの登録も Worker 自身が行うため、Bot トークンを Cloudflare の外に出さない。GitHub の Secret scanning / Push protection を有効化。漏えい時の手順は §7 |
 | I-6 | 過剰なデータ収集 | Message Content Intent・OAuth・メール・IP・アバターを扱わない（設計書 §7.3）。保持期間後は物理削除（設計書 §7.4） |
 | I-7 | Referer による URL 漏えい | `Referrer-Policy: no-referrer`。トークンは URL フラグメントに置き、読み取り後 `history.replaceState` で消去 |
 | I-8 | 検索エンジンへの掲載 | `X-Robots-Tag: noindex, nofollow` と `robots.txt` で `/`（LP）と `/security` 以外をクロール拒否 |
@@ -210,7 +210,7 @@ stateDiagram-v2
 |------|------|
 | 依存最小化 | ランタイム依存は Hono・Valibot のみ。追加は PR でレビュー必須（理由・メンテ状況・権限を記載） |
 | ロックファイル | `package-lock.json` をコミットし、CI は `npm ci` のみ使用。`--ignore-scripts` でインストールスクリプトを無効化 |
-| 脆弱性監視 | Dependabot（セキュリティアップデート＋週次バージョン更新）、CI で `npm audit --audit-level=high` |
+| 脆弱性監視 | Dependabot（セキュリティアップデート＋週次バージョン更新）、CI で `npm audit --omit=dev --audit-level=high`（本番で動く依存。開発用ツールの脆弱性は Dependabot の更新で追う） |
 | 静的解析 | GitHub CodeQL、ESLint（セキュリティルール）、TypeScript `strict` |
 | GitHub Actions | サードパーティ Action は **コミット SHA で固定**。`permissions:` を最小化（既定 `contents: read`） |
 | ブランチ保護 | `main` への直接 push 禁止、PR レビュー必須、CI 成功必須 |
@@ -253,7 +253,7 @@ stateDiagram-v2
 - [ ] `allowed_mentions` が全投稿で明示されている
 - [ ] ログに個人情報・トークンが出ていない
 - [ ] シークレットがリポジトリに含まれていない（Secret scanning 通過）
-- [ ] `npm audit` に High 以上がない
+- [ ] `npm audit --omit=dev` に High 以上がない
 - [ ] Bot 招待 URL の権限が設計書 §5.2 と一致
 - [ ] データ自動削除 Cron が動作する
 

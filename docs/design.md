@@ -153,7 +153,7 @@ sequenceDiagram
   W-->>D: ephemeral 応答「あなた専用の入力リンク（10分有効・1回限り）」
   P->>W: リンクを開く（トークンは URL フラグメント #）
   W->>DB: トークン検証・失効 → セッション発行
-  W-->>P: Cookie(__Host-sid) 設定、入力画面
+  W-->>P: Cookie(__Host-s_{pollId}) 設定、入力画面
   P->>W: 候補ごとに選択肢を選んで保存
   W->>DB: 回答を保存
   W->>D: 募集メッセージの集計を更新（デバウンス）
@@ -225,7 +225,7 @@ sequenceDiagram
 ### 5.1 Bot の登録
 - インストールスコープ: `bot`, `applications.commands`（ギルドインストールのみ。ユーザーインストールは無効）
 - Interactions Endpoint URL: `https://<worker-domain>/discord/interactions`
-- コマンドはデプロイスクリプトから REST API（`PUT /applications/{id}/commands`）で登録
+- コマンドは Worker 自身が REST API（`PUT /applications/{id}/commands`）で登録する。Bot トークンを Cloudflare の外（GitHub など）に置かないため。定義の版（ハッシュ）を D1 の `meta` テーブルに記録し、Interactions Endpoint URL の登録時の PING、各 Interaction、Cron のときに、版が変わっていれば登録し直す
 
 ### 5.2 必要な Bot 権限（最小権限）
 
@@ -521,7 +521,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 1. ephemeral メッセージのリンク: `https://<domain>/l#t=<token>`
    - トークンを**フラグメント**に置くことで、サーバーログ・Referer・プロキシに残らない。
 2. S1 の JS がフラグメントを読み取り、`history.replaceState` で URL から即座に消去した上で `POST /api/session` に送信。
-3. サーバーはトークンを検証・失効し、`__Host-sid` Cookie を発行して、トークンの用途（`link_tokens.purpose`）に応じた画面へリダイレクトする。
+3. サーバーはトークンを検証・失効し、`__Host-s_{pollId}` Cookie を発行して、トークンの用途（`link_tokens.purpose`）に応じた画面へリダイレクトする。
 
 | 用途 | 発行するきっかけ | 移る画面 |
 |------|------------------|----------|
@@ -529,7 +529,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 | `answer` | 募集メッセージの [回答する] | S3 |
 | `view` | 募集メッセージの [集計を見る] | S4 |
 
-- 1 つのセッションは 1 つの調整だけに有効（§8.1）。S2・S3・S4・S7 の間は、同じ調整であればセッションのまま行き来できる（参加者のセッションで S2 は開けない）。
+- 1 つのセッションは 1 つの調整だけに有効（§8.1）。Cookie の名前に調整 ID を含め、複数の調整を同じブラウザで同時に開けるようにする（同じブラウザで別の Discord アカウントとして同じ調整を開くと、後から開いた側に置き換わる）。S2・S3・S4・S7 の間は、同じ調整であればセッションのまま行き来できる（参加者のセッションで S2 は開けない）。
 
 ### 6.9 回答の選択肢のカスタマイズ
 
@@ -667,6 +667,7 @@ CREATE TABLE polls (
   discord_event_id TEXT,
   choices_version INTEGER NOT NULL DEFAULT 1, -- 選択肢を変更するたびに +1（§6.9.4）
   last_synced_at  INTEGER,                   -- 募集メッセージ最終更新（主催者の画面に表示。§6.5）
+  last_reminded_at INTEGER,                  -- リマインドの最終実行（12 時間に 1 回まで）
   created_at      INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL,
   purge_after     INTEGER NOT NULL           -- この時刻以降に物理削除
@@ -745,6 +746,12 @@ CREATE TABLE sessions (
 );
 CREATE INDEX idx_sessions_exp ON sessions(expires_at);
 
+-- アプリの内部状態（登録済みコマンドの版など。§5.1）
+CREATE TABLE meta (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
+);
+
 -- レート制限カウンタ（固定ウィンドウ）
 CREATE TABLE rate_limits (
   key         TEXT PRIMARY KEY,              -- 例: "answer:<user_id>:<window>"
@@ -781,12 +788,14 @@ CREATE TABLE rate_limits (
 |----------|------|------|------|
 | POST | `/discord/interactions` | Ed25519 署名 | Discord からの Interaction 受信 |
 | POST | `/api/session` | ワンタイムトークン | トークンをセッションへ交換 |
-| DELETE | `/api/session` | セッション + CSRF | ログアウト |
+| DELETE | `/api/polls/{id}/session` | セッション + CSRF | ログアウト（その調整のセッションを消す） |
 | GET | `/api/polls/{id}` | セッション | 調整情報・候補・集計・（参加者のみ）回答一覧 |
 | PATCH | `/api/polls/{id}` | セッション(主催者) + CSRF | タイトル・説明・締切・参加者の決め方・タイムゾーンの更新 |
 | PUT | `/api/polls/{id}/slots` | セッション(主催者) + CSRF | 候補日時の一括更新 |
 | PUT | `/api/polls/{id}/choices` | セッション(主催者) + CSRF | 回答の選択肢の一括更新（削除時は移し先を指定。§6.9.4） |
 | GET | `/api/polls/{id}/member-search?q=` | セッション(主催者) | 手動選択のためのサーバーメンバー検索（最大 25 件。§5.3） |
+| GET | `/api/polls/{id}/roles` | セッション(主催者) | ロールの一覧（参加者をロールで決めるとき） |
+| GET | `/api/polls/{id}/voice-channels` | セッション(主催者) | ボイスチャンネルの一覧（Discord イベントの場所） |
 | PUT | `/api/polls/{id}/participants` | セッション(主催者) + CSRF | 参加者の追加・削除 |
 | POST | `/api/polls/{id}/publish` | セッション(主催者) + CSRF | 公開し募集メッセージ投稿 |
 | PUT | `/api/polls/{id}/answers/me` | セッション(参加者) + CSRF | 自分の回答を保存（状態が `open`・`closed`・`fixed` のとき。§4.2） |
@@ -903,7 +912,7 @@ D1 の上限を超えたときの文面（Discord・Web 共通）:
 
 ---
 
-## 11. リポジトリ構成（予定）
+## 11. リポジトリ構成
 
 ```
 DIscheduler/
@@ -913,17 +922,22 @@ DIscheduler/
 │   ├── design.md             # 本書
 │   └── security-design.md    # セキュリティ設計詳細・脅威モデル
 ├── src/
-│   ├── index.ts              # Worker エントリ (fetch / scheduled)
+│   ├── index.ts              # Worker エントリ（fetch / scheduled）・セキュリティヘッダー
+│   ├── env.ts / lib.ts       # 環境変数の型・共通の道具（乱数・ハッシュ・エラー）
+│   ├── api/                  # Web API（index.ts）と入力スキーマ（schemas.ts、Valibot）
+│   ├── auth/                 # 入力リンク（ワンタイムトークン）・セッション
+│   ├── db/                   # D1 クエリ（プリペアドステートメントのみ）・レート制限
 │   ├── discord/
 │   │   ├── verify.ts         # Ed25519 署名検証
-│   │   ├── interactions.ts   # コマンド・ボタン処理
-│   │   ├── rest.ts           # REST クライアント（レート制限対応）
-│   │   └── permissions.ts    # チャンネル閲覧権限計算
-│   ├── api/                  # Web API ハンドラ
-│   ├── auth/                 # トークン・セッション・CSRF
-│   ├── db/                   # D1 クエリ（プリペアドステートメントのみ）
-│   ├── security/             # ヘッダー・レート制限
-│   └── schemas/              # Valibot スキーマ
+│   │   ├── interactions.ts   # コマンド・ボタンの処理
+│   │   ├── commands.ts       # コマンドの定義と自動登録
+│   │   ├── members.ts        # 参加者の自動抽出（チャンネル閲覧権限の計算）
+│   │   ├── messages.ts       # 募集・お知らせメッセージの組み立て
+│   │   └── rest.ts           # REST クライアント（レート制限対応）
+│   ├── polls.ts              # 下書きの作成・参加者の設定
+│   ├── sync.ts               # 募集メッセージの更新（後追いの更新を含む）
+│   ├── cron.ts               # 1 日 2 回の定期処理
+│   └── shared/               # Worker と Web 画面で共有（集計・タイムゾーン・文字列の検証）
 ├── public/                   # Workers Static Assets の配信元
 │   ├── index.html            # S0: Bot の案内（LP）
 │   ├── security.html         # S6: セキュリティ方針（公開の正本）
@@ -934,14 +948,13 @@ DIscheduler/
 ├── web/                      # アプリ画面（S1〜S5・S7）のソース（Vite で public/app/ にビルド）
 ├── migrations/               # D1 マイグレーション
 ├── scripts/
-│   ├── prepare-public.sh     # 静的ページへの設定値の埋め込み（§14.2）
-│   └── register-commands.ts  # /schedule・/poll の登録
-├── test/                     # Vitest + @cloudflare/vitest-pool-workers
+│   └── prepare-public.sh     # 静的ページへの設定値の埋め込み（§14.2）
+├── test/                     # Vitest + @cloudflare/vitest-plugin（Workers ランタイム上で実行）
 ├── wrangler.jsonc            # Cloudflare Workers の設定
+├── vite.config.ts / vitest.config.ts
 └── .github/
-    ├── workflows/deploy.yml  # main マージ時のデプロイ（承認制）
-    ├── workflows/            # CI（test, typecheck, audit, CodeQL）※実装時に追加
-    └── dependabot.yml        # Action の更新
+    ├── workflows/deploy.yml  # テスト（PR・main）と main マージ時のデプロイ（承認制）
+    └── dependabot.yml        # Action と npm の更新
 ```
 
 ---
@@ -988,8 +1001,11 @@ flowchart LR
   PR[PR を作成] --> M[main にマージ]
   M --> W[Deploy ワークフロー起動]
   W --> A{production 環境の<br/>承認}
+  M --> T[test: 監査・型検査・テスト・ビルド]
+  T --> A
   A -- 承認 --> R[静的ページに設定値を埋め込む<br/>招待リンク・寄付リンク]
-  R --> D[wrangler deploy]
+  R --> MG[D1 マイグレーション]
+  MG --> D[wrangler deploy]
   D --> CF[(Cloudflare Workers<br/>*.workers.dev)]
 ```
 
@@ -998,7 +1014,13 @@ flowchart LR
 **Cloudflare**
 1. 無料アカウントを作り、「Workers & Pages」で `workers.dev` のサブドメインを決める（公開 URL は `https://discheduler.<サブドメイン>.workers.dev`）。
 2. Account ID を控える。
-3. 「My Profile → API Tokens → Create Token」でテンプレート「Edit Cloudflare Workers」を選び、Account Resources を自分のアカウントだけに限り、有効期限（最長 1 年）を付けてトークンを作る。
+3. 「My Profile → API Tokens → Create Token」でテンプレート「Edit Cloudflare Workers」を選び、Account Resources を自分のアカウントだけに限り、有効期限（最長 1 年）を付けてトークンを作る。権限は「Workers Scripts: Edit」「Account Settings: Read」「User Details: Read」「Memberships: Read」に加えて **「D1: Edit」** を付ける。
+4. 「Storage & Databases → D1」で `discheduler` という名前のデータベースを作り、Database ID を控える。
+5. 初回のデプロイのあと、「Workers & Pages → discheduler → Settings → Variables and Secrets」で、**Secret** として `DISCORD_BOT_TOKEN`（Bot トークン）を登録する。Bot トークンは GitHub には置かない。
+
+**Discord**（初回のデプロイと Bot トークンの登録のあと）
+1. Developer Portal の「General Information」で、Interactions Endpoint URL に `https://discheduler.<サブドメイン>.workers.dev/discord/interactions` を入れて保存する。保存時の PING を受けた Worker が `/schedule`・`/poll` を自動で登録する。
+2. 「Bot」で Server Members Intent をオンにする（参加者の自動設定に必要）。
 
 **GitHub**（リポジトリの Settings → Environments → `production`）
 
@@ -1009,6 +1031,8 @@ flowchart LR
 | Environment secret | `CLOUDFLARE_API_TOKEN` | 上で作った API トークン |
 | Environment secret | `CLOUDFLARE_ACCOUNT_ID` | Account ID |
 | Environment variable | `DISCORD_APPLICATION_ID` | Discord Developer Portal の Application ID（公開値） |
+| Environment variable | `DISCORD_PUBLIC_KEY` | Discord Developer Portal の Public Key（公開値。署名検証に使う） |
+| Environment variable | `D1_DATABASE_ID` | D1 の Database ID（公開しても問題ない値） |
 | Environment variable | `DONATION_URL` | 寄付リンクの URL（任意。未設定なら寄付の欄を出さない） |
 
 ### 14.2 ワークフローの安全策
@@ -1019,11 +1043,8 @@ flowchart LR
 - `DISCORD_APPLICATION_ID` は数字 17〜20 桁、`DONATION_URL` は `https://` で始まる URL であることを確かめてから置き換える。置き換え漏れがあればデプロイを止める。
 - 同時に 2 つのデプロイが走らないよう `concurrency` で直列化する。
 - プレビュー URL は無効（`preview_urls: false`）にし、公開されるのは `workers.dev` の本番 URL だけにする。
-- Bot トークンなどの秘密の値は GitHub に置かず、Worker 実装後に `wrangler secret put` で Cloudflare に直接登録する。
-
-### 14.3 実装開始後に追加するもの
-- デプロイ前に `npm ci --ignore-scripts`、型検査、テスト、`npm audit` を実行するジョブ（失敗したらデプロイしない）
-- D1 のマイグレーション（`wrangler d1 migrations apply --remote`）
-- スラッシュコマンドの登録（`scripts/register-commands.ts`）
-- Cron Triggers の設定（`wrangler.jsonc` の `triggers.crons`: `0 4,16 * * *` の 1 本だけ（UTC 4 時・16 時 = 日本時間 13 時・1 時）。削除は UTC 16 時（日本時間 1 時）の回だけ行う）
-- Worker の環境変数 `DONATION_URL`（S5・S7 の寄付リンク用。`vars` で渡す）
+- Bot トークンは GitHub に置かず、Cloudflare のダッシュボードで Worker の Secret として登録する。コマンドの登録も Worker 自身が行う（§5.1）。
+- デプロイの前に test ジョブ（`npm ci --ignore-scripts`、本番の依存の `npm audit`、型検査、テスト、ビルド）が成功している必要がある。プルリクエストでは test だけを実行する。
+- デプロイの前に D1 のマイグレーション（`wrangler d1 migrations apply DB --remote`）を適用する。
+- Worker の環境変数 `DISCORD_APPLICATION_ID`・`DISCORD_PUBLIC_KEY`・`DONATION_URL` は、デプロイ時に GitHub の Environment variable から渡す。
+- Cron Triggers は `wrangler.jsonc` の `triggers.crons`（`0 4,16 * * *`。UTC 4 時・16 時 = 日本時間 13 時・1 時）で設定する。
