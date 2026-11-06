@@ -251,4 +251,66 @@ describe("主催者だけの操作", () => {
     const n = await db().prepare("SELECT COUNT(*) AS n FROM answers WHERE poll_id = ?").bind(s.pollId).first<{ n: number }>();
     expect(n!.n).toBe(0);
   });
+
+  it("同時に公開しても、募集メッセージは 1 件だけ投稿する", async () => {
+    const calls = mockDiscord((c) => (c.method === "POST" ? { id: "600000000000000002" } : {}));
+    const s = await seedPoll({ status: "draft", messageId: null, deadlineAt: null });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const [a, b] = await Promise.all([
+      call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, {}, org)),
+      call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, {}, org)),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+    expect(calls.filter((c) => c.method === "POST" && c.path.endsWith("/messages")).length).toBe(1);
+  });
+
+  it("投稿に失敗したら、もう一度公開できる", async () => {
+    mockDiscord((c) => (c.method === "POST" ? new Response("{}", { status: 403 }) : {}));
+    const s = await seedPoll({ status: "draft", messageId: null, deadlineAt: null });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, {}, org))).status).toBe(502);
+    vi.restoreAllMocks();
+    mockDiscord((c) => (c.method === "POST" ? { id: "600000000000000003" } : {}));
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, {}, org))).status).toBe(200);
+  });
+
+  it("イベントを外して確定し直すと、登録済みの Discord イベントを削除する", async () => {
+    const calls = mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: "700000000000000009" } : {}));
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: false, event: { type: "external", channelId: null, location: "Discord" } }, org));
+    const res = await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1], mention: false, event: null }, org));
+    expect(res.status).toBe(200);
+    expect(calls.some((c) => c.method === "DELETE" && c.path.endsWith("/scheduled-events/700000000000000009"))).toBe(true);
+    const row = await db().prepare("SELECT discord_event_id FROM polls WHERE id = ?").bind(s.pollId).first<{ discord_event_id: string | null }>();
+    expect(row!.discord_event_id).toBeNull();
+  });
 });
+
+describe("確定後の回答の記録", () => {
+  it("確定時点で未回答だった候補に答えると「未回答から変更」として記録し、送らなかった候補の回答は消さない", async () => {
+    const s = await seedPoll();
+    const alice = await login(s.pollId, ALICE, "participant");
+    await call(jsonReq("PUT", `/api/polls/${s.pollId}/answers/me`, { choicesVersion: 1, answers: [{ slotId: s.slotIds[0], choiceId: s.choiceIds[0] }], comment: null }, alice));
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1], mention: false, event: null }, org));
+    const res = await call(jsonReq("PUT", `/api/polls/${s.pollId}/answers/me`, { choicesVersion: 1, answers: [{ slotId: s.slotIds[1], choiceId: s.choiceIds[0] }], comment: null }, alice));
+    expect(res.status).toBe(200);
+    const rows = await db().prepare("SELECT slot_id, prev_choice_id FROM answers WHERE poll_id = ? AND user_id = ? ORDER BY slot_id").bind(s.pollId, ALICE).all<{ slot_id: string; prev_choice_id: string | null }>();
+    const bySlot = new Map(rows.results.map((r) => [r.slot_id, r.prev_choice_id]));
+    expect(bySlot.get(s.slotIds[1]!)).toBe("");
+    expect(bySlot.has(s.slotIds[0]!)).toBe(true);
+  });
+});
+
+describe("募集メッセージの更新", () => {
+  it("募集メッセージがないときは、最終更新時刻を書き換えない", async () => {
+    const { syncNow } = await import("../src/polls/sync");
+    const s = await seedPoll({ messageId: null });
+    await db().prepare("UPDATE polls SET last_synced_at = 123 WHERE id = ?").bind(s.pollId).run();
+    expect(await syncNow(env as unknown as Env, s.pollId)).toBe(false);
+    const row = await db().prepare("SELECT last_synced_at FROM polls WHERE id = ?").bind(s.pollId).first<{ last_synced_at: number }>();
+    expect(row!.last_synced_at).toBe(123);
+  });
+});
+

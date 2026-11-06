@@ -14,15 +14,20 @@ export function hasControlCharsExceptNewline(s: string): boolean {
   return CONTROL.test(s.replace(/\r?\n/g, "")) || INVISIBLE_FORMAT.test(s);
 }
 
-/** Discord から取得した表示名などを、表示用に安全な形にする */
-export function sanitizeDisplayName(name: string, max = 64): string {
-  const cleaned = Array.from(name.normalize("NFC"))
+/** 制御文字・見えない書式文字を取り除き、前後の空白を落として長さを切り詰める（空になることがある） */
+export function sanitizeLine(s: string, max: number): string {
+  const cleaned = Array.from(s.normalize("NFC"))
     .filter((ch) => !CONTROL.test(ch) && !INVISIBLE_FORMAT.test(ch))
     .join("")
     .trim();
   const chars = Array.from(cleaned);
-  const truncated = chars.length > max ? chars.slice(0, max).join("") : cleaned;
-  return truncated.length > 0 ? truncated : "（名前なし）";
+  return chars.length > max ? chars.slice(0, max).join("").trim() : cleaned;
+}
+
+/** Discord から取得した表示名などを、表示用に安全な形にする */
+export function sanitizeDisplayName(name: string, max = 64): string {
+  const s = sanitizeLine(name, max);
+  return s.length > 0 ? s : "（名前なし）";
 }
 
 /** 書記素（見た目の 1 文字）の数 */

@@ -49,6 +49,13 @@ export async function answerPage(pollId: string): Promise<void> {
     const best = bestSlotId(slots, t);
     const answeredUsers = new Set(d.answers.map((a) => a.userId));
     const nameOf = new Map(d.participants.map((p) => [p.userId, p.displayName]));
+    // 候補ごとの回答の索引（描画のたびに全回答を探し直さない）
+    const bySlot = new Map<string, typeof d.answers>();
+    for (const a of d.answers) {
+      const list = bySlot.get(a.slotId);
+      if (list) list.push(a);
+      else bySlot.set(a.slotId, [a]);
+    }
     const editable = canAnswer(d.poll.status);
     const first = d.choices[0];
     const last = d.choices[d.choices.length - 1];
@@ -89,11 +96,13 @@ export async function answerPage(pollId: string): Promise<void> {
       }
       const who = h("details", { class: "who" }, h("summary", {}, "誰が"));
       const whoList = h("ul", { class: "who-list" });
+      const slotAnswers = bySlot.get(s.id) ?? [];
+      const answeredHere = new Set(slotAnswers.map((a) => a.userId));
       for (const c of d.choices) {
-        const names = d.answers.filter((a) => a.slotId === s.id && a.choiceId === c.id).map((a) => nameOf.get(a.userId) ?? "?");
+        const names = slotAnswers.filter((a) => a.choiceId === c.id).map((a) => nameOf.get(a.userId) ?? "?");
         if (names.length) whoList.appendChild(h("li", {}, choiceMark(c), " ", names.join("、")));
       }
-      const notAnswered = d.participants.filter((p) => !d.answers.some((a) => a.slotId === s.id && a.userId === p.userId)).map((p) => p.displayName);
+      const notAnswered = d.participants.filter((p) => !answeredHere.has(p.userId)).map((p) => p.displayName);
       if (notAnswered.length) whoList.appendChild(h("li", {}, h("span", { class: "muted" }, "未回答"), " ", notAnswered.join("、")));
       who.appendChild(whoList);
 

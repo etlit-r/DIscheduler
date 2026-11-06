@@ -8,6 +8,8 @@ import { syncNow } from "../polls/sync";
 
 /** 1 回の実行で更新する募集メッセージの上限（Workers 無料プランのサブリクエスト上限 50 に収める） */
 const MAX_SYNC_PER_RUN = 35;
+/** Bot が入っているサーバーの一覧を読むページ数の上限（200 件 × 10 = 2000 サーバー） */
+const MAX_GUILD_PAGES = 10;
 
 export async function runCron(env: Env, scheduledTime: number): Promise<void> {
   const now = nowSec();
@@ -46,11 +48,20 @@ async function cleanup(env: Env, now: number): Promise<void> {
   try {
     const guilds = new Set<string>();
     let after = "0";
-    for (let page = 0; page < 5; page++) {
+    let complete = false;
+    for (let page = 0; page < MAX_GUILD_PAGES; page++) {
       const batch = await discord<{ id: string }[]>(env, "GET", `/users/@me/guilds?limit=200&after=${after}`);
       for (const g of batch) guilds.add(g.id);
-      if (batch.length < 200) break;
+      if (batch.length < 200) {
+        complete = true;
+        break;
+      }
       after = batch[batch.length - 1]!.id;
+    }
+    // 一覧を最後まで読めなかったときは、まだ使っているサーバーのデータを消さないよう削除しない
+    if (!complete) {
+      console.error(JSON.stringify({ event: "guild_check_skipped", reason: "guild_list_incomplete", read: guilds.size }));
+      return;
     }
     const stored = await db.prepare("SELECT guild_id FROM polls UNION SELECT guild_id FROM guild_settings").all<{ guild_id: string }>();
     for (const g of stored.results) {

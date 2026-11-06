@@ -42,4 +42,14 @@ describe("Cron（1 日 2 回）", () => {
     await runCron(testEnv(), Date.parse("2026-11-06T16:00:00Z"));
     expect(await db().prepare("SELECT id FROM polls WHERE id = ?").bind(s.pollId).first()).toBeNull();
   });
+
+  it("サーバーの一覧を最後まで読めなかったときは、何も削除しない", async () => {
+    // 毎回 200 件を返し続ける（上限まで読んでも終わらない）
+    let n = 0;
+    mockDiscord((c) => (c.path.startsWith("/users/@me/guilds") ? Array.from({ length: 200 }, () => ({ id: String(800000000000000000 + n++) })) : {}));
+    const s = await seedPoll();
+    await runCron(testEnv(), Date.parse("2026-11-06T16:00:00Z"));
+    expect(await db().prepare("SELECT id FROM polls WHERE id = ?").bind(s.pollId).first()).not.toBeNull();
+  });
 });
+

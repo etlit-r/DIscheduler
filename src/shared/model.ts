@@ -89,6 +89,9 @@ export const CHOICE_TEMPLATES: readonly ChoiceTemplate[] = [
   },
 ];
 
+/** answers.prev_choice_id で「確定時点では未回答だった」を表す値 */
+export const UNANSWERED = "";
+
 export interface ChoiceLike {
   id: string;
   kind: ChoiceKind;

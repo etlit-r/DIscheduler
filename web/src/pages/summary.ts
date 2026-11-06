@@ -2,7 +2,7 @@
 import { loadPoll, request, type PollData } from "../lib/api";
 import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, STATUS_LABEL, statusBanner, syncPanel, viewerTimeZone } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
-import { bestSlotId, compareSlots, tally } from "../../../src/shared/model";
+import { bestSlotId, compareSlots, tally, UNANSWERED } from "../../../src/shared/model";
 
 export async function summaryPage(pollId: string): Promise<void> {
   let data: PollData;
@@ -43,6 +43,9 @@ export async function summaryPage(pollId: string): Promise<void> {
     const answered = new Set(d.answers.map((a) => a.userId));
     const nameOf = new Map(d.participants.map((p) => [p.userId, p.displayName]));
     const choiceById = new Map(d.choices.map((c) => [c.id, c]));
+    // 「候補:メンバー」→ 回答。表の各マスで毎回探さないよう、先に索引を作る
+    const answerAt = new Map(d.answers.map((a) => [`${a.slotId}:${a.userId}`, a]));
+    const symbolOf = (id: string) => (id === UNANSWERED ? "未回答" : (choiceById.get(id)?.symbol ?? "?"));
     const canFix = isOrganizer && (d.poll.status === "open" || d.poll.status === "closed" || d.poll.status === "fixed");
 
     // 候補ごとの集計表
@@ -71,7 +74,7 @@ export async function summaryPage(pollId: string): Promise<void> {
                   { class: "changed-note" },
                   "確定後に変更: ",
                   changed
-                    .map((a) => `${nameOf.get(a.userId) ?? "?"}（${choiceById.get(a.prevChoiceId!)?.symbol ?? "?"}→${choiceById.get(a.choiceId)?.symbol ?? "?"}、${dateTimeText(a.updatedAt, tz)}）`)
+                    .map((a) => `${nameOf.get(a.userId) ?? "?"}（${symbolOf(a.prevChoiceId!)}→${symbolOf(a.choiceId)}、${dateTimeText(a.updatedAt, tz)}）`)
                     .join("、"),
                 )
               : null,
@@ -100,7 +103,7 @@ export async function summaryPage(pollId: string): Promise<void> {
           { class: p.userId === d.me.userId ? "is-me" : "" },
           h("th", { scope: "row" }, p.displayName, p.comment ? h("span", { class: "slot-sub" }, p.comment) : null),
           ...d.slots.map((s) => {
-            const a = d.answers.find((x) => x.slotId === s.id && x.userId === p.userId);
+            const a = answerAt.get(`${s.id}:${p.userId}`);
             const c = a ? choiceById.get(a.choiceId) : undefined;
             return h("td", { class: "num" }, c ? choiceMark(c) : h("span", { class: "muted" }, "—"));
           }),
@@ -241,6 +244,7 @@ function fixPanel(d: PollData, slotId: string, cancel: () => void): HTMLElement 
     h("p", {}, h("strong", {}, slotText(slot, d.poll.timezone, tz).main)),
     h("div", { class: "field-inline" }, mention, h("label", { for: "fix-mention" }, "参加者にメンション付きでお知らせする")),
     h("div", { class: "field-inline" }, useEvent, h("label", { for: "fix-event" }, d.poll.hasEvent ? "Discord イベントを更新する" : "Discord イベントとして登録する")),
+    d.poll.hasEvent ? h("p", { class: "muted small" }, "チェックを外して確定すると、登録済みの Discord イベントは削除されます。") : null,
     h(
       "fieldset",
       { class: "sub-fields" },

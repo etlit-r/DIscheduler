@@ -5,7 +5,8 @@ import { buildPollMessage } from "../discord/messages";
 import { discord, DiscordError } from "../discord/rest";
 import { nowSec, sleep } from "../core/lib";
 
-export const SYNC_INTERVAL = 30;
+/** 連続した保存をまとめる間隔。ctx.waitUntil の上限（応答後およそ 30 秒）に収まるよう 20 秒にする */
+export const SYNC_INTERVAL = 20;
 
 /** last_synced_at を条件付きで書き換え、更新する権利を取る（同時に走っても 1 回だけ更新する） */
 async function claim(db: D1Database, pollId: string, now: number, minInterval: number): Promise<{ prev: number | null } | null> {
@@ -21,11 +22,17 @@ async function claim(db: D1Database, pollId: string, now: number, minInterval: n
 
 /** 募集メッセージを今の内容で更新する。更新できたら true */
 export async function syncNow(env: Env, pollId: string, minInterval = 0): Promise<boolean> {
+  // 募集メッセージがないときは、最終更新時刻を書き換えない（未反映の件数が 0 に見えてしまうため）
+  const before = await getPoll(env.DB, pollId);
+  if (!before?.message_id) return false;
   const now = nowSec();
   const c = await claim(env.DB, pollId, now, minInterval);
   if (!c) return false;
   const poll = await getPoll(env.DB, pollId);
-  if (!poll || !poll.message_id) return false;
+  if (!poll?.message_id) {
+    await env.DB.prepare("UPDATE polls SET last_synced_at = ? WHERE id = ? AND last_synced_at = ?").bind(c.prev, pollId, now).run();
+    return false;
+  }
   try {
     const [slots, choices, participants, answers] = await Promise.all([
       getSlots(env.DB, pollId),
@@ -56,7 +63,8 @@ export async function syncAfterAnswer(env: Env, pollId: string): Promise<void> {
   const row = await env.DB.prepare("SELECT last_synced_at, message_id FROM polls WHERE id = ?").bind(pollId).first<{ last_synced_at: number | null; message_id: string | null }>();
   if (!row?.message_id || row.last_synced_at === null) return;
   const waitSec = row.last_synced_at + SYNC_INTERVAL - nowSec() + 1;
-  if (waitSec > 0 && waitSec <= SYNC_INTERVAL + 1) await sleep(waitSec * 1000);
+  if (waitSec > SYNC_INTERVAL + 1) return;
+  if (waitSec > 0) await sleep(waitSec * 1000);
   // ほかの保存の後追いが先に更新していれば、ここでは何もしない
   const after = await env.DB.prepare("SELECT last_synced_at FROM polls WHERE id = ?").bind(pollId).first<{ last_synced_at: number | null }>();
   if (after && after.last_synced_at !== row.last_synced_at) return;
