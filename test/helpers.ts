@@ -4,8 +4,8 @@ import { vi } from "vitest";
 import worker from "../src/index";
 import { issueLink } from "../src/auth";
 import { CHOICE_TEMPLATES } from "../src/shared/model";
-import { nowSec, randomId } from "../src/lib";
-import type { Env } from "../src/env";
+import { nowSec, randomId } from "../src/core/lib";
+import type { Env } from "../src/core/env";
 
 export const ORIGIN = "https://discheduler.example.workers.dev";
 export const GUILD = "200000000000000001";

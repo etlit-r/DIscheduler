@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Env } from "../src/env";
+import type { Env } from "../src/core/env";
 import { issueLink } from "../src/auth";
 import { ALICE, BOB, call, getReq, jsonReq, login, mockDiscord, ORGANIZER, ORIGIN, OUTSIDER, seedPoll, tokenFromUrl } from "./helpers";
 

@@ -1,7 +1,7 @@
 // S4: 集計・確定（docs/design.md §6.5）
-import { loadPoll, request, type PollData } from "../api";
-import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, STATUS_LABEL, statusBanner, syncPanel, viewerTimeZone } from "../common";
-import { h, notice, render, setTitle } from "../dom";
+import { loadPoll, request, type PollData } from "../lib/api";
+import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, STATUS_LABEL, statusBanner, syncPanel, viewerTimeZone } from "../ui/common";
+import { h, notice, render, setTitle } from "../lib/dom";
 import { bestSlotId, compareSlots, tally } from "../../../src/shared/model";
 
 export async function summaryPage(pollId: string): Promise<void> {

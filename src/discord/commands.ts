@@ -1,8 +1,8 @@
 // スラッシュコマンドの定義と登録（docs/design.md §4.4）
 // Bot トークンは Cloudflare にだけ置くため、登録は Worker 自身が行う。
 // 定義が変わったときだけ（meta テーブルの版と比べて）Discord に登録し直す。
-import type { Env } from "../env";
-import { sha256Hex } from "../lib";
+import type { Env } from "../core/env";
+import { sha256Hex } from "../core/lib";
 import { discord } from "./rest";
 
 function commandDef(name: string) {

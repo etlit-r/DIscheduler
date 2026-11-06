@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Env } from "../src/env";
-import { runCron } from "../src/cron";
+import type { Env } from "../src/core/env";
+import { runCron } from "../src/jobs/cron";
 import { ALICE, GUILD, mockDiscord, seedPoll, testEnv } from "./helpers";
 
 const db = () => (env as unknown as Env).DB;

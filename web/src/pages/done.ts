@@ -1,7 +1,7 @@
 // S7: 公開完了・確定完了（docs/design.md §6.3, §4.3, §6.10）
-import { loadPoll } from "../api";
-import { rememberDonation, showError } from "../common";
-import { h, notice, render, setTitle } from "../dom";
+import { loadPoll } from "../lib/api";
+import { rememberDonation, showError } from "../ui/common";
+import { h, notice, render, setTitle } from "../lib/dom";
 
 export async function donePage(pollId: string): Promise<void> {
   let d;

@@ -1,6 +1,6 @@
 // Discord REST API クライアント（レート制限に従う。docs/security-design.md D-4）
-import type { Env } from "../env";
-import { sleep } from "../lib";
+import type { Env } from "../core/env";
+import { sleep } from "../core/lib";
 
 export class DiscordError extends Error {
   constructor(

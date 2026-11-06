@@ -1,5 +1,5 @@
 // Web API の呼び出し
-import type { ChoiceColor, ChoiceKind, PollStatus, Role } from "../../src/shared/model";
+import type { ChoiceColor, ChoiceKind, PollStatus, Role } from "../../../src/shared/model";
 
 export interface PollData {
   now: number;

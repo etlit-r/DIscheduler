@@ -1,7 +1,7 @@
 // S3: 回答入力（各候補の集計つき。docs/design.md §6.4）
-import { loadPoll, request, type PollData } from "../api";
-import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, statusBanner, viewerTimeZone } from "../common";
-import { h, notice, render, setTitle } from "../dom";
+import { loadPoll, request, type PollData } from "../lib/api";
+import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, statusBanner, viewerTimeZone } from "../ui/common";
+import { h, notice, render, setTitle } from "../lib/dom";
 import { bestSlotId, canAnswer, tally } from "../../../src/shared/model";
 
 export async function answerPage(pollId: string): Promise<void> {

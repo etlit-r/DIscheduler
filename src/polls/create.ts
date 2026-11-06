@@ -1,8 +1,8 @@
 // 調整の作成・参加者の設定など、Discord と Web の両方から使う処理
-import type { Env } from "./env";
-import { defaultChoiceStatements, hitRateLimit, rateLimitResetIn, type PollRow } from "./db";
-import { extractParticipants, fetchMember, type Candidate } from "./discord/members";
-import { DAY, nowSec, randomId } from "./lib";
+import type { Env } from "../core/env";
+import { defaultChoiceStatements, hitRateLimit, rateLimitResetIn, type PollRow } from "../db";
+import { extractParticipants, fetchMember, type Candidate } from "../discord/members";
+import { DAY, nowSec, randomId } from "../core/lib";
 
 export const DRAFT_TTL = 3 * DAY;
 export const RETENTION = 180 * DAY;

@@ -921,22 +921,28 @@ DIscheduler/
 ├── docs/
 │   ├── design.md             # 本書
 │   └── security-design.md    # セキュリティ設計詳細・脅威モデル
-├── src/
-│   ├── index.ts              # Worker エントリ（fetch / scheduled）・セキュリティヘッダー
-│   ├── env.ts / lib.ts       # 環境変数の型・共通の道具（乱数・ハッシュ・エラー）
-│   ├── api/                  # Web API（index.ts）と入力スキーマ（schemas.ts、Valibot）
+├── src/                      # Worker（サーバー側）
+│   ├── index.ts              # エントリ（fetch / scheduled）・セキュリティヘッダー・エラー処理
+│   ├── core/                 # どこからでも使う土台
+│   │   ├── env.ts            #   環境変数の型
+│   │   └── lib.ts            #   乱数・ハッシュ・時刻・エラーの道具
+│   ├── discord/              # Discord とのやり取り
+│   │   ├── verify.ts         #   Ed25519 署名検証
+│   │   ├── interactions.ts   #   コマンド・ボタンの処理
+│   │   ├── commands.ts       #   コマンドの定義と自動登録
+│   │   ├── members.ts        #   参加者の自動抽出（チャンネル閲覧権限の計算）
+│   │   ├── messages.ts       #   募集・お知らせメッセージの組み立て
+│   │   └── rest.ts           #   REST クライアント（レート制限対応）
+│   ├── api/                  # Web 画面から呼ぶ API
+│   │   ├── index.ts          #   エンドポイント
+│   │   └── schemas.ts        #   入力スキーマ（Valibot）
 │   ├── auth/                 # 入力リンク（ワンタイムトークン）・セッション
+│   ├── polls/                # 日程調整そのものの処理（Discord と Web の両方から使う）
+│   │   ├── create.ts         #   下書きの作成・参加者の設定
+│   │   └── sync.ts           #   募集メッセージの更新（後追いの更新を含む）
+│   ├── jobs/                 # 定期処理
+│   │   └── cron.ts           #   1 日 2 回の Cron
 │   ├── db/                   # D1 クエリ（プリペアドステートメントのみ）・レート制限
-│   ├── discord/
-│   │   ├── verify.ts         # Ed25519 署名検証
-│   │   ├── interactions.ts   # コマンド・ボタンの処理
-│   │   ├── commands.ts       # コマンドの定義と自動登録
-│   │   ├── members.ts        # 参加者の自動抽出（チャンネル閲覧権限の計算）
-│   │   ├── messages.ts       # 募集・お知らせメッセージの組み立て
-│   │   └── rest.ts           # REST クライアント（レート制限対応）
-│   ├── polls.ts              # 下書きの作成・参加者の設定
-│   ├── sync.ts               # 募集メッセージの更新（後追いの更新を含む）
-│   ├── cron.ts               # 1 日 2 回の定期処理
 │   └── shared/               # Worker と Web 画面で共有（集計・タイムゾーン・文字列の検証）
 ├── public/                   # Workers Static Assets の配信元
 │   ├── index.html            # S0: Bot の案内（LP）
@@ -945,7 +951,14 @@ DIscheduler/
 │   ├── favicon.svg           # ファビコン
 │   ├── _headers              # 静的配信時のセキュリティヘッダー
 │   └── robots.txt            # / と /security 以外のクロールを拒否
-├── web/                      # アプリ画面（S1〜S5・S7）のソース（Vite で public/app/ にビルド）
+├── web/                      # Web 画面（S1〜S5・S7）。Vite で public/app/ にビルド
+│   ├── index.html            #   すべての画面で共通の HTML
+│   └── src/
+│       ├── main.ts           #   URL から画面を選ぶ
+│       ├── app.css           #   スタイル（公開ページの site.css を取り込む）
+│       ├── pages/            #   画面ごとの処理（link・edit・answer・summary・done）
+│       ├── ui/               #   画面共通の部品（タイムゾーン切り替え・更新状況・エラー画面）
+│       └── lib/              #   API 呼び出し・DOM の組み立て
 ├── migrations/               # D1 マイグレーション
 ├── scripts/
 │   └── prepare-public.sh     # 静的ページへの設定値の埋め込み（§14.2）

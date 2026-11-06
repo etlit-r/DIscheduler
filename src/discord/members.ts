@@ -1,5 +1,5 @@
 // 参加者の自動抽出（docs/design.md §5.3）
-import type { Env } from "../env";
+import type { Env } from "../core/env";
 import { LIMITS } from "../shared/model";
 import { sanitizeDisplayName } from "../shared/text";
 import {

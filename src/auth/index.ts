@@ -1,6 +1,6 @@
 // 入力リンク（ワンタイムトークン）とセッション（docs/security-design.md §4.3）
 import type { Purpose, Role } from "../shared/model";
-import { nowSec, randomToken, sha256Hex } from "../lib";
+import { nowSec, randomToken, sha256Hex } from "../core/lib";
 import type { LinkTokenRow, SessionRow } from "../db";
 
 export const LINK_TTL = 10 * 60; // 10 分

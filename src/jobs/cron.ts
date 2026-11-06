@@ -1,10 +1,10 @@
 // Cron（1 日 2 回: UTC 4 時・16 時 = 日本時間 13 時・1 時。docs/design.md §3.2, §5.5, §7.4）
-import type { Env } from "./env";
-import { deletePollData } from "./db";
-import { syncCommands } from "./discord/commands";
-import { discord } from "./discord/rest";
-import { nowSec } from "./lib";
-import { syncNow } from "./sync";
+import type { Env } from "../core/env";
+import { deletePollData } from "../db";
+import { syncCommands } from "../discord/commands";
+import { discord } from "../discord/rest";
+import { nowSec } from "../core/lib";
+import { syncNow } from "../polls/sync";
 
 /** 1 回の実行で更新する募集メッセージの上限（Workers 無料プランのサブリクエスト上限 50 に収める） */
 const MAX_SYNC_PER_RUN = 35;

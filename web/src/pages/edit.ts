@@ -1,7 +1,7 @@
 // S2: 調整の作成・編集（主催者。docs/design.md §6.3, §6.9）
-import { ApiError, loadPoll, request, type PollData } from "../api";
-import { browserTimeZone, choiceMark, dateTimeText, rememberDonation, showError, slotText, statusBanner, syncPanel, timeZoneSelect } from "../common";
-import { h, notice, render, setTitle } from "../dom";
+import { ApiError, loadPoll, request, type PollData } from "../lib/api";
+import { browserTimeZone, choiceMark, dateTimeText, rememberDonation, showError, slotText, statusBanner, syncPanel, timeZoneSelect } from "../ui/common";
+import { h, notice, render, setTitle } from "../lib/dom";
 import {
   CHOICE_COLORS,
   CHOICE_KINDS,

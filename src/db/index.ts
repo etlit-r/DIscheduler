@@ -1,7 +1,7 @@
 // D1 へのアクセス。SQL はすべてプリペアドステートメントで組み立てる（security-design T-1）
 import type { ChoiceColor, ChoiceInput, ChoiceKind, PollStatus, Purpose, Role } from "../shared/model";
 import { CHOICE_TEMPLATES } from "../shared/model";
-import { randomId } from "../lib";
+import { randomId } from "../core/lib";
 
 export interface PollRow {
   id: string;

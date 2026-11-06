@@ -1,11 +1,11 @@
 // Worker のエントリ（fetch / scheduled）
 import { Hono } from "hono";
-import type { Env } from "./env";
+import type { Env } from "./core/env";
 import { api } from "./api";
-import { runCron } from "./cron";
+import { runCron } from "./jobs/cron";
 import { handleInteraction } from "./discord/interactions";
 import { verifyDiscordRequest } from "./discord/verify";
-import { AppError, isQuotaError, nowSec, QUOTA_MESSAGE, randomToken } from "./lib";
+import { AppError, isQuotaError, nowSec, QUOTA_MESSAGE, randomToken } from "./core/lib";
 
 /** すべての応答に付けるセキュリティヘッダー（docs/security-design.md §4.2） */
 export const SECURITY_HEADERS: Record<string, string> = {
