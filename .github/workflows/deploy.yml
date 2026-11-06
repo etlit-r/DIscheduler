@@ -1,11 +1,11 @@
-# main へのマージ時に Cloudflare Workers へデプロイする（docs/design.md §14）
+# master へのマージ時に Cloudflare Workers へデプロイする（docs/design.md §14）
 # - production Environment の承認者が承認するまで実行されない
 # - サードパーティの Action はコミット SHA で固定（更新は Dependabot）
 name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 permissions:
