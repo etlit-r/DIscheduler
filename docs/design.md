@@ -669,7 +669,7 @@ DIscheduler/
 ├── test/                     # Vitest + @cloudflare/vitest-pool-workers
 ├── wrangler.jsonc            # Cloudflare Workers の設定
 └── .github/
-    ├── workflows/deploy.yml  # master マージ時のデプロイ（承認制）
+    ├── workflows/deploy.yml  # main マージ時のデプロイ（承認制）
     ├── workflows/            # CI（test, typecheck, audit, CodeQL）※実装時に追加
     └── dependabot.yml        # Action の更新
 ```
@@ -709,7 +709,7 @@ GitHub Actions から Cloudflare Workers にデプロイする（`.github/workfl
 
 ```mermaid
 flowchart LR
-  PR[PR を作成] --> M[master にマージ]
+  PR[PR を作成] --> M[main にマージ]
   M --> W[Deploy ワークフロー起動]
   W --> A{production 環境の<br/>承認}
   A -- 承認 --> R[招待リンクに<br/>Application ID を埋め込む]
@@ -729,7 +729,7 @@ flowchart LR
 | 種類 | 名前 | 値 |
 |------|------|----|
 | 保護ルール | Required reviewers | 承認者（自分） |
-| 保護ルール | Deployment branches | `master` のみ |
+| 保護ルール | Deployment branches | `main` のみ |
 | Environment secret | `CLOUDFLARE_API_TOKEN` | 上で作った API トークン |
 | Environment secret | `CLOUDFLARE_ACCOUNT_ID` | Account ID |
 | Environment variable | `DISCORD_APPLICATION_ID` | Discord Developer Portal の Application ID（公開値） |

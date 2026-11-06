@@ -11,7 +11,7 @@ Discord のチャンネル／ロールのメンバーで日程調整を行う Bo
 - [Bot の案内ページ（LP）のソース](public/index.html)
 
 ## デプロイ
-`master` にマージすると、GitHub Actions が承認待ちになり、承認後に Cloudflare Workers へデプロイされます。初回の準備は [設計書](docs/design.md) の §14 を参照してください。
+`main` にマージすると、GitHub Actions が承認待ちになり、承認後に Cloudflare Workers へデプロイされます。初回の準備は [設計書](docs/design.md) の §14 を参照してください。
 
 ## サーバー管理者の方へ
 コマンドを使えるチャンネルは、Discord の「サーバー設定 → 連携サービス → DIscheduler」で指定できます。そのチャンネルで誰がコマンドを打てるかは、チャンネルの発言権限で制限してください。手順は [設計書](docs/design.md) の §5.4.1 を参照してください。
