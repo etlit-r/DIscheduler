@@ -1,14 +1,37 @@
 // Cloudflare Workers の設定（docs/design.md §14）
-// 現時点では public/ の静的ページ（LP・セキュリティ方針）だけを配信する。
-// Worker の実装を始めたら "main" と D1 などのバインディングを追加する。
+// database_id はデプロイ時に GitHub の Environment variable D1_DATABASE_ID で置き換える。
+// Bot トークン（DISCORD_BOT_TOKEN）は Cloudflare のダッシュボードで Secret として登録する。
 {
   "name": "discheduler",
-  "compatibility_date": "2026-11-01",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-20",
   "workers_dev": true,
   "preview_urls": false,
   "assets": {
     "directory": "./public",
+    "binding": "ASSETS",
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "none"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "discheduler",
+      "database_id": "__D1_DATABASE_ID__",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "triggers": {
+    // UTC 4 時・16 時 = 日本時間 13 時・1 時
+    "crons": ["0 4,16 * * *"]
+  },
+  // アプリが書くログ（console.log など）だけを残す。リクエストの記録（invocation logs）は、
+  // Cookie や接続元の情報が残るおそれがあるため無効にする（security-design I-4、公開の方針「IP アドレスを保存しません」）
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": false
+    }
   }
 }

@@ -1,23 +1,46 @@
-# main へのマージ時に Cloudflare Workers へデプロイする（docs/design.md §14）
-# - production Environment の承認者が承認するまで実行されない
+# テストと、main へのマージ時のデプロイ（docs/design.md §14）
+# - プルリクエストでは test だけを実行する
+# - deploy は production Environment の承認者が承認するまで実行されない
 # - サードパーティの Action はコミット SHA で固定（更新は Dependabot）
 name: Deploy
 
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: deploy-production
-  cancel-in-progress: false
-
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: 依存のインストール（インストールスクリプトは実行しない）
+        run: npm ci --ignore-scripts
+      - name: 本番の依存の脆弱性監査
+        run: npm audit --omit=dev --audit-level=high
+      - name: 型検査
+        run: npm run typecheck
+      - name: テスト
+        run: npm test
+      - name: Web 画面のビルド
+        run: npm run build
+
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     environment:
       name: production
       url: ${{ steps.deploy.outputs.deployment-url }}
@@ -25,6 +48,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - name: Web 画面のビルド
+        run: npm run build
 
       - name: 静的ページに設定値を埋め込む（招待リンク・寄付リンク）
         env:
@@ -32,11 +61,45 @@ jobs:
           DONATION_URL: ${{ vars.DONATION_URL }}
         run: bash scripts/prepare-public.sh public
 
+      - name: D1 データベースの ID を設定する
+        env:
+          D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
+        run: |
+          if [[ ! "$D1_DATABASE_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+            echo "::error::Environment variable D1_DATABASE_ID が未設定か、形式が正しくありません"
+            exit 1
+          fi
+          sed -i "s/__D1_DATABASE_ID__/${D1_DATABASE_ID}/" wrangler.jsonc
+
+      - name: Worker の公開値を確かめる
+        env:
+          DISCORD_PUBLIC_KEY: ${{ vars.DISCORD_PUBLIC_KEY }}
+        run: |
+          if [[ ! "$DISCORD_PUBLIC_KEY" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Environment variable DISCORD_PUBLIC_KEY が未設定か、形式が正しくありません"
+            exit 1
+          fi
+
+      # wrangler は npm ci で入れた版（package-lock.json で固定）をそのまま使う。
+      # wranglerVersion は指定しない。指定すると、Dependabot が package.json を上げたときに版がずれ、
+      # Action がずれた版をインストールスクリプト付きで別に入れてしまう
+      - name: データベースのマイグレーション
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations apply DB --remote
+
+      # Worker の公開値は --var で渡す。値の形式は前の手順（prepare-public.sh と公開値の確認）で検証済み。
+      # DONATION_URL は任意なので、設定されているときだけ渡す（空の値は渡さない）
       - name: Cloudflare Workers へデプロイ
         id: deploy
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          wranglerVersion: "4.151.2"
-          command: deploy
+          command: >-
+            deploy
+            --var DISCORD_APPLICATION_ID:${{ vars.DISCORD_APPLICATION_ID }}
+            --var DISCORD_PUBLIC_KEY:${{ vars.DISCORD_PUBLIC_KEY }}
+            ${{ vars.DONATION_URL != '' && format('--var DONATION_URL:{0}', vars.DONATION_URL) || '' }}

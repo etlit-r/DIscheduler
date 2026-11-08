@@ -2,7 +2,6 @@
 
 Discord のチャンネル／ロールのメンバーで日程調整を行う Bot。Cloudflare Workers の無料枠のみで動作するサーバーレス構成です。
 
-> 現在は設計フェーズです。
 
 ## ドキュメント
 - [設計書](docs/design.md)
@@ -21,3 +20,35 @@ Discord のチャンネル／ロールのメンバーで日程調整を行う Bo
 - 主催者は Web 画面のカレンダーで候補日時を一括入力
 - 参加者は Discord のボタンから本人専用リンクで ○△× を入力（ログイン不要）
 - 集計表で最有力候補をハイライト、確定した日時を Discord イベントとして登録
+
+## 開発
+
+```bash
+npm ci
+```
+
+```bash
+npm run typecheck
+```
+
+```bash
+npm test
+```
+
+```bash
+npm run build
+```
+
+ローカルで動かすときは、`.dev.vars`（Git には含めない）に `DISCORD_PUBLIC_KEY`・`DISCORD_APPLICATION_ID`・`DISCORD_BOT_TOKEN` を書き、次を実行します。
+
+```bash
+npx wrangler d1 migrations apply DB --local
+```
+
+```bash
+npm run dev
+```
+
+## 運用開始の手順
+
+[設計書](docs/design.md) の §14.1 を参照してください。Cloudflare で D1 データベースを作り、GitHub の Environment `production` に設定値を入れて `main` にマージすると、テスト・マイグレーション・デプロイが実行されます。Bot トークンは Cloudflare のダッシュボードで Worker の Secret として登録します。
