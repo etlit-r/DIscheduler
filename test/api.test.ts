@@ -472,3 +472,43 @@ describe("5 回目のレビューの修正", () => {
   });
 });
 
+describe("7 回目のレビューの修正", () => {
+  it("確定後はリマインドできない", async () => {
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: false, event: null }, org));
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/remind`, {}, org))).status).toBe(409);
+  });
+
+  it("選択肢の変更のお知らせは、ひとことだけ保存しても消えず、確認したら消える", async () => {
+    // 募集メッセージなし（連続した保存による後追いの更新の待ち時間をテストに持ち込まないため）
+    const s = await seedPoll({ messageId: null });
+    const alice = await login(s.pollId, ALICE, "participant");
+    await call(jsonReq("PUT", `/api/polls/${s.pollId}/answers/me`, { choicesVersion: 1, answers: [{ slotId: s.slotIds[0], choiceId: s.choiceIds[1] }], comment: null }, alice));
+    await db().prepare("UPDATE answers SET updated_at = 100 WHERE poll_id = ?").bind(s.pollId).run();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const choices = [
+      { id: s.choiceIds[0], symbol: "○", label: "参加", kind: "ok", score: 2, color: "green" },
+      { id: s.choiceIds[1], symbol: "△", label: "遅れて参加", kind: "maybe", score: 1, color: "yellow" },
+      { id: s.choiceIds[2], symbol: "×", label: "不可", kind: "ng", score: 0, color: "red" },
+    ];
+    await call(jsonReq("PUT", `/api/polls/${s.pollId}/choices`, { choicesVersion: 1, choices, reassign: [] }, org));
+    const needs = async () => ((await (await call(getReq(`/api/polls/${s.pollId}`, alice.cookie))).json()) as { me: { needsChoicesAck: boolean } }).me.needsChoicesAck;
+    expect(await needs()).toBe(true);
+    // ひとことだけ保存（回答は同じ）
+    await call(jsonReq("PUT", `/api/polls/${s.pollId}/answers/me`, { choicesVersion: 2, answers: [{ slotId: s.slotIds[0], choiceId: s.choiceIds[1] }], comment: "よろしく" }, alice));
+    expect(await needs()).toBe(true);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/choices-ack`, {}, alice))).status).toBe(200);
+    expect(await needs()).toBe(false);
+  });
+
+  it("主催者の未反映の件数は、読み込んだ回答から数える", async () => {
+    const s = await seedPoll();
+    await db().prepare("UPDATE polls SET last_synced_at = 50 WHERE id = ?").bind(s.pollId).run();
+    await db().prepare("INSERT INTO answers (poll_id, slot_id, user_id, choice_id, updated_at) VALUES (?, ?, ?, ?, 100), (?, ?, ?, ?, 10)").bind(s.pollId, s.slotIds[0], ALICE, s.choiceIds[0], s.pollId, s.slotIds[1], ALICE, s.choiceIds[0]).run();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const data = (await (await call(getReq(`/api/polls/${s.pollId}`, org.cookie))).json()) as { poll: { pendingChanges: number } };
+    expect(data.poll.pendingChanges).toBe(1);
+  });
+});
+

@@ -150,7 +150,6 @@ export function syncPanel(d: PollData, reload: () => void): HTMLElement | null {
     {
       class: "btn btn-secondary btn-small",
       type: "button",
-      disabled: pending === 0,
       onClick: async () => {
         btn.disabled = true;
         status.textContent = "更新しています…";
@@ -175,7 +174,7 @@ export function syncPanel(d: PollData, reload: () => void): HTMLElement | null {
       h("dt", {}, "最終更新"),
       h("dd", {}, d.poll.lastSyncedAt ? dateTimeText(d.poll.lastSyncedAt, tz) : "まだ更新していません"),
       h("dt", {}, "未反映の回答の変更"),
-      h("dd", {}, pending > 0 ? `あり（${pending} 件）` : "なし（最新です）"),
+      h("dd", {}, pending > 0 ? `あり（${pending} 件）` : "なし（回答は反映済みです。締切などの表示を最新にしたいときも［今すぐ更新］を押せます）"),
       h("dt", {}, "次の自動更新"),
       h("dd", {}, d.poll.nextAutoSyncAt ? dateTimeText(d.poll.nextAutoSyncAt, tz) : "—", d.poll.status === "fixed" ? "" : "（回答の保存時にも自動で更新されます）"),
     ),

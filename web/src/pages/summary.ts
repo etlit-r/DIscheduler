@@ -153,7 +153,7 @@ export async function summaryPage(pollId: string): Promise<void> {
           { class: "card" },
           h("h2", { class: "card-title" }, `未回答（${unanswered.length} 名）`),
           h("p", {}, unanswered.length ? unanswered.map((p) => p.displayName).join("、") : "全員が回答しました。"),
-          isOrganizer && unanswered.length && d.poll.status !== "draft" ? remindButton(d, (m) => void reload(m)) : null,
+          isOrganizer && unanswered.length && d.poll.status !== "draft" && d.poll.status !== "fixed" ? remindButton(d, (m) => void reload(m)) : null,
         ),
         syncPanel(d, () => void reload(notice("ok", "募集メッセージを更新しました。"))),
       ),

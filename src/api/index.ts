@@ -12,7 +12,6 @@ import {
   sessionCookieName,
 } from "../auth";
 import {
-  countPendingAnswers,
   deletePollData,
   getChoices,
   getParticipant,
@@ -141,7 +140,8 @@ polls.get("/:id", async (c) => {
   if (poll.status === "draft" && !isOrganizer) throw new AppError(404, "not_found", "この調整はまだ公開されていません。");
   const me = participants.find((p) => p.user_id === session.user_id);
   if (!me && !isOrganizer) throw new AppError(403, "not_participant", "この調整の参加者ではありません。");
-  const pending = isOrganizer ? await countPendingAnswers(db, poll) : null;
+  // 未反映の回答の変更は、読み込み済みの回答から数える（問い合わせを増やさない）
+  const pending = isOrganizer ? answers.filter((a) => a.updated_at > (poll.last_synced_at ?? 0)).length : null;
   return c.json({
     now,
     csrfToken: session.csrf_token,
@@ -175,6 +175,13 @@ polls.get("/:id", async (c) => {
       displayName: me?.display_name ?? null,
       comment: me?.comment ?? null,
       answeredAt: me?.answered_at ?? null,
+      // 回答のあとで選択肢が変わり、まだ確認していなければ true（§6.9.4）
+      needsChoicesAck:
+        !!me &&
+        poll.choices_changed_at !== null &&
+        (me.answered_at ?? 0) > 0 &&
+        (me.choices_ack_version ?? 0) < poll.choices_version &&
+        answers.some((a) => a.user_id === me.user_id && a.updated_at <= poll.choices_changed_at!),
     },
     slots: slots.map((s) => ({ id: s.id, startAt: s.start_at, endAt: s.end_at, allDay: s.all_day === 1 })),
     choices: choices.map((ch) => ({ id: ch.id, symbol: ch.symbol, label: ch.label, kind: ch.kind, score: ch.score, color: ch.color })),
@@ -694,6 +701,7 @@ polls.post("/:id/remind", async (c) => {
   const db = c.env.DB;
   const now = nowSec();
   if (poll.status === "draft") throw new AppError(409, "draft", "公開してからリマインドしてください。");
+  if (poll.status === "fixed") throw new AppError(409, "fixed", "日時が確定しているため、リマインドはできません。");
   if (poll.last_reminded_at && now - poll.last_reminded_at < 12 * 3600) {
     throw new AppError(429, "rate_limited", "リマインドは 12 時間に 1 回までです。");
   }
@@ -713,6 +721,13 @@ polls.post("/:id/remind", async (c) => {
     buildMentionMessage(`**${escapeMarkdown(poll.title ?? "日程調整")}** の回答をお願いします${deadline}。募集メッセージの［回答する］から入力できます。${link}`, rows.results.map((x) => x.user_id)),
   );
   return c.json({ ok: true, count: rows.results.length });
+});
+
+/** 「選択肢が変更されました」を確認した（§6.9.4） */
+polls.post("/:id/choices-ack", async (c) => {
+  const { poll, session } = c.var;
+  await c.env.DB.prepare("UPDATE participants SET choices_ack_version = ? WHERE poll_id = ? AND user_id = ?").bind(poll.choices_version, poll.id, session.user_id).run();
+  return c.json({ ok: true });
 });
 
 polls.post("/:id/sync-message", async (c) => {

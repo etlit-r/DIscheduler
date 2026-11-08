@@ -57,6 +57,7 @@ export interface ParticipantRow {
   display_name: string;
   comment: string | null;
   answered_at: number | null;
+  choices_ack_version: number | null;
 }
 
 export interface AnswerRow {
@@ -102,12 +103,14 @@ export async function getChoices(db: D1Database, pollId: string): Promise<Choice
   return r.results;
 }
 
+/** 参加者の並び順（どの読み込み方でも同じ順にする） */
+export function compareParticipants(a: ParticipantRow, b: ParticipantRow): number {
+  return a.display_name.localeCompare(b.display_name, "ja") || a.user_id.localeCompare(b.user_id);
+}
+
 export async function getParticipants(db: D1Database, pollId: string): Promise<ParticipantRow[]> {
-  const r = await db
-    .prepare("SELECT * FROM participants WHERE poll_id = ? ORDER BY display_name COLLATE NOCASE")
-    .bind(pollId)
-    .all<ParticipantRow>();
-  return r.results;
+  const r = await db.prepare("SELECT * FROM participants WHERE poll_id = ?").bind(pollId).all<ParticipantRow>();
+  return r.results.sort(compareParticipants);
 }
 
 export function getParticipant(db: D1Database, pollId: string, userId: string): Promise<ParticipantRow | null> {
@@ -117,15 +120,6 @@ export function getParticipant(db: D1Database, pollId: string, userId: string): 
 export async function getAnswers(db: D1Database, pollId: string): Promise<AnswerRow[]> {
   const r = await db.prepare("SELECT * FROM answers WHERE poll_id = ?").bind(pollId).all<AnswerRow>();
   return r.results;
-}
-
-/** 最終更新より後に保存・変更された回答の件数（§6.5） */
-export async function countPendingAnswers(db: D1Database, poll: PollRow): Promise<number> {
-  const r = await db
-    .prepare("SELECT COUNT(*) AS n FROM answers WHERE poll_id = ? AND updated_at > ?")
-    .bind(poll.id, poll.last_synced_at ?? 0)
-    .first<{ n: number }>();
-  return r?.n ?? 0;
 }
 
 export function defaultChoiceStatements(db: D1Database, pollId: string): D1PreparedStatement[] {
@@ -160,7 +154,7 @@ export function pollWithDataStatement(db: D1Database, pollId: string): D1Prepare
            FROM slots WHERE poll_id = p.id) AS j_slots,
         (SELECT json_group_array(json_object('id', id, 'poll_id', poll_id, 'symbol', symbol, 'label', label, 'kind', kind, 'score', score, 'color', color, 'position', position))
            FROM choices WHERE poll_id = p.id) AS j_choices,
-        (SELECT json_group_array(json_object('poll_id', poll_id, 'user_id', user_id, 'display_name', display_name, 'comment', comment, 'answered_at', answered_at))
+        (SELECT json_group_array(json_object('poll_id', poll_id, 'user_id', user_id, 'display_name', display_name, 'comment', comment, 'answered_at', answered_at, 'choices_ack_version', choices_ack_version))
            FROM participants WHERE poll_id = p.id) AS j_participants,
         (SELECT json_group_array(json_object('poll_id', poll_id, 'slot_id', slot_id, 'user_id', user_id, 'choice_id', choice_id, 'prev_choice_id', prev_choice_id, 'updated_at', updated_at))
            FROM answers WHERE poll_id = p.id) AS j_answers
@@ -181,7 +175,7 @@ export function parsePollWithData(row: PollWithDataRow | null | undefined): Poll
   const { j_slots, j_choices, j_participants, j_answers, ...poll } = row;
   const slots = (JSON.parse(j_slots) as SlotRow[]).sort((a, b) => a.start_at - b.start_at || a.position - b.position);
   const choices = (JSON.parse(j_choices) as ChoiceRow[]).sort((a, b) => a.position - b.position);
-  const participants = (JSON.parse(j_participants) as ParticipantRow[]).sort((a, b) => a.display_name.localeCompare(b.display_name, "ja"));
+  const participants = (JSON.parse(j_participants) as ParticipantRow[]).sort(compareParticipants);
   const answers = JSON.parse(j_answers) as AnswerRow[];
   return { poll: poll as PollRow, slots, choices, participants, answers };
 }
