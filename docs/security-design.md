@@ -211,7 +211,7 @@ stateDiagram-v2
 |------|------|
 | 依存最小化 | ランタイム依存は Hono・Valibot のみ。追加は PR でレビュー必須（理由・メンテ状況・権限を記載） |
 | ロックファイル | `package-lock.json` をコミットし、CI は `npm ci` のみ使用。`--ignore-scripts` でインストールスクリプトを無効化 |
-| 脆弱性監視 | Dependabot（セキュリティアップデート＋週次バージョン更新）、CI で `npm audit --omit=dev --audit-level=high`（本番で動く依存。開発用ツールの脆弱性は Dependabot の更新で追う） |
+| 脆弱性監視 | Dependabot（セキュリティアップデート＋週次バージョン更新。公開から 7 日未満の版は提案しない）、CI で `npm audit --omit=dev --audit-level=high`（本番で動く依存。開発用ツールの脆弱性は Dependabot の更新で追う） |
 | 静的解析 | GitHub CodeQL、ESLint（セキュリティルール）、TypeScript `strict` |
 | GitHub Actions | サードパーティ Action は **コミット SHA で固定**。`permissions:` を最小化（既定 `contents: read`） |
 | ブランチ保護 | `main` への直接 push 禁止、PR レビュー必須、CI 成功必須 |

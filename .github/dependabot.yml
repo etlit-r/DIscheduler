@@ -5,6 +5,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ["*"]
@@ -12,6 +14,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # 公開直後の版（乗っ取りなどで悪意のある版が出た直後）を避ける。セキュリティアップデートには適用されない
+    cooldown:
+      default-days: 7
     groups:
       npm:
         patterns: ["*"]
