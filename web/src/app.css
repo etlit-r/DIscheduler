@@ -157,6 +157,8 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .cal-day.is-today { border-color: var(--accent); }
 .cal-day.is-selected { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .cal-day:disabled { opacity: 0.35; cursor: not-allowed; }
+.cal-day.is-range-start { outline: 3px solid var(--accent); outline-offset: 1px; font-weight: 700; }
+.pick-mode { display: flex; gap: 6px; margin: 0 0 8px; }
 .slot-list, .member-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .slot-list li, .member-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; }
 .choice-summary { display: flex; flex-wrap: wrap; gap: 8px; }

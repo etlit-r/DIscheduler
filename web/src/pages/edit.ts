@@ -83,6 +83,10 @@ export async function editPage(pollId: string): Promise<void> {
   const today = epochToZoned(d.now, tz);
   let month = { y: today.year, m: today.month };
   const selectedDates = new Set<string>();
+  // 日付の選び方。range のときは、始まりの日と終わりの日をタップして間の日をまとめて選ぶ
+  let pickMode: "single" | "range" = "single";
+  let rangeStart: string | null = null;
+  let lastPicked: string | null = null; // Shift + クリックで範囲を選ぶときの起点
   // このサーバーで最近使った時間帯。固定の「よく使う」と同じものは出さない（§6.3.1）
   const recentPresets = (d.recentTimes ?? []).filter((r) => !FIXED_PRESETS.some((p) => p.start === r.start && p.end === r.end));
   let startTime = "20:00";
@@ -154,6 +158,48 @@ export async function editPage(pollId: string): Promise<void> {
 
   // --- 部品 ---
 
+  /** a〜b（順不同）の日付を、今日以降だけまとめて選ぶ */
+  function selectRange(a: string, b: string): void {
+    const [from, to] = a <= b ? [a, b] : [b, a];
+    const todayKey = `${today.year}-${pad(today.month)}-${pad(today.day)}`;
+    const [fy, fm, fd] = from.split("-").map(Number) as [number, number, number];
+    for (let t = Date.UTC(fy, fm - 1, fd), i = 0; i < 366; t += 86400000, i++) {
+      const d = new Date(t);
+      const key = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+      if (key > to) break;
+      if (key >= todayKey) selectedDates.add(key);
+    }
+  }
+
+  function modeButton(mode: "single" | "range", label: string): HTMLElement {
+    return h(
+      "button",
+      {
+        type: "button",
+        class: `btn btn-small ${pickMode === mode ? "btn-primary" : "btn-secondary"}`,
+        aria: { pressed: String(pickMode === mode) },
+        onClick: () => {
+          pickMode = mode;
+          rangeStart = null;
+          draw();
+        },
+      },
+      label,
+    );
+  }
+
+  function pickHint(): string {
+    const count = selectedDates.size ? `${selectedDates.size} 日を選択中。` : "";
+    if (pickMode === "range") {
+      if (rangeStart) {
+        const [, m, d] = rangeStart.split("-").map(Number);
+        return `${count}${m}月${d}日から、終わりの日をタップしてください（別の月にも移れます）。`;
+      }
+      return `${count}始まりの日をタップしてください。`;
+    }
+    return count ? `${count}パソコンでは Shift キーを押しながらクリックすると範囲で選べます。` : "日付をタップして選びます（複数可）";
+  }
+
   function calendar(): HTMLElement {
     const first = new Date(Date.UTC(month.y, month.m - 1, 1));
     const daysInMonth = new Date(Date.UTC(month.y, month.m, 0)).getUTCDate();
@@ -169,12 +215,25 @@ export async function editPage(pollId: string): Promise<void> {
           "button",
           {
             type: "button",
-            class: `cal-day${sel ? " is-selected" : ""}${key === todayKey ? " is-today" : ""}`,
+            class: `cal-day${sel ? " is-selected" : ""}${key === todayKey ? " is-today" : ""}${key === rangeStart ? " is-range-start" : ""}`,
             aria: { pressed: String(sel), label: `${month.m}月${day}日` },
             disabled: key < todayKey,
-            onClick: () => {
-              if (sel) selectedDates.delete(key);
-              else selectedDates.add(key);
+            onClick: (e: MouseEvent) => {
+              if (pickMode === "range") {
+                if (rangeStart === null) {
+                  rangeStart = key;
+                } else {
+                  selectRange(rangeStart, key);
+                  rangeStart = null;
+                }
+              } else if (e.shiftKey && lastPicked && lastPicked !== key) {
+                selectRange(lastPicked, key);
+              } else if (sel) {
+                selectedDates.delete(key);
+              } else {
+                selectedDates.add(key);
+              }
+              lastPicked = key;
               draw();
             },
           },
@@ -197,8 +256,17 @@ export async function editPage(pollId: string): Promise<void> {
         h("strong", {}, `${month.y}年${month.m}月`),
         h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => move(1), aria: { label: "次の月" } }, "▶"),
       ),
+      h(
+        "div",
+        { class: "pick-mode", role: "group", aria: { label: "日付の選び方" } },
+        modeButton("single", "1 日ずつ"),
+        modeButton("range", "範囲で選ぶ"),
+      ),
       grid,
-      h("p", { class: "muted small" }, selectedDates.size ? `${selectedDates.size} 日を選択中` : "日付をタップして選びます（複数可）"),
+      h("p", { class: "muted small", aria: { live: "polite" } }, pickHint()),
+      selectedDates.size || rangeStart
+        ? h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { selectedDates.clear(); rangeStart = null; lastPicked = null; draw(); } }, "選択を解除")
+        : null,
     );
   }
 
