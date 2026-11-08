@@ -1,4 +1,5 @@
 # 依存の更新（docs/security-design.md §5）
+# 更新 PR は担当者（assignees）に割り当て、GitHub の通知が届くようにする
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -7,6 +8,7 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    assignees: ["yuka-okaniwa"]
     groups:
       actions:
         patterns: ["*"]
@@ -17,6 +19,7 @@ updates:
     # 公開直後の版（乗っ取りなどで悪意のある版が出た直後）を避ける。セキュリティアップデートには適用されない
     cooldown:
       default-days: 7
+    assignees: ["yuka-okaniwa"]
     groups:
       npm:
         patterns: ["*"]
