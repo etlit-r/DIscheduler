@@ -14,7 +14,6 @@ import {
 import {
   countPendingAnswers,
   deletePollData,
-  getAnswers,
   getChoices,
   getParticipant,
   getParticipants,
@@ -24,6 +23,7 @@ import {
   insertChoiceStatements,
   insertParticipantsStatement,
   readPollWithData,
+  type PollWithData,
   type PollRow,
   type SessionRow,
 } from "../db";
@@ -133,12 +133,10 @@ polls.get("/:id", async (c) => {
   const now = nowSec();
   const isOrganizer = session.role === "organizer";
   if (poll.status === "draft" && !isOrganizer) throw new AppError(404, "not_found", "この調整はまだ公開されていません。");
-  const [slots, choices, participants, answers] = await Promise.all([
-    getSlots(db, poll.id),
-    getChoices(db, poll.id),
-    getParticipants(db, poll.id),
-    getAnswers(db, poll.id),
-  ]);
+  // 調整と関連データは 1 文で読む（画面を開くたびに呼ばれるため、問い合わせの回数を抑える）
+  const data = await readPollWithData(db, poll.id);
+  if (!data) throw new AppError(404, "not_found", "この調整は削除されました。");
+  const { slots, choices, participants, answers } = data;
   const me = participants.find((p) => p.user_id === session.user_id);
   if (!me && !isOrganizer) throw new AppError(403, "not_participant", "この調整の参加者ではありません。");
   const pending = isOrganizer ? await countPendingAnswers(db, poll) : null;
@@ -443,6 +441,46 @@ polls.put("/:id/participants", async (c) => {
   return c.json({ ok: true, added: added.length, notFound: toAdd.length - added.length });
 });
 
+/**
+ * 募集メッセージを投稿する（公開・投稿し直しの共通処理。§5.5）。
+ * 同時に押されても 1 件だけ投稿するよう、投稿の前に publishing_at で権利を取る（60 秒より古い取りかけは取り直せる）。
+ * 投稿に成功したら afterPost（DB の更新）を呼ぶ。失敗しても権利は必ず手放す
+ */
+async function postPollMessage(
+  env: Env,
+  pollId: string,
+  now: number,
+  opts: { draftOnly: boolean; prepare: (data: PollWithData) => PollWithData; afterPost: (messageId: string, data: PollWithData) => Promise<void> },
+): Promise<void> {
+  const db = env.DB;
+  const claimed = await db
+    .prepare(
+      `UPDATE polls SET publishing_at = ? WHERE id = ? AND ${opts.draftOnly ? "status = 'draft'" : "status IN ('open','closed','fixed')"} ` +
+        "AND (publishing_at IS NULL OR publishing_at < ?)",
+    )
+    .bind(now, pollId, now - 60)
+    .run();
+  if (claimed.meta.changes !== 1) throw new AppError(409, "publishing", "投稿の処理中です。少し待ってから画面を再読み込みしてください。");
+  try {
+    const loaded = await readPollWithData(db, pollId);
+    if (!loaded) throw new AppError(404, "not_found", "この調整は削除されました。");
+    const data = opts.prepare(loaded);
+    let messageId: string;
+    try {
+      const res = await discord<{ id: string }>(env, "POST", `/channels/${data.poll.channel_id}/messages`, buildPollMessage({ ...data, now }));
+      messageId = res.id;
+    } catch (e) {
+      if (e instanceof DiscordError && (e.status === 403 || e.status === 404)) {
+        throw new AppError(502, "discord_forbidden", "チャンネルに投稿できませんでした。Bot がこのチャンネルを見る権限・メッセージを送信する権限を持っているか確認してください。");
+      }
+      throw e;
+    }
+    await opts.afterPost(messageId, data);
+  } finally {
+    await db.prepare("UPDATE polls SET publishing_at = NULL WHERE id = ? AND publishing_at = ?").bind(pollId, now).run();
+  }
+}
+
 polls.post("/:id/publish", async (c) => {
   requireOrganizer(c);
   const { poll } = c.var;
@@ -450,37 +488,24 @@ polls.post("/:id/publish", async (c) => {
   const now = nowSec();
   if (poll.status !== "draft") throw new AppError(409, "published", "この調整はすでに公開されています。");
   if (!poll.title) throw new AppError(400, "no_title", "タイトルを入力してください。");
-  const [slots, choices, participants] = await Promise.all([getSlots(db, poll.id), getChoices(db, poll.id), getParticipants(db, poll.id)]);
-  if (slots.length === 0) throw new AppError(400, "no_slots", "候補日時を 1 件以上入れてください。");
-  if (participants.length === 0) throw new AppError(400, "no_participants", "参加者を 1 人以上入れてください。");
   const deadlineAt = poll.deadline_at && poll.deadline_at > now ? poll.deadline_at : floorToMinute(now + DEFAULT_DEADLINE_DAYS * DAY);
-  const published: PollRow = { ...poll, status: "open", deadline_at: deadlineAt };
-  // 同時に 2 回公開されても 1 回だけ投稿するよう、投稿の前に publishing_at で権利を取る（60 秒より古い取りかけは取り直せる）
-  const claimed = await db
-    .prepare("UPDATE polls SET publishing_at = ? WHERE id = ? AND status = 'draft' AND (publishing_at IS NULL OR publishing_at < ?)")
-    .bind(now, poll.id, now - 60)
-    .run();
-  if (claimed.meta.changes !== 1) throw new AppError(409, "publishing", "公開の処理中です。少し待ってから画面を再読み込みしてください。");
-  const release = () => db.prepare("UPDATE polls SET publishing_at = NULL WHERE id = ? AND publishing_at = ?").bind(poll.id, now).run();
-  let messageId: string;
-  try {
-    const msg = buildPollMessage({ poll: published, slots, choices, participants, answers: [], now });
-    const res = await discord<{ id: string }>(c.env, "POST", `/channels/${poll.channel_id}/messages`, msg);
-    messageId = res.id;
-  } catch (e) {
-    await release();
-    if (e instanceof DiscordError && (e.status === 403 || e.status === 404)) {
-      throw new AppError(502, "discord_forbidden", "チャンネルに投稿できませんでした。Bot がこのチャンネルを見る権限・メッセージを送信する権限を持っているか確認してください。");
-    }
-    throw e;
-  }
-  await db
-    .prepare(
-      "UPDATE polls SET status = 'open', deadline_at = ?, message_id = ?, last_synced_at = ?, updated_at = ?, purge_after = ?, publishing_at = NULL " +
-        "WHERE id = ? AND status = 'draft' AND publishing_at = ?",
-    )
-    .bind(deadlineAt, messageId, now, now, deadlineAt + RETENTION, poll.id, now)
-    .run();
+  await postPollMessage(c.env, poll.id, now, {
+    draftOnly: true,
+    prepare: (data) => {
+      if (data.slots.length === 0) throw new AppError(400, "no_slots", "候補日時を 1 件以上入れてください。");
+      if (data.participants.length === 0) throw new AppError(400, "no_participants", "参加者を 1 人以上入れてください。");
+      return { ...data, poll: { ...data.poll, status: "open", deadline_at: deadlineAt }, answers: [] };
+    },
+    afterPost: async (messageId) => {
+      await db
+        .prepare(
+          "UPDATE polls SET status = 'open', deadline_at = ?, message_id = ?, last_synced_at = ?, updated_at = ?, purge_after = ?, publishing_at = NULL " +
+            "WHERE id = ? AND status = 'draft' AND publishing_at = ?",
+        )
+        .bind(deadlineAt, messageId, now, now, deadlineAt + RETENTION, poll.id, now)
+        .run();
+    },
+  });
   return c.json({ ok: true, redirect: `/p/${poll.id}/done?kind=published` });
 });
 
@@ -710,33 +735,19 @@ polls.post("/:id/repost", async (c) => {
   const now = nowSec();
   if (!canAnswer(poll.status)) throw new AppError(409, "not_published", "公開してから投稿してください。");
   if (!(await hitRateLimit(db, `sync:${poll.id}`, 1, 60, now))) throw new AppError(429, "rate_limited", "投稿・更新は 1 分に 1 回までです。");
-  // 公開と同じく、同時に押されても 1 件だけ投稿する
-  const claimed = await db
-    .prepare("UPDATE polls SET publishing_at = ? WHERE id = ? AND (publishing_at IS NULL OR publishing_at < ?)")
-    .bind(now, poll.id, now - 60)
-    .run();
-  if (claimed.meta.changes !== 1) throw new AppError(409, "publishing", "投稿の処理中です。少し待ってから画面を再読み込みしてください。");
-  try {
-    const data = await readPollWithData(db, poll.id);
-    if (!data) throw new AppError(404, "not_found", "この調整は削除されました。");
-    let messageId: string;
-    try {
-      const res = await discord<{ id: string }>(c.env, "POST", `/channels/${poll.channel_id}/messages`, buildPollMessage({ ...data, now }));
-      messageId = res.id;
-    } catch (e) {
-      if (e instanceof DiscordError && (e.status === 403 || e.status === 404)) {
-        throw new AppError(502, "discord_forbidden", "チャンネルに投稿できませんでした。Bot がこのチャンネルを見る権限・メッセージを送信する権限を持っているか確認してください。");
+  await postPollMessage(c.env, poll.id, now, {
+    draftOnly: false,
+    prepare: (data) => data,
+    afterPost: async (messageId, data) => {
+      // 先に新しい ID を記録してから古いメッセージを消す（同時に走る更新が新しいメッセージを見失わないように）
+      await db.prepare("UPDATE polls SET message_id = ?, last_synced_at = ? WHERE id = ?").bind(messageId, now, poll.id).run();
+      const old = data.poll.message_id;
+      if (old && old !== messageId) {
+        await discord(c.env, "DELETE", `/channels/${data.poll.channel_id}/messages/${old}`).catch(() => undefined);
       }
-      throw e;
-    }
-    if (poll.message_id && poll.message_id !== messageId) {
-      await discord(c.env, "DELETE", `/channels/${poll.channel_id}/messages/${poll.message_id}`).catch(() => undefined);
-    }
-    await db.prepare("UPDATE polls SET message_id = ?, last_synced_at = ?, publishing_at = NULL WHERE id = ?").bind(messageId, now, poll.id).run();
-    return c.json({ ok: true });
-  } finally {
-    await db.prepare("UPDATE polls SET publishing_at = NULL WHERE id = ? AND publishing_at = ?").bind(poll.id, now).run();
-  }
+    },
+  });
+  return c.json({ ok: true });
 });
 
 polls.delete("/:id", async (c) => {
