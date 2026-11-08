@@ -197,8 +197,29 @@ export async function answerPage(pollId: string): Promise<void> {
         d.poll.description ? h("p", { class: "description" }, d.poll.description) : null,
         statusBanner(d),
         // 回答したあとに主催者が選択肢を変えていたら知らせる（§6.9.4）
-        d.poll.choicesChangedAt && d.me.answeredAt && d.poll.choicesChangedAt > d.me.answeredAt
-          ? notice("warn", `回答のあとで、主催者が選択肢を変更しました（${dateTimeText(d.poll.choicesChangedAt, tz)}）。あなたの回答の意味が変わっていないか確認してください。`)
+        // ［確認しました］を押すまで表示する（ひとことだけの保存などでは消さない）
+        d.me.needsChoicesAck && d.poll.choicesChangedAt
+          ? notice(
+              "warn",
+              `回答のあとで、主催者が選択肢を変更しました（${dateTimeText(d.poll.choicesChangedAt, tz)}）。あなたの回答の意味が変わっていないか確認してください。 `,
+              h(
+                "button",
+                {
+                  type: "button",
+                  class: "btn btn-secondary btn-small",
+                  onClick: async () => {
+                    try {
+                      await request("POST", `/api/polls/${pollId}/choices-ack`, {});
+                      await reload();
+                    } catch (e) {
+                      message = notice("error", e instanceof Error ? e.message : "保存できませんでした。");
+                      draw();
+                    }
+                  },
+                },
+                "確認しました",
+              ),
+            )
           : null,
         message,
         form,
