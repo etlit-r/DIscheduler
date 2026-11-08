@@ -5,17 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DIscheduler｜Discord の日程調整 Bot</title>
   <meta name="description" content="Discord のチャンネルやロールのメンバーで日程調整ができる Bot。候補日時の入力、○△×での回答、確定日時の Discord イベント登録まで、Discord の中で完結します。">
+  <meta name="color-scheme" content="dark">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/assets/site.css">
+  <link rel="stylesheet" href="/assets/lp.css">
+  <!-- アイコン: Lucide（ISC License。/assets/lucide-LICENSE.txt） -->
 </head>
-<body>
+<body class="lp">
   <a class="skip-link" href="#main">本文へ移動</a>
 
   <header class="site-header">
     <div class="container">
       <a class="brand" href="/">
-        <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="6" width="26" height="23" rx="5" fill="currentColor" opacity=".15"/><rect x="3" y="6" width="26" height="23" rx="5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M3 13h26M10 3v6M22 3v6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="m11 21 3.5 3.5L21.5 17" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        DIscheduler
+        <span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg></span>
+        <span class="brand-name">DIscheduler<span class="brand-badge">Bot</span></span>
       </a>
       <nav class="site-nav" aria-label="メインメニュー">
         <ul>
@@ -23,7 +26,7 @@
           <li class="nav-optional"><a href="#how">使い方</a></li>
           <li class="nav-optional"><a href="#admin">管理者の方へ</a></li>
           <li><a href="/security">セキュリティ</a></li>
-          <li><a class="btn btn-primary btn-small" href="https://discord.com/oauth2/authorize?client_id=__DISCORD_APPLICATION_ID__&amp;scope=bot+applications.commands&amp;permissions=17600775998464" rel="noopener noreferrer">追加する</a></li>
+          <li><a class="btn btn-primary btn-small" href="https://discord.com/oauth2/authorize?client_id=__DISCORD_APPLICATION_ID__&amp;scope=bot+applications.commands&amp;permissions=17600775998464" rel="noopener noreferrer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14"/><path d="M12 5v14"/></svg>追加する</a></li>
         </ul>
       </nav>
     </div>
@@ -32,40 +35,48 @@
   <main id="main">
     <section class="hero">
       <div class="container">
-        <div>
-          <p class="eyebrow">Discord の日程調整 Bot</p>
-          <h1><span class="phrase">メンバーの</span><span class="phrase">予定合わせを、</span><span class="phrase hl">Discord の中で。</span></h1>
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="pulse-dot" aria-hidden="true"></span>Discord の日程調整 Bot</p>
+          <h1><span class="phrase">メンバーの</span><span class="phrase">予定合わせを、</span><br><span class="phrase hl">Discord の中で。</span></h1>
           <p class="lead">チャンネルやロールのメンバーが最初から参加者に入った状態で、日程調整を始められます。候補日時の入力から回答、確定、Discord イベントの登録まで、外部サービスへの登録なしで使えます。</p>
           <div class="cta-row">
-            <a class="btn btn-primary" href="https://discord.com/oauth2/authorize?client_id=__DISCORD_APPLICATION_ID__&amp;scope=bot+applications.commands&amp;permissions=17600775998464" rel="noopener noreferrer">サーバーに追加する</a>
-            <a class="btn btn-secondary" href="/security">セキュリティ方針を見る</a>
+            <a class="btn btn-primary btn-large" href="https://discord.com/oauth2/authorize?client_id=__DISCORD_APPLICATION_ID__&amp;scope=bot+applications.commands&amp;permissions=17600775998464" rel="noopener noreferrer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>サーバーに追加する</a>
+            <a class="btn btn-secondary btn-large" href="/security"><svg class="ic ic-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>セキュリティ方針を見る</a>
           </div>
-          <p class="hero-note">無料で使えます。管理者権限は求めません。</p>
+          <ul class="trust">
+            <li><svg class="ic ic-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>無料で使えます</li>
+            <li><svg class="ic ic-yellow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>管理者権限は求めません</li>
+          </ul>
         </div>
 
-        <figure class="mock" aria-label="集計画面のイメージ">
-          <div class="mock-head">
-            <span class="mock-title">定例会</span>
-            <span class="mock-meta">回答 9 / 12 名</span>
-          </div>
-          <div class="mock-scroll">
-            <table>
-              <thead>
-                <tr><th scope="col">候補日時</th><th scope="col">○</th><th scope="col">△</th><th scope="col">×</th><th scope="col">未回答</th></tr>
-              </thead>
-              <tbody>
-                <tr class="best"><td><span class="star" aria-label="最有力候補">★</span> 11/11(水) 20:00</td><td><span class="mark mark-ok">8</span></td><td><span class="mark mark-maybe">1</span></td><td><span class="mark mark-ng">0</span></td><td>3</td></tr>
-                <tr><td>11/4(水) 20:00</td><td><span class="mark mark-ok">5</span></td><td><span class="mark mark-maybe">2</span></td><td><span class="mark mark-ng">2</span></td><td>3</td></tr>
-                <tr><td>11/12(木) 20:00</td><td><span class="mark mark-ok">3</span></td><td><span class="mark mark-maybe">1</span></td><td><span class="mark mark-ng">5</span></td><td>3</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <figcaption class="mock-foot">★ は × が最も少なく ○ が最も多い候補です</figcaption>
-        </figure>
+        <div class="mock-wrap">
+          <figure class="mock" aria-label="集計画面のイメージ">
+            <div class="mock-head">
+              <span class="mock-avatar"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 2v4"/><path d="M16 2v4"/><path d="M21 14V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8"/><path d="M3 10h18"/><path d="m16 20 2 2 4-4"/></svg></span>
+              <div>
+                <span class="mock-title">定例会</span>
+                <span class="mock-meta">回答 9 / 12 名</span>
+              </div>
+            </div>
+            <div class="mock-scroll">
+              <table>
+                <thead>
+                  <tr><th scope="col">候補日時</th><th scope="col" class="c-ok">○</th><th scope="col" class="c-maybe">△</th><th scope="col" class="c-ng">×</th><th scope="col">未回答</th></tr>
+                </thead>
+                <tbody>
+                  <tr class="best"><td><span class="star" aria-label="最有力候補"><svg class="ic ic-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg></span>11/11(水) 20:00</td><td><span class="mark mark-ok">8</span></td><td><span class="mark mark-maybe">1</span></td><td><span class="mark mark-ng">0</span></td><td>3</td></tr>
+                  <tr><td>11/4(水) 20:00</td><td><span class="mark">5</span></td><td><span class="mark">2</span></td><td><span class="mark">2</span></td><td>3</td></tr>
+                  <tr><td>11/12(木) 20:00</td><td><span class="mark">3</span></td><td><span class="mark">1</span></td><td><span class="mark">5</span></td><td>3</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <figcaption class="mock-foot"><svg class="ic ic-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span><span class="c-star">★</span> は × が最も少なく ○ が最も多い候補です</span></figcaption>
+          </figure>
+        </div>
       </div>
     </section>
 
-    <section class="section section-features" id="features" aria-labelledby="features-title">
+    <section class="section band" id="features" aria-labelledby="features-title">
       <div class="container">
         <div class="section-head">
           <p class="kicker">Features</p>
@@ -73,23 +84,23 @@
           <p class="section-lead">主催者も参加者も、迷わず操作できることを重視しています。スマートフォンの Discord アプリからでも使えます。</p>
         </div>
         <div class="grid grid-4">
-          <article class="card feature">
-            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 14.2a5 5 0 0 1 4.5 4.8"/></svg></span>
+          <article class="feature">
+            <span class="feature-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/></svg></span>
             <h3>参加者を自動で設定</h3>
             <p>コマンドを打ったチャンネルのメンバー、または指定したロールのメンバーが、最初から参加者に入ります。手動で選ぶこともできます。</p>
           </article>
-          <article class="card feature">
-            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4M8 14h2M14 14h2M8 17.5h2"/></svg></span>
+          <article class="feature">
+            <span class="feature-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M17 14h-6"/><path d="M13 18H7"/><path d="M7 14h.01"/><path d="M17 18h.01"/></svg></span>
             <h3>候補日時はまとめて入力</h3>
             <p>カレンダーで日付を複数選び、時間帯を一度に当てはめられます。10 件の候補も数タップで作れます。</p>
           </article>
-          <article class="card feature">
-            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="3"/><path d="M9.5 15 12 9l2.5 6zM17 9.5l5 5M22 9.5l-5 5"/></svg></span>
+          <article class="feature">
+            <span class="feature-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg></span>
             <h3>回答は ○△× をタップ</h3>
             <p>募集メッセージのボタンから、自分専用の入力画面が開きます。ログインやアカウント登録はいりません。</p>
           </article>
-          <article class="card feature">
-            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="m9 15.5 2 2 4-4"/></svg></span>
+          <article class="feature">
+            <span class="feature-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span>
             <h3>確定したらイベントに</h3>
             <p>主催者が日時を確定すると、チャンネルにお知らせが投稿されます。Discord のイベントとして登録することもできます。</p>
           </article>
@@ -97,7 +108,7 @@
       </div>
     </section>
 
-    <section class="section section-how" id="how" aria-labelledby="how-title">
+    <section class="section" id="how" aria-labelledby="how-title">
       <div class="container">
         <div class="section-head">
           <p class="kicker">How it works</p>
@@ -106,22 +117,22 @@
         </div>
         <ol class="steps">
           <li>
-            <div class="step-top"><span class="step-no" aria-hidden="true">1</span><span class="who who-host">主催者</span></div>
+            <div class="step-top"><span class="step-no" aria-hidden="true">1</span><span class="role role-host">主催者</span></div>
             <h3>調整を作る</h3>
             <p>チャンネルで <code>/schedule</code>（または <code>/poll</code>）と入力して実行します。本人にだけ表示されるリンクから、タイトルや参加者を設定します。</p>
           </li>
           <li>
-            <div class="step-top"><span class="step-no" aria-hidden="true">2</span><span class="who who-host">主催者</span></div>
+            <div class="step-top"><span class="step-no" aria-hidden="true">2</span><span class="role role-host">主催者</span></div>
             <h3>候補日時を入れる</h3>
             <p>同じ画面で候補日時を選び、公開します。チャンネルに募集メッセージが投稿されます。</p>
           </li>
           <li>
-            <div class="step-top"><span class="step-no" aria-hidden="true">3</span><span class="who who-guest">参加者</span></div>
+            <div class="step-top"><span class="step-no" aria-hidden="true">3</span><span class="role role-guest">参加者</span></div>
             <h3>都合を答える</h3>
             <p>募集メッセージの［回答する］を押し、候補ごとに ○・△・× を選んで保存します。ほかの参加者の回答も見られます。</p>
           </li>
           <li>
-            <div class="step-top"><span class="step-no" aria-hidden="true">4</span><span class="who who-host">主催者</span></div>
+            <div class="step-top"><span class="step-no" aria-hidden="true">4</span><span class="role role-host">主催者</span></div>
             <h3>日時を確定する</h3>
             <p>集計表から日時を選んで確定します。未回答の人へのリマインドや、Discord イベントの登録もここからできます。</p>
           </li>
@@ -129,7 +140,7 @@
       </div>
     </section>
 
-    <section class="section section-admin" id="admin" aria-labelledby="admin-title">
+    <section class="section band" id="admin" aria-labelledby="admin-title">
       <div class="container">
         <div class="section-head">
           <p class="kicker">For admins</p>
@@ -137,18 +148,18 @@
           <p class="section-lead">Bot に渡す権限は必要なものだけです。コマンドを使えるチャンネルは、Discord の標準機能で指定できます。</p>
         </div>
 
-        <div class="grid grid-2">
+        <div class="grid grid-2 admin-grid">
           <div class="panel">
-            <h3>Bot に渡す権限</h3>
-            <div class="table-wrap">
-              <table class="data">
-                <thead><tr><th scope="col">権限</th><th scope="col">用途</th></tr></thead>
+            <div class="panel-head"><h3><svg class="ic ic-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>Bot に渡す権限</h3></div>
+            <div class="table-scroll">
+              <table class="perm">
+                <thead><tr><th scope="col">権限</th><th scope="col">区分</th><th scope="col">用途</th></tr></thead>
                 <tbody>
-                  <tr><th scope="row">チャンネルを見る <span class="tag tag-required">必須</span></th><td>投稿先のチャンネルを確認する</td></tr>
-                  <tr><th scope="row">メッセージを送信 <span class="tag tag-required">必須</span></th><td>募集・確定のお知らせを投稿する</td></tr>
-                  <tr><th scope="row">埋め込みリンク <span class="tag tag-required">必須</span></th><td>候補日時と集計を見やすく表示する</td></tr>
-                  <tr><th scope="row">イベントの作成 <span class="tag tag-optional">任意</span></th><td>確定した日時を Discord イベントに登録する</td></tr>
-                  <tr><th scope="row">イベントの管理 <span class="tag tag-optional">任意</span></th><td>Bot が作ったイベントを編集・削除する</td></tr>
+                  <tr><th scope="row">チャンネルを見る</th><td><span class="tag tag-required">必須</span></td><td>投稿先のチャンネルを確認する</td></tr>
+                  <tr><th scope="row">メッセージを送信</th><td><span class="tag tag-required">必須</span></td><td>募集・確定のお知らせを投稿する</td></tr>
+                  <tr><th scope="row">埋め込みリンク</th><td><span class="tag tag-required">必須</span></td><td>候補日時と集計を見やすく表示する</td></tr>
+                  <tr><th scope="row">イベントの作成</th><td><span class="tag tag-optional">任意</span></td><td>確定した日時を Discord イベントに登録する</td></tr>
+                  <tr><th scope="row">イベントの管理</th><td><span class="tag tag-optional">任意</span></td><td>Bot が作ったイベントを編集・削除する</td></tr>
                 </tbody>
               </table>
             </div>
@@ -156,7 +167,7 @@
           </div>
 
           <div class="panel">
-            <h3>コマンドを使えるチャンネルの指定</h3>
+            <div class="panel-head"><h3><svg class="ic ic-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>コマンドを使えるチャンネルの指定</h3></div>
             <ol class="howto">
               <li>「サーバー設定」→「連携サービス」→「DIscheduler」を開きます。</li>
               <li>「チャンネル」で「すべてのチャンネル」をオフにし、コマンドを使わせたいチャンネルを追加します。</li>
@@ -174,116 +185,118 @@
       </div>
     </section>
 
-    <section class="section section-security" id="security" aria-labelledby="security-title">
+    <section class="section" id="security" aria-labelledby="security-title">
       <div class="container">
         <div class="section-head">
-          <p class="kicker">Security &amp; privacy</p>
+          <p class="kicker kicker-green">Security &amp; privacy</p>
           <h2 id="security-title">セキュリティとプライバシー</h2>
           <p class="section-lead">参加者の予定という個人に関わる情報を扱うため、セキュリティを最優先に設計しています。対策の内容はすべて公開しています。</p>
         </div>
-        <div class="grid grid-2">
-          <div class="card">
-            <h3>この Bot がしないこと</h3>
-            <ul class="check-list x-list">
-              <li>Discord のパスワード入力やログインを求めません</li>
-              <li>管理者権限を求めません</li>
-              <li>メッセージの本文を読みません</li>
-              <li>メールアドレス・IP アドレスを保存しません</li>
-              <li><code>@everyone</code> やロールへのメンションをしません</li>
-              <li>外部の解析ツールや広告を読み込みません</li>
+        <div class="grid grid-2 security-grid">
+          <div class="panel panel-lg">
+            <div class="panel-head"><span class="panel-icon panel-icon-green"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m2 2 20 20"/><path d="M5 5a1 1 0 0 0-1 1v7c0 5 3.5 7.5 7.67 8.94a1 1 0 0 0 .67.01c2.35-.82 4.48-1.97 5.9-3.71"/><path d="M9.309 3.652A12.252 12.252 0 0 0 11.24 2.28a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1v7a9.784 9.784 0 0 1-.08 1.264"/></svg></span><h3>この Bot がしないこと</h3></div>
+            <ul class="check-list">
+              <li><svg class="ic ic-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg><span>Discord のパスワード入力やログインを求めません</span></li>
+              <li><svg class="ic ic-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg><span>管理者権限を求めません</span></li>
+              <li><svg class="ic ic-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg><span>メッセージの本文を読みません</span></li>
+              <li><svg class="ic ic-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg><span>メールアドレス・IP アドレスを保存しません</span></li>
+              <li><svg class="ic ic-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg><span><code>@everyone</code> やロールへのメンションをしません</span></li>
+              <li><svg class="ic ic-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg><span>外部の解析ツールや広告を読み込みません</span></li>
             </ul>
           </div>
-          <div class="card">
-            <h3>回答とデータの扱い</h3>
+          <div class="panel panel-lg">
+            <div class="panel-head"><span class="panel-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><h3>回答とデータの扱い</h3></div>
             <ul class="check-list">
-              <li>回答は、その調整の参加者同士でだけ共有されます</li>
-              <li>参加者以外の人には、URL を知っていても見えません</li>
-              <li>チャンネルには、候補ごとの人数だけを表示します</li>
-              <li>入力リンクは本人だけに表示され、10 分有効・1 回限りです</li>
-              <li>データは締切・確定から 6 ヶ月後に自動で削除されます</li>
-              <li>主催者はいつでも調整を削除できます</li>
+              <li><svg class="ic ic-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg><span>回答は、その調整の参加者同士でだけ共有されます</span></li>
+              <li><svg class="ic ic-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg><span>参加者以外の人には、URL を知っていても見えません</span></li>
+              <li><svg class="ic ic-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg><span>チャンネルには、候補ごとの人数だけを表示します</span></li>
+              <li><svg class="ic ic-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg><span>入力リンクは本人だけに表示され、10 分有効・1 回限りです</span></li>
+              <li><svg class="ic ic-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg><span>データは締切・確定から 6 ヶ月後に自動で削除されます</span></li>
+              <li><svg class="ic ic-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg><span>主催者はいつでも調整を削除できます</span></li>
             </ul>
           </div>
         </div>
-        <p class="cta-row"><a class="btn btn-secondary" href="/security">セキュリティ方針の全文を読む</a></p>
+        <p class="center-row"><a class="btn btn-secondary" href="/security"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>セキュリティ方針の全文を読む</a></p>
       </div>
     </section>
 
-    <section class="section faq" id="faq" aria-labelledby="faq-title">
-      <div class="container">
+    <section class="section band faq" id="faq" aria-labelledby="faq-title">
+      <div class="container container-narrow">
         <div class="section-head">
           <p class="kicker">FAQ</p>
           <h2 id="faq-title">よくある質問</h2>
           <p class="section-lead">そのほかの疑問は、<a href="/security">セキュリティ方針</a>もあわせてご覧ください。</p>
         </div>
         <div class="faq-list">
-        <details>
-          <summary>料金はかかりますか？</summary>
-          <p>かかりません。Cloudflare の無料枠だけで動かしています。<!-- donation:start -->運営を支援していただける方は、<a href="#support">運営の支援</a>からお願いします（任意です）。<!-- donation:end --></p>
-        </details>
-        <details>
-          <summary>使えなくなることはありますか？</summary>
-          <p>あります。利用が多く、Cloudflare の無料枠（1 日あたりのリクエスト数やデータベースの読み書きの上限）を超えた日は、その日の残りの時間は使えなくなります。無料枠は毎日 日本時間の午前 9 時（UTC 0 時）にリセットされ、そこから使えるようになります。無料枠を超えても料金はかからず、入力済みの回答も消えません。<!-- donation:start -->使えなくなる日が続くようなら、有料プランへの切り替えを考えています。<a href="#support">運営の支援</a>もご検討ください。<!-- donation:end --></p>
-        </details>
-        <details>
-          <summary>参加者はログインやアカウント登録が必要ですか？</summary>
-          <p>必要ありません。募集メッセージの［回答する］を押すと、本人にだけ見えるメッセージで入力リンクが届きます。そのリンクを開けば、そのまま回答できます。</p>
-        </details>
-        <details>
-          <summary>回答は後から変えられますか？</summary>
-          <p>変えられます。締切を過ぎたあとも、日時が確定したあとも、調整が残っている間はいつでも変更できます。募集メッセージの［回答する］から入力画面を開いてください。確定後に回答を変えた場合は、主催者の集計画面にそのことが表示されます。</p>
-        </details>
-        <details>
-          <summary>自分の回答は誰に見えますか？</summary>
-          <p>その調整の参加者と主催者に見えます。日程を合わせるために、誰がどの日に参加できるかを共有する仕組みです。参加者以外の人や、サーバーの外の人からは見えません。</p>
-        </details>
-        <details>
-          <summary>海外のメンバーがいても使えますか？</summary>
-          <p>使えます。日時は、見ている人のブラウザのタイムゾーンで表示されます。分からない場合は日本時間で表示し、画面から切り替えることもできます。</p>
-        </details>
-        <details>
-          <summary>データはいつ消えますか？</summary>
-          <p>締切日または確定日から 6 ヶ月後に、自動で削除されます。主催者はそれより前でもいつでも削除できます。Bot をサーバーから外した場合も、そのサーバーのデータは削除されます。</p>
-        </details>
-        <details>
-          <summary>セキュリティの問題を見つけたらどうすればいいですか？</summary>
-          <p>公開の場には書かず、<a href="/security#report">セキュリティ方針の「脆弱性の報告」</a>にある窓口から知らせてください。</p>
-        </details>
+          <details class="faq-item">
+            <summary><span>料金はかかりますか？</span><svg class="ic chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></summary>
+            <div class="faq-a"><p>かかりません。Cloudflare の無料枠だけで動かしています。<!-- donation:start -->運営を支援していただける方は、<a href="#support">運営の支援</a>からお願いします（任意です）。<!-- donation:end --></p></div>
+          </details>
+          <details class="faq-item">
+            <summary><span>使えなくなることはありますか？</span><svg class="ic chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></summary>
+            <div class="faq-a"><p>あります。利用が多く、Cloudflare の無料枠（1 日あたりのリクエスト数やデータベースの読み書きの上限）を超えた日は、その日の残りの時間は使えなくなります。無料枠は毎日 日本時間の午前 9 時（UTC 0 時）にリセットされ、そこから使えるようになります。無料枠を超えても料金はかからず、入力済みの回答も消えません。<!-- donation:start -->使えなくなる日が続くようなら、有料プランへの切り替えを考えています。<a href="#support">運営の支援</a>もご検討ください。<!-- donation:end --></p></div>
+          </details>
+          <details class="faq-item">
+            <summary><span>参加者はログインやアカウント登録が必要ですか？</span><svg class="ic chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></summary>
+            <div class="faq-a"><p>必要ありません。募集メッセージの［回答する］を押すと、本人にだけ見えるメッセージで入力リンクが届きます。そのリンクを開けば、そのまま回答できます。</p></div>
+          </details>
+          <details class="faq-item">
+            <summary><span>回答は後から変えられますか？</span><svg class="ic chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></summary>
+            <div class="faq-a"><p>変えられます。締切を過ぎたあとも、日時が確定したあとも、調整が残っている間はいつでも変更できます。募集メッセージの［回答する］から入力画面を開いてください。確定後に回答を変えた場合は、主催者の集計画面にそのことが表示されます。</p></div>
+          </details>
+          <details class="faq-item">
+            <summary><span>自分の回答は誰に見えますか？</span><svg class="ic chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></summary>
+            <div class="faq-a"><p>その調整の参加者と主催者に見えます。日程を合わせるために、誰がどの日に参加できるかを共有する仕組みです。参加者以外の人や、サーバーの外の人からは見えません。</p></div>
+          </details>
+          <details class="faq-item">
+            <summary><span>海外のメンバーがいても使えますか？</span><svg class="ic chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></summary>
+            <div class="faq-a"><p>使えます。日時は、見ている人のブラウザのタイムゾーンで表示されます。分からない場合は日本時間で表示し、画面から切り替えることもできます。</p></div>
+          </details>
+          <details class="faq-item">
+            <summary><span>データはいつ消えますか？</span><svg class="ic chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></summary>
+            <div class="faq-a"><p>締切日または確定日から 6 ヶ月後に、自動で削除されます。主催者はそれより前でもいつでも削除できます。Bot をサーバーから外した場合も、そのサーバーのデータは削除されます。</p></div>
+          </details>
+          <details class="faq-item">
+            <summary><span>セキュリティの問題を見つけたらどうすればいいですか？</span><svg class="ic chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></summary>
+            <div class="faq-a"><p>公開の場には書かず、<a href="/security#report">セキュリティ方針の「脆弱性の報告」</a>にある窓口から知らせてください。</p></div>
+          </details>
         </div>
       </div>
     </section>
 
     <!-- donation:start -->
-    <section class="section donation" id="support" aria-labelledby="support-title">
-      <div class="container">
+    <section class="section" id="support" aria-labelledby="support-title">
+      <div class="container container-narrow">
         <div class="donation-box">
-        <p class="kicker">Support</p>
-        <h2 id="support-title">運営の支援</h2>
-        <p class="section-lead">DIscheduler は無料で使えます。運営費は Cloudflare の無料枠に収めていますが、利用が増えて無料枠を超えるようになったときは、有料プラン（月 5 ドル程度）に切り替えて使える状態を保ちたいと考えています。役に立ったと思っていただけたら、支援していただけるとうれしいです。</p>
-        <p><a class="btn btn-secondary" href="__DONATION_URL__" rel="noopener noreferrer">運営を支援する</a></p>
-        <p class="term">支援は任意です。支援の有無で使える機能は変わりません。リンク先は外部の支援サービスで、このサイトから支援サービスへ情報は送りません。</p>
+          <p class="kicker">Support</p>
+          <h2 id="support-title">運営の支援</h2>
+          <p class="section-lead">DIscheduler は無料で使えます。運営費は Cloudflare の無料枠に収めていますが、利用が増えて無料枠を超えるようになったときは、有料プラン（月 5 ドル程度）に切り替えて使える状態を保ちたいと考えています。役に立ったと思っていただけたら、支援していただけるとうれしいです。</p>
+          <p><a class="btn btn-secondary" href="__DONATION_URL__" rel="noopener noreferrer">運営を支援する</a></p>
+          <p class="term">支援は任意です。支援の有無で使える機能は変わりません。リンク先は外部の支援サービスで、このサイトから支援サービスへ情報は送りません。</p>
         </div>
       </div>
     </section>
     <!-- donation:end -->
 
-    <section class="cta-band" aria-labelledby="cta-title">
-      <div class="container">
-        <h2 id="cta-title">次の予定合わせから、Discord の中で。</h2>
-        <p>無料で使えます。管理者権限は求めません。</p>
-        <a class="btn btn-onaccent" href="https://discord.com/oauth2/authorize?client_id=__DISCORD_APPLICATION_ID__&amp;scope=bot+applications.commands&amp;permissions=17600775998464" rel="noopener noreferrer">サーバーに追加する</a>
+    <section class="cta-section" aria-labelledby="cta-title">
+      <div class="container container-mid">
+        <div class="cta-box">
+          <h2 id="cta-title">次の予定合わせから、Discord の中で。</h2>
+          <p>無料で使えます。管理者権限は求めません。</p>
+          <a class="btn btn-primary btn-xl" href="https://discord.com/oauth2/authorize?client_id=__DISCORD_APPLICATION_ID__&amp;scope=bot+applications.commands&amp;permissions=17600775998464" rel="noopener noreferrer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14"/><path d="M12 5v14"/></svg>サーバーに追加する</a>
+        </div>
       </div>
     </section>
   </main>
 
   <footer class="site-footer">
     <div class="container">
-      <p>DIscheduler</p>
+      <a class="footer-brand" href="/"><span class="brand-mark brand-mark-sm"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg></span>DIscheduler</a>
       <ul>
         <li><a href="/security">セキュリティ方針</a></li>
         <li><a href="/security#report">脆弱性の報告</a></li>
         <!-- donation:start --><li><a href="#support">運営の支援</a></li><!-- donation:end -->
-        <li><a href="https://github.com/yuka-okaniwa/DIscheduler" rel="noopener noreferrer">GitHub</a></li>
+        <li><a href="https://github.com/yuka-okaniwa/DIscheduler" rel="noopener noreferrer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>GitHub</a></li>
       </ul>
     </div>
   </footer>

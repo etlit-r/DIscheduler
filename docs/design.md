@@ -996,6 +996,8 @@ DIscheduler/
 │   ├── index.html            # S0: Bot の案内（LP）
 │   ├── security.html         # S6: セキュリティ方針（公開の正本）
 │   ├── assets/site.css       # 公開ページ共通のスタイル
+│   ├── assets/lp.css         # LP とセキュリティ方針ページのデザイン（暗い配色）
+│   ├── assets/lucide-LICENSE.txt # 埋め込んだアイコン（Lucide）のライセンス
 │   ├── favicon.svg           # ファビコン
 │   ├── _headers              # 静的配信時のセキュリティヘッダー
 │   └── robots.txt            # / と /security 以外のクロールを拒否
