@@ -1,6 +1,6 @@
 // 募集メッセージの更新（docs/design.md §5.5）
 import type { Env } from "../core/env";
-import { getAnswers, getChoices, getParticipants, getPoll, getSlots } from "../db";
+import { getPoll, readPollData } from "../db";
 import { buildPollMessage } from "../discord/messages";
 import { discord, DiscordError } from "../discord/rest";
 import { nowSec, sleep } from "../core/lib";
@@ -8,38 +8,28 @@ import { nowSec, sleep } from "../core/lib";
 /** 連続した保存をまとめる間隔。ctx.waitUntil の上限（応答後およそ 30 秒）に収まるよう 20 秒にする */
 export const SYNC_INTERVAL = 20;
 
-/** last_synced_at を条件付きで書き換え、更新する権利を取る（同時に走っても 1 回だけ更新する） */
-async function claim(db: D1Database, pollId: string, now: number, minInterval: number): Promise<{ prev: number | null } | null> {
-  const row = await db.prepare("SELECT last_synced_at FROM polls WHERE id = ?").bind(pollId).first<{ last_synced_at: number | null }>();
-  if (!row) return null;
-  const prev = row.last_synced_at;
-  const r = await db
-    .prepare("UPDATE polls SET last_synced_at = ? WHERE id = ? AND last_synced_at IS ? AND (last_synced_at IS NULL OR last_synced_at <= ?)")
+/** 募集メッセージを今の内容で更新する。更新できたら true
+ * D1 への問い合わせは「調整の読み込み・更新権利の取得・関連データの一括読み込み」の 3 回（失敗時は +1〜2）
+ */
+export async function syncNow(env: Env, pollId: string, minInterval = 0): Promise<boolean> {
+  const db = env.DB;
+  const poll = await getPoll(db, pollId);
+  // 募集メッセージがないときは、最終更新時刻を書き換えない（未反映の件数が 0 に見えてしまうため）
+  if (!poll?.message_id) return false;
+  const now = nowSec();
+  const prev = poll.last_synced_at;
+  // last_synced_at を条件付きで書き換えて、更新する権利を取る（同時に走っても 1 回だけ更新する）
+  const claimed = await db
+    .prepare(
+      "UPDATE polls SET last_synced_at = ? WHERE id = ? AND message_id IS NOT NULL AND last_synced_at IS ? " +
+        "AND (last_synced_at IS NULL OR last_synced_at <= ?)",
+    )
     .bind(now, pollId, prev, now - minInterval)
     .run();
-  return r.meta.changes === 1 ? { prev } : null;
-}
-
-/** 募集メッセージを今の内容で更新する。更新できたら true */
-export async function syncNow(env: Env, pollId: string, minInterval = 0): Promise<boolean> {
-  // 募集メッセージがないときは、最終更新時刻を書き換えない（未反映の件数が 0 に見えてしまうため）
-  const before = await getPoll(env.DB, pollId);
-  if (!before?.message_id) return false;
-  const now = nowSec();
-  const c = await claim(env.DB, pollId, now, minInterval);
-  if (!c) return false;
-  const poll = await getPoll(env.DB, pollId);
-  if (!poll?.message_id) {
-    await env.DB.prepare("UPDATE polls SET last_synced_at = ? WHERE id = ? AND last_synced_at = ?").bind(c.prev, pollId, now).run();
-    return false;
-  }
+  if (claimed.meta.changes !== 1) return false;
+  const c = { prev };
   try {
-    const [slots, choices, participants, answers] = await Promise.all([
-      getSlots(env.DB, pollId),
-      getChoices(env.DB, pollId),
-      getParticipants(env.DB, pollId),
-      getAnswers(env.DB, pollId),
-    ]);
+    const [slots, choices, participants, answers] = await readPollData(db, pollId);
     const msg = buildPollMessage({ poll, slots, choices, participants, answers, now });
     await discord(env, "PATCH", `/channels/${poll.channel_id}/messages/${poll.message_id}`, msg);
     return true;

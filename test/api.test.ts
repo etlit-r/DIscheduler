@@ -353,3 +353,52 @@ describe("2 回目のレビューの修正", () => {
   });
 });
 
+describe("3 回目のレビューの修正", () => {
+  it("締切は分単位で比べる（秒が違うだけなら変えていないとみなす）", async () => {
+    const s = await seedPoll({ deadlineAt: 1_000_037 });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const res = await call(jsonReq("PATCH", `/api/polls/${s.pollId}`, { title: "改名", deadlineAt: 1_000_020 }, org));
+    expect(res.status).toBe(200);
+  });
+
+  it("候補・選択肢の ID が重複していたら拒否する", async () => {
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const now = Math.floor(Date.now() / 1000) + 86400;
+    const dupSlots = { slots: [{ id: s.slotIds[0], startAt: now, endAt: null, allDay: false }, { id: s.slotIds[0], startAt: now + 3600, endAt: null, allDay: false }] };
+    expect((await call(jsonReq("PUT", `/api/polls/${s.pollId}/slots`, dupSlots, org))).status).toBe(400);
+    const dupChoices = {
+      choicesVersion: 1,
+      choices: [
+        { id: s.choiceIds[0], symbol: "○", label: "参加", kind: "ok", score: 2, color: "green" },
+        { id: s.choiceIds[0], symbol: "×", label: "不可", kind: "ng", score: 0, color: "red" },
+      ],
+      reassign: [],
+    };
+    expect((await call(jsonReq("PUT", `/api/polls/${s.pollId}/choices`, dupChoices, org))).status).toBe(400);
+  });
+
+  it("公開後に選択肢を変えると、回答画面に知らせるための時刻を返す", async () => {
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const choices = [
+      { id: s.choiceIds[0], symbol: "○", label: "参加する", kind: "ok", score: 2, color: "green" },
+      { id: s.choiceIds[1], symbol: "△", label: "未定", kind: "maybe", score: 1, color: "yellow" },
+      { id: s.choiceIds[2], symbol: "×", label: "不可", kind: "ng", score: 0, color: "red" },
+    ];
+    expect((await call(jsonReq("PUT", `/api/polls/${s.pollId}/choices`, { choicesVersion: 1, choices, reassign: [] }, org))).status).toBe(200);
+    const alice = await login(s.pollId, ALICE, "participant");
+    const data = (await (await call(getReq(`/api/polls/${s.pollId}`, alice.cookie))).json()) as { poll: { choicesChangedAt: number | null } };
+    expect(data.poll.choicesChangedAt).not.toBeNull();
+  });
+
+  it("調整を削除すると、登録済みの Discord イベントも削除する", async () => {
+    const calls = mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: "700000000000000011" } : {}));
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: false, event: { type: "external", channelId: null, location: "Discord" } }, org));
+    expect((await call(jsonReq("DELETE", `/api/polls/${s.pollId}`, {}, org))).status).toBe(200);
+    expect(calls.some((c) => c.method === "DELETE" && c.path.endsWith("/scheduled-events/700000000000000011"))).toBe(true);
+  });
+});
+

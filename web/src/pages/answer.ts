@@ -196,6 +196,10 @@ export async function answerPage(pollId: string): Promise<void> {
         ),
         d.poll.description ? h("p", { class: "description" }, d.poll.description) : null,
         statusBanner(d),
+        // 回答したあとに主催者が選択肢を変えていたら知らせる（§6.9.4）
+        d.poll.choicesChangedAt && d.me.answeredAt && d.poll.choicesChangedAt > d.me.answeredAt
+          ? notice("warn", `回答のあとで、主催者が選択肢を変更しました（${dateTimeText(d.poll.choicesChangedAt, tz)}）。あなたの回答の意味が変わっていないか確認してください。`)
+          : null,
         message,
         form,
       ),

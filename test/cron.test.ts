@@ -62,5 +62,20 @@ describe("Cron（1 日 2 回）", () => {
     expect(patch).toBeTruthy();
     expect(JSON.stringify(patch!.body)).toContain("締切を過ぎました");
   });
+
+  it("1 回に更新する募集メッセージの数を、D1 の問い合わせ上限に収まるよう制限する", async () => {
+    const calls = mockDiscord((c) => (c.path.startsWith("/users/@me/guilds") ? [{ id: GUILD }] : {}));
+    const now = Math.floor(Date.now() / 1000);
+    for (let i = 0; i < 12; i++) {
+      const p = await seedPoll();
+      await db().prepare("UPDATE polls SET last_synced_at = ? WHERE id = ?").bind(now - 100, p.pollId).run();
+      await db().prepare("INSERT INTO answers (poll_id, slot_id, user_id, choice_id, updated_at) VALUES (?, ?, ?, ?, ?)").bind(p.pollId, p.slotIds[0], ALICE, p.choiceIds[0], now).run();
+    }
+    await runCron(testEnv(), Date.parse("2026-11-06T04:00:00Z"));
+    expect(calls.filter((c) => c.method === "PATCH" && c.path.startsWith("/channels/")).length).toBe(8);
+    calls.length = 0;
+    await runCron(testEnv(), Date.parse("2026-11-06T16:00:00Z"));
+    expect(calls.filter((c) => c.method === "PATCH" && c.path.startsWith("/channels/")).length).toBe(4);
+  });
 });
 
