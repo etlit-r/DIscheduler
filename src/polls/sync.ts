@@ -1,6 +1,6 @@
 // 募集メッセージの更新（docs/design.md §5.5）
 import type { Env } from "../core/env";
-import { readPollWithData } from "../db";
+import { parsePollWithData, pollWithDataStatement, type PollWithDataRow } from "../db";
 import { buildPollMessage } from "../discord/messages";
 import { discord, DiscordError } from "../discord/rest";
 import { nowSec, sleep } from "../core/lib";
@@ -9,34 +9,42 @@ import { nowSec, sleep } from "../core/lib";
 export const SYNC_INTERVAL = 20;
 
 /** 募集メッセージを今の内容で更新する。更新できたら true
- * D1 への問い合わせは「調整と関連データの読み込み（1 文）・更新権利の取得」の 2 回（失敗時は +1〜2）
+ *
+ * D1 への問い合わせは 1 回の batch（3 文: 直前の最終更新時刻の読み込み・更新権利の取得・調整と関連データの読み込み）。
+ * batch は 1 つのトランザクションとして順に実行されるので、データは権利を取った「あと」の内容を読む。
+ * これで、読み込みと権利の取得のあいだに保存された回答が「反映済み」扱いになることはない。
+ * 失敗したときは +1〜2 文。
  */
 export async function syncNow(env: Env, pollId: string, minInterval = 0): Promise<boolean> {
   const db = env.DB;
-  const data = await readPollWithData(db, pollId);
-  const poll = data?.poll;
-  // 募集メッセージがないときは、最終更新時刻を書き換えない（未反映の件数が 0 に見えてしまうため）
-  if (!poll?.message_id) return false;
   const now = nowSec();
-  const prev = poll.last_synced_at;
-  // last_synced_at を条件付きで書き換えて、更新する権利を取る（同時に走っても 1 回だけ更新する）
-  const claimed = await db
-    .prepare(
-      "UPDATE polls SET last_synced_at = ? WHERE id = ? AND message_id IS NOT NULL AND last_synced_at IS ? " +
-        "AND (last_synced_at IS NULL OR last_synced_at <= ?)",
-    )
-    .bind(now, pollId, prev, now - minInterval)
-    .run();
-  if (claimed.meta.changes !== 1) return false;
+  const [prevRes, claimRes, dataRes] = await db.batch([
+    db.prepare("SELECT last_synced_at FROM polls WHERE id = ?").bind(pollId),
+    // 募集メッセージがないときは書き換えない（未反映の件数が 0 に見えてしまうため）
+    db
+      .prepare(
+        "UPDATE polls SET last_synced_at = ? WHERE id = ? AND message_id IS NOT NULL AND (last_synced_at IS NULL OR last_synced_at <= ?)",
+      )
+      .bind(now, pollId, now - minInterval),
+    pollWithDataStatement(db, pollId),
+  ]);
+  if ((claimRes?.meta.changes ?? 0) !== 1) return false;
+  const prev = (prevRes?.results[0] as { last_synced_at: number | null } | undefined)?.last_synced_at ?? null;
+  const data = parsePollWithData(dataRes?.results[0] as PollWithDataRow | undefined);
+  const poll = data?.poll;
+  if (!data || !poll?.message_id) return false;
+  const messageId = poll.message_id;
   try {
-    const msg = buildPollMessage({ ...data!, now });
-    await discord(env, "PATCH", `/channels/${poll.channel_id}/messages/${poll.message_id}`, msg);
+    const msg = buildPollMessage({ ...data, now });
+    await discord(env, "PATCH", `/channels/${poll.channel_id}/messages/${messageId}`, msg);
     return true;
   } catch (e) {
     // 失敗したら最終更新時刻を戻し、次の機会（回答の保存・手動更新・Cron）に任せる
-    await env.DB.prepare("UPDATE polls SET last_synced_at = ? WHERE id = ? AND last_synced_at = ?").bind(prev, pollId, now).run();
+    await db.prepare("UPDATE polls SET last_synced_at = ? WHERE id = ? AND last_synced_at = ?").bind(prev, pollId, now).run();
     if (e instanceof DiscordError && e.status === 404) {
-      await env.DB.prepare("UPDATE polls SET message_id = NULL WHERE id = ?").bind(pollId).run();
+      // 更新しようとしたメッセージが、まだ記録されているメッセージのときだけ消す
+      // （投稿し直しで新しいメッセージに変わっていたら、その ID は残す）
+      await db.prepare("UPDATE polls SET message_id = NULL WHERE id = ? AND message_id = ?").bind(pollId, messageId).run();
     }
     console.error(JSON.stringify({ event: "sync_failed", pollId, error: e instanceof Error ? e.message : "unknown" }));
     return false;

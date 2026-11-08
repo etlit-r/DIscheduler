@@ -152,8 +152,8 @@ export interface PollWithData {
  * 調整と、その候補・選択肢・参加者・回答を 1 つの SQL 文で読む（D1 の 1 回あたりの問い合わせ回数を節約するため）。
  * 関連データは JSON の配列として受け取り、並び順は読み込んだあとにそろえる
  */
-export async function readPollWithData(db: D1Database, pollId: string): Promise<PollWithData | null> {
-  const row = await db
+export function pollWithDataStatement(db: D1Database, pollId: string): D1PreparedStatement {
+  return db
     .prepare(
       `SELECT p.*,
         (SELECT json_group_array(json_object('id', id, 'poll_id', poll_id, 'start_at', start_at, 'end_at', end_at, 'all_day', all_day, 'position', position))
@@ -166,8 +166,17 @@ export async function readPollWithData(db: D1Database, pollId: string): Promise<
            FROM answers WHERE poll_id = p.id) AS j_answers
        FROM polls p WHERE p.id = ?`,
     )
-    .bind(pollId)
-    .first<PollRow & { j_slots: string; j_choices: string; j_participants: string; j_answers: string }>();
+    .bind(pollId);
+}
+
+export type PollWithDataRow = PollRow & { j_slots: string; j_choices: string; j_participants: string; j_answers: string };
+
+export async function readPollWithData(db: D1Database, pollId: string): Promise<PollWithData | null> {
+  return parsePollWithData(await pollWithDataStatement(db, pollId).first<PollWithDataRow>());
+}
+
+/** pollWithDataStatement の結果を、調整と関連データに分ける（batch の結果からも使う） */
+export function parsePollWithData(row: PollWithDataRow | null | undefined): PollWithData | null {
   if (!row) return null;
   const { j_slots, j_choices, j_participants, j_answers, ...poll } = row;
   const slots = (JSON.parse(j_slots) as SlotRow[]).sort((a, b) => a.start_at - b.start_at || a.position - b.position);

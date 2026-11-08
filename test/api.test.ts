@@ -446,3 +446,29 @@ describe("4 回目のレビューの修正", () => {
   });
 });
 
+describe("5 回目のレビューの修正", () => {
+  it("古いメッセージの更新が 404 になっても、投稿し直した新しいメッセージの ID は消さない", async () => {
+    const { syncNow } = await import("../src/polls/sync");
+    const s = await seedPoll();
+    // 更新のリクエストを送った時点では古い ID だったが、その間に投稿し直しで新しい ID に変わった、という状況を作る
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      await db().prepare("UPDATE polls SET message_id = '600000000000000777' WHERE id = ?").bind(s.pollId).run();
+      return new Response("{}", { status: 404 });
+    });
+    await db().prepare("UPDATE polls SET last_synced_at = 1 WHERE id = ?").bind(s.pollId).run();
+    expect(await syncNow(env as unknown as Env, s.pollId)).toBe(false);
+    const row = await db().prepare("SELECT message_id FROM polls WHERE id = ?").bind(s.pollId).first<{ message_id: string | null }>();
+    expect(row!.message_id).toBe("600000000000000777");
+  });
+
+  it("更新は、権利を取ったあとのデータでメッセージを作る", async () => {
+    const { syncNow } = await import("../src/polls/sync");
+    const calls = mockDiscord();
+    const s = await seedPoll();
+    await db().prepare("INSERT INTO answers (poll_id, slot_id, user_id, choice_id, updated_at) VALUES (?, ?, ?, ?, ?)").bind(s.pollId, s.slotIds[0], ALICE, s.choiceIds[0], 5).run();
+    expect(await syncNow(env as unknown as Env, s.pollId)).toBe(true);
+    const patch = calls.find((c) => c.method === "PATCH")!;
+    expect(JSON.stringify(patch.body)).toContain("回答: 1/3 名");
+  });
+});
+
