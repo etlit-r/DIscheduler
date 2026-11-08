@@ -3,7 +3,7 @@ import type { Env } from "../core/env";
 import { defaultChoiceStatements, hitRateLimit, rateLimitResetIn, type PollRow } from "../db";
 import { extractParticipants, fetchMember, type Candidate } from "../discord/members";
 import { getGuildSettings } from "../guilds/settings";
-import { DAY, nowSec, randomId } from "../core/lib";
+import { DAY, floorToMinute, nowSec, randomId } from "../core/lib";
 
 export const DRAFT_TTL = 3 * DAY;
 export const RETENTION = 180 * DAY;
@@ -79,7 +79,7 @@ export async function createOrReuseDraft(env: Env, opts: CreateOptions): Promise
   const notice = decided.notice;
   o = { ...o, roleId: decided.roleId };
 
-  const deadlineAt = o.deadlineDays ? now + o.deadlineDays * DAY : null;
+  const deadlineAt = o.deadlineDays ? floorToMinute(now + o.deadlineDays * DAY) : null;
   const pollId = existing?.id ?? randomId();
   const stmts: D1PreparedStatement[] = [];
   if (existing) {

@@ -25,6 +25,7 @@ export interface PollRow {
   last_synced_at: number | null;
   last_reminded_at: number | null;
   publishing_at: number | null;
+  choices_changed_at: number | null;
   created_at: number;
   updated_at: number;
   purge_after: number;
@@ -139,17 +140,44 @@ export function insertChoiceStatements(db: D1Database, pollId: string, choices: 
   );
 }
 
-/** 調整と関連データを削除する（外部キーの CASCADE に頼らず明示的に消す） */
-export async function deletePollData(db: D1Database, pollId: string): Promise<void> {
-  await db.batch([
-    db.prepare("DELETE FROM answers WHERE poll_id = ?").bind(pollId),
-    db.prepare("DELETE FROM participants WHERE poll_id = ?").bind(pollId),
-    db.prepare("DELETE FROM slots WHERE poll_id = ?").bind(pollId),
-    db.prepare("DELETE FROM choices WHERE poll_id = ?").bind(pollId),
-    db.prepare("DELETE FROM link_tokens WHERE poll_id = ?").bind(pollId),
-    db.prepare("DELETE FROM sessions WHERE poll_id = ?").bind(pollId),
-    db.prepare("DELETE FROM polls WHERE id = ?").bind(pollId),
+/** 候補・選択肢・参加者・回答を 1 回の batch でまとめて読む（D1 への問い合わせ回数を減らすため） */
+export async function readPollData(db: D1Database, pollId: string): Promise<[SlotRow[], ChoiceRow[], ParticipantRow[], AnswerRow[]]> {
+  const [slots, choices, participants, answers] = await db.batch([
+    db.prepare("SELECT * FROM slots WHERE poll_id = ? ORDER BY start_at, position").bind(pollId),
+    db.prepare("SELECT * FROM choices WHERE poll_id = ? ORDER BY position").bind(pollId),
+    db.prepare("SELECT * FROM participants WHERE poll_id = ? ORDER BY display_name COLLATE NOCASE").bind(pollId),
+    db.prepare("SELECT * FROM answers WHERE poll_id = ?").bind(pollId),
   ]);
+  return [
+    (slots?.results ?? []) as SlotRow[],
+    (choices?.results ?? []) as ChoiceRow[],
+    (participants?.results ?? []) as ParticipantRow[],
+    (answers?.results ?? []) as AnswerRow[],
+  ];
+}
+
+/**
+ * 条件に合う調整と関連データをまとめて削除する（外部キーの CASCADE に頼らず明示的に消す）。
+ * 調整の数によらず、1 回の batch（7 文）で済む
+ */
+type PollFilter = { sql: "id = ?" | "purge_after <= ?" | "guild_id = ?"; value: string | number };
+
+export async function deletePolls(db: D1Database, f: PollFilter): Promise<void> {
+  const sub = `SELECT id FROM polls WHERE ${f.sql}`;
+  await db.batch([
+    db.prepare(`DELETE FROM answers WHERE poll_id IN (${sub})`).bind(f.value),
+    db.prepare(`DELETE FROM participants WHERE poll_id IN (${sub})`).bind(f.value),
+    db.prepare(`DELETE FROM slots WHERE poll_id IN (${sub})`).bind(f.value),
+    db.prepare(`DELETE FROM choices WHERE poll_id IN (${sub})`).bind(f.value),
+    db.prepare(`DELETE FROM link_tokens WHERE poll_id IN (${sub})`).bind(f.value),
+    db.prepare(`DELETE FROM sessions WHERE poll_id IN (${sub})`).bind(f.value),
+    db.prepare(`DELETE FROM polls WHERE ${f.sql}`).bind(f.value),
+  ]);
+}
+
+/** 1 つの調整と関連データを削除する */
+export function deletePollData(db: D1Database, pollId: string): Promise<void> {
+  return deletePolls(db, { sql: "id = ?", value: pollId });
 }
 
 /** 固定ウィンドウのレート制限。上限を超えたら false（security-design D-2） */

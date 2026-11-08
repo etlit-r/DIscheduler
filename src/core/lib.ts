@@ -63,3 +63,8 @@ export const QUOTA_MESSAGE =
   "DIscheduler は Cloudflare の無料枠だけで運営しているため、利用が多い日はこの上限に達することがあります。入力済みの回答は消えていません。";
 
 export const DAY = 86400;
+
+/** 分の単位に切り捨てる（締切は画面で分まで入力するため、保存も分単位にそろえる） */
+export function floorToMinute(sec: number): number {
+  return Math.floor(sec / 60) * 60;
+}

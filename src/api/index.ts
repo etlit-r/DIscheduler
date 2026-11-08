@@ -28,7 +28,7 @@ import {
 import { fetchMember, searchMembers } from "../discord/members";
 import { buildDeletedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink } from "../discord/messages";
 import { discord, DiscordError, type DiscordChannel, type DiscordRole } from "../discord/rest";
-import { AppError, DAY, nowSec, randomId, timingSafeEqual } from "../core/lib";
+import { AppError, DAY, floorToMinute, nowSec, randomId, timingSafeEqual } from "../core/lib";
 import { DEFAULT_DEADLINE_DAYS, resetParticipants, RETENTION } from "../polls/create";
 import { canAnswer, effectiveStatus, LIMITS, UNANSWERED } from "../shared/model";
 import { isValidTimeZone, nextCronAt } from "../shared/time";
@@ -164,8 +164,16 @@ polls.get("/:id", async (c) => {
       pendingChanges: pending,
       nextAutoSyncAt: isOrganizer ? nextCronAt(now) : null,
       hasEvent: poll.discord_event_id !== null,
+      choicesChangedAt: poll.choices_changed_at,
     },
-    me: { userId: session.user_id, role: session.role, isParticipant: !!me, displayName: me?.display_name ?? null, comment: me?.comment ?? null },
+    me: {
+      userId: session.user_id,
+      role: session.role,
+      isParticipant: !!me,
+      displayName: me?.display_name ?? null,
+      comment: me?.comment ?? null,
+      answeredAt: me?.answered_at ?? null,
+    },
     slots: slots.map((s) => ({ id: s.id, startAt: s.start_at, endAt: s.end_at, allDay: s.all_day === 1 })),
     choices: choices.map((ch) => ({ id: ch.id, symbol: ch.symbol, label: ch.label, kind: ch.kind, score: ch.score, color: ch.color })),
     participants: participants.map((p) => ({ userId: p.user_id, displayName: p.display_name, comment: p.comment, answeredAt: p.answered_at })),
@@ -192,10 +200,12 @@ polls.patch("/:id", async (c) => {
     sets.push("description = ?");
     binds.push(body.description && body.description.trim() ? body.description.trim() : null);
   }
-  if (body.deadlineAt !== undefined && body.deadlineAt !== poll.deadline_at) {
+  // 締切は画面で分まで入力するので、分単位で同じなら「変えていない」とみなす
+  const deadlineChanged = body.deadlineAt !== undefined && (poll.deadline_at === null || floorToMinute(body.deadlineAt) !== floorToMinute(poll.deadline_at));
+  if (body.deadlineAt !== undefined && deadlineChanged) {
     if (body.deadlineAt < now - DAY || body.deadlineAt > now + 365 * DAY) throw new AppError(400, "invalid", "締切は今日から 1 年以内にしてください。");
     sets.push("deadline_at = ?");
-    binds.push(body.deadlineAt);
+    binds.push(floorToMinute(body.deadlineAt));
     if (poll.status === "closed" && body.deadlineAt > now) {
       sets.push("status = 'open'");
     }
@@ -246,8 +256,11 @@ polls.put("/:id/slots", async (c) => {
   const existing = await getSlots(db, poll.id);
   const existingIds = new Set(existing.map((s) => s.id));
   const seen = new Set<string>();
+  const seenIds = new Set<string>();
   for (const s of body.slots) {
     if (s.id && !existingIds.has(s.id)) throw new AppError(400, "invalid", "候補が見つかりません。画面を再読み込みしてください。");
+    if (s.id && seenIds.has(s.id)) throw new AppError(400, "invalid", "同じ候補が重複しています。画面を再読み込みしてください。");
+    if (s.id) seenIds.add(s.id);
     if (s.endAt !== null && s.endAt <= s.startAt) throw new AppError(400, "invalid", "終了は開始より後にしてください。");
     if (s.startAt < now - 366 * DAY || s.startAt > now + 2 * 365 * DAY) throw new AppError(400, "invalid", "候補の日時が範囲外です。");
     const key = `${s.startAt}-${s.endAt}`;
@@ -308,6 +321,8 @@ polls.put("/:id/choices", async (c) => {
   const existing = await getChoices(db, poll.id);
   const existingIds = new Set(existing.map((ch) => ch.id));
   for (const ch of body.choices) if (ch.id && !existingIds.has(ch.id)) throw new AppError(400, "invalid", "選択肢が見つかりません。画面を再読み込みしてください。");
+  const bodyIds = body.choices.filter((ch) => ch.id).map((ch) => ch.id!);
+  if (new Set(bodyIds).size !== bodyIds.length) throw new AppError(400, "invalid", "同じ選択肢が重複しています。画面を再読み込みしてください。");
   const keepIds = new Set(body.choices.filter((ch) => ch.id).map((ch) => ch.id!));
   const removed = existing.filter((ch) => !keepIds.has(ch.id));
   const used = await db.prepare("SELECT choice_id, COUNT(*) AS n FROM answers WHERE poll_id = ? GROUP BY choice_id").bind(poll.id).all<{ choice_id: string; n: number }>();
@@ -337,7 +352,12 @@ polls.put("/:id/choices", async (c) => {
       stmts.push(...insertChoiceStatements(db, poll.id, [ch]));
     }
   });
-  stmts.push(db.prepare("UPDATE polls SET choices_version = choices_version + 1, updated_at = ? WHERE id = ?").bind(now, poll.id));
+  // 公開後に変えたときは、回答画面で「選択肢が変更されました」を出すために時刻を残す（§6.9.4）
+  stmts.push(
+    db
+      .prepare("UPDATE polls SET choices_version = choices_version + 1, updated_at = ?, choices_changed_at = CASE WHEN status = 'draft' THEN choices_changed_at ELSE ? END WHERE id = ?")
+      .bind(now, now, poll.id),
+  );
   await db.batch(stmts);
   // 新しく追加した選択肢の position を、送られてきた順にそろえる
   const after = await getChoices(db, poll.id);
@@ -427,7 +447,7 @@ polls.post("/:id/publish", async (c) => {
   const [slots, choices, participants] = await Promise.all([getSlots(db, poll.id), getChoices(db, poll.id), getParticipants(db, poll.id)]);
   if (slots.length === 0) throw new AppError(400, "no_slots", "候補日時を 1 件以上入れてください。");
   if (participants.length === 0) throw new AppError(400, "no_participants", "参加者を 1 人以上入れてください。");
-  const deadlineAt = poll.deadline_at && poll.deadline_at > now ? poll.deadline_at : now + DEFAULT_DEADLINE_DAYS * DAY;
+  const deadlineAt = poll.deadline_at && poll.deadline_at > now ? poll.deadline_at : floorToMinute(now + DEFAULT_DEADLINE_DAYS * DAY);
   const published: PollRow = { ...poll, status: "open", deadline_at: deadlineAt };
   // 同時に 2 回公開されても 1 回だけ投稿するよう、投稿の前に publishing_at で権利を取る（60 秒より古い取りかけは取り直せる）
   const claimed = await db
@@ -679,9 +699,18 @@ polls.delete("/:id", async (c) => {
   if (poll.message_id) {
     await discord(c.env, "PATCH", `/channels/${poll.channel_id}/messages/${poll.message_id}`, buildDeletedMessage(poll.title)).catch(() => undefined);
   }
+  // 確定時に登録した Discord イベントも、調整と一緒に消す
+  const warnings: string[] = [];
+  if (poll.discord_event_id) {
+    try {
+      await discord(c.env, "DELETE", `/guilds/${poll.guild_id}/scheduled-events/${poll.discord_event_id}`);
+    } catch (e) {
+      if (!(e instanceof DiscordError && e.status === 404)) warnings.push("Discord イベントを削除できませんでした。Discord で削除してください。");
+    }
+  }
   await deletePollData(c.env.DB, poll.id);
   c.header("Set-Cookie", clearSessionCookie(poll.id));
-  return c.json({ ok: true });
+  return c.json({ ok: true, warnings });
 });
 
 polls.delete("/:id/session", async (c) => {

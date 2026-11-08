@@ -101,7 +101,8 @@ export async function editPage(pollId: string): Promise<void> {
     // 締切は変えたときだけ送る（過ぎた締切をそのまま送ると、保存全体が止まってしまうため）
     if (deadlineLocal) {
       const ep = fromLocalInput(deadlineLocal, tz);
-      if (ep !== null && ep !== d.poll.deadlineAt) patch.deadlineAt = ep;
+      // 入力欄は分までなので、分単位で比べる（秒の違いで「変えた」と判定しない）
+      if (ep !== null && (d.poll.deadlineAt === null || Math.floor(ep / 60) !== Math.floor(d.poll.deadlineAt / 60))) patch.deadlineAt = ep;
     }
     await request("PATCH", `/api/polls/${pollId}`, patch);
     tzChanged = false;
@@ -585,8 +586,18 @@ export async function editPage(pollId: string): Promise<void> {
             class: "btn btn-danger btn-small",
             onClick: () => run(async () => {
               if (!confirm("この調整を削除します。元に戻せません。よろしいですか？")) return;
-              await request("DELETE", `/api/polls/${pollId}`, {});
-              render(document.getElementById("app")!, h("section", { class: "page" }, h("h1", {}, "調整を削除しました"), h("p", {}, "データはすべて削除されました。"), h("p", {}, h("a", { href: "/" }, "DIscheduler の案内へ"))));
+              const r = await request<{ warnings?: string[] }>("DELETE", `/api/polls/${pollId}`, {});
+              render(
+                document.getElementById("app")!,
+                h(
+                  "section",
+                  { class: "page" },
+                  h("h1", {}, "調整を削除しました"),
+                  h("p", {}, "データはすべて削除されました。"),
+                  ...(r.warnings ?? []).map((w) => notice("warn", w)),
+                  h("p", {}, h("a", { href: "/" }, "DIscheduler の案内へ")),
+                ),
+              );
             }),
           }, "この調整を削除"),
         ),
