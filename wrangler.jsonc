@@ -25,7 +25,13 @@
     // UTC 4 時・16 時 = 日本時間 13 時・1 時
     "crons": ["0 4,16 * * *"]
   },
+  // アプリが書くログ（console.log など）だけを残す。リクエストの記録（invocation logs）は、
+  // Cookie や接続元の情報が残るおそれがあるため無効にする（security-design I-4、公開の方針「IP アドレスを保存しません」）
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": false
+    }
   }
 }
