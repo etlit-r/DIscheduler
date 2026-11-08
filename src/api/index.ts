@@ -22,6 +22,8 @@ import {
   getSlots,
   hitRateLimit,
   insertChoiceStatements,
+  insertParticipantsStatement,
+  readPollWithData,
   type PollRow,
   type SessionRow,
 } from "../db";
@@ -383,8 +385,16 @@ polls.get("/:id/member-search", async (c) => {
   }
 });
 
+/** Discord API を呼ぶ一覧の取得の回数制限（Bot 全体の Discord の回数制限を守るため） */
+async function limitDiscordLookups(c: C): Promise<void> {
+  if (!(await hitRateLimit(c.env.DB, `lookup:${c.var.session.user_id}`, 30, 600, nowSec()))) {
+    throw new AppError(429, "rate_limited", "読み込みの回数が多すぎます。少し待ってからお試しください。");
+  }
+}
+
 polls.get("/:id/roles", async (c) => {
   requireOrganizer(c);
+  await limitDiscordLookups(c);
   const roles = await discord<DiscordRole[]>(c.env, "GET", `/guilds/${c.var.poll.guild_id}/roles`);
   return c.json({
     roles: roles
@@ -396,6 +406,7 @@ polls.get("/:id/roles", async (c) => {
 
 polls.get("/:id/voice-channels", async (c) => {
   requireOrganizer(c);
+  await limitDiscordLookups(c);
   const channels = await discord<DiscordChannel[]>(c.env, "GET", `/guilds/${c.var.poll.guild_id}/channels`);
   return c.json({
     channels: channels.filter((ch) => ch.type === 2 || ch.type === 13).map((ch) => ({ id: ch.id, name: (ch.name ?? "").slice(0, 100) })),
@@ -413,11 +424,8 @@ polls.put("/:id/participants", async (c) => {
   if (current.length - body.remove.length + toAdd.length > LIMITS.participantsMax) {
     throw new AppError(400, "too_many", `参加者は ${LIMITS.participantsMax} 人までです。`);
   }
-  const added = [];
-  for (const id of toAdd) {
-    const m = await fetchMember(c.env, poll.guild_id, id);
-    if (m) added.push(m);
-  }
+  // メンバー情報は並列で取得する（最大 25 人）
+  const added = (await Promise.all(toAdd.map((id) => fetchMember(c.env, poll.guild_id, id)))).filter((m) => m !== null);
   const stmts: D1PreparedStatement[] = [];
   for (const id of body.remove) {
     stmts.push(db.prepare("DELETE FROM answers WHERE poll_id = ? AND user_id = ?").bind(poll.id, id));
@@ -428,9 +436,7 @@ polls.put("/:id/participants", async (c) => {
       stmts.push(db.prepare("DELETE FROM link_tokens WHERE poll_id = ? AND user_id = ?").bind(poll.id, id));
     }
   }
-  for (const m of added) {
-    stmts.push(db.prepare("INSERT OR IGNORE INTO participants (poll_id, user_id, display_name) VALUES (?, ?, ?)").bind(poll.id, m.userId, m.displayName));
-  }
+  if (added.length) stmts.push(insertParticipantsStatement(db, poll.id, added));
   stmts.push(db.prepare("UPDATE polls SET updated_at = ? WHERE id = ?").bind(nowSec(), poll.id));
   await db.batch(stmts);
   if (poll.status !== "draft") c.executionCtx.waitUntil(syncNow(c.env, poll.id));
@@ -691,6 +697,46 @@ polls.post("/:id/sync-message", async (c) => {
   const ok = await syncNow(c.env, poll.id);
   if (!ok) throw new AppError(502, "sync_failed", "募集メッセージを更新できませんでした。時間をおいてお試しください。");
   return c.json({ ok: true, lastSyncedAt: nowSec() });
+});
+
+/**
+ * 募集メッセージをチャンネルに投稿し直す（§5.5）。
+ * Discord で削除されてしまったときや、会話に埋もれたときに使う。古いメッセージが残っていれば「削除されました」に書き換えず消す
+ */
+polls.post("/:id/repost", async (c) => {
+  requireOrganizer(c);
+  const { poll } = c.var;
+  const db = c.env.DB;
+  const now = nowSec();
+  if (!canAnswer(poll.status)) throw new AppError(409, "not_published", "公開してから投稿してください。");
+  if (!(await hitRateLimit(db, `sync:${poll.id}`, 1, 60, now))) throw new AppError(429, "rate_limited", "投稿・更新は 1 分に 1 回までです。");
+  // 公開と同じく、同時に押されても 1 件だけ投稿する
+  const claimed = await db
+    .prepare("UPDATE polls SET publishing_at = ? WHERE id = ? AND (publishing_at IS NULL OR publishing_at < ?)")
+    .bind(now, poll.id, now - 60)
+    .run();
+  if (claimed.meta.changes !== 1) throw new AppError(409, "publishing", "投稿の処理中です。少し待ってから画面を再読み込みしてください。");
+  try {
+    const data = await readPollWithData(db, poll.id);
+    if (!data) throw new AppError(404, "not_found", "この調整は削除されました。");
+    let messageId: string;
+    try {
+      const res = await discord<{ id: string }>(c.env, "POST", `/channels/${poll.channel_id}/messages`, buildPollMessage({ ...data, now }));
+      messageId = res.id;
+    } catch (e) {
+      if (e instanceof DiscordError && (e.status === 403 || e.status === 404)) {
+        throw new AppError(502, "discord_forbidden", "チャンネルに投稿できませんでした。Bot がこのチャンネルを見る権限・メッセージを送信する権限を持っているか確認してください。");
+      }
+      throw e;
+    }
+    if (poll.message_id && poll.message_id !== messageId) {
+      await discord(c.env, "DELETE", `/channels/${poll.channel_id}/messages/${poll.message_id}`).catch(() => undefined);
+    }
+    await db.prepare("UPDATE polls SET message_id = ?, last_synced_at = ?, publishing_at = NULL WHERE id = ?").bind(messageId, now, poll.id).run();
+    return c.json({ ok: true });
+  } finally {
+    await db.prepare("UPDATE polls SET publishing_at = NULL WHERE id = ? AND publishing_at = ?").bind(poll.id, now).run();
+  }
 });
 
 polls.delete("/:id", async (c) => {
