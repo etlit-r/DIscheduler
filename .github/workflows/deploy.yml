@@ -81,7 +81,8 @@ jobs:
           fi
 
       # wrangler は npm ci で入れた版（package-lock.json で固定）をそのまま使う。
-      # wranglerVersion を指定すると Action が別途インストールし、package.json と版がずれるため指定しない
+      # wranglerVersion は指定しない。指定すると、Dependabot が package.json を上げたときに版がずれ、
+      # Action がずれた版をインストールスクリプト付きで別に入れてしまう
       - name: データベースのマイグレーション
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
