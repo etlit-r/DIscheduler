@@ -512,3 +512,14 @@ describe("7 回目のレビューの修正", () => {
   });
 });
 
+describe("8 回目のレビューのあとの確認", () => {
+  it("参加者に入っていない主催者のセッションでは、回答を保存できない", async () => {
+    const s = await seedPoll({ participants: [ALICE, BOB] });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const res = await call(jsonReq("PUT", `/api/polls/${s.pollId}/answers/me`, { choicesVersion: 1, answers: [{ slotId: s.slotIds[0], choiceId: s.choiceIds[0] }], comment: null }, org));
+    expect(res.status).toBe(403);
+    const n = await db().prepare("SELECT COUNT(*) AS n FROM answers WHERE poll_id = ?").bind(s.pollId).first<{ n: number }>();
+    expect(n!.n).toBe(0);
+  });
+});
+
