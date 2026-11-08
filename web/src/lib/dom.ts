@@ -1,5 +1,5 @@
 // DOM を組み立てる小さな道具。
-// XSS 対策のため、文字列は textContent でしか入れない（innerHTML などは使わない。security-design §4.4）
+// XSS 対策のため、文字列はテキストとしてしか入れない（innerHTML などは使わない。security-design §4.4）
 
 type Child = Node | string | number | null | undefined | false;
 type Props = {
@@ -94,10 +94,15 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Props = 
   return el;
 }
 
-export function append(el: Node, ...children: Child[]): void {
+/**
+ * 子要素を追加する。文字列と数値はテキストとして追加する。
+ * ParentNode.append() は文字列を HTML として解釈せず、テキストノードとして追加する
+ * （appendChild に文字列由来の値を渡す形は、CodeQL の js/xss-through-exception が HTML の挿入と区別できないため使わない）。
+ */
+export function append(el: ParentNode, ...children: Child[]): void {
   for (const c of children) {
     if (c === null || c === undefined || c === false) continue;
-    el.appendChild(typeof c === "string" || typeof c === "number" ? document.createTextNode(String(c)) : c);
+    el.append(typeof c === "number" ? String(c) : c);
   }
 }
 
