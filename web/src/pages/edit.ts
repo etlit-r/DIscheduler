@@ -311,14 +311,16 @@ export async function editPage(pollId: string): Promise<void> {
     const list = h("ul", { class: "slot-list" });
     for (const s of slots) {
       const hasAnswers = s.id !== null && d.answers.some((a) => a.slotId === s.id);
-      const isFixed = s.id === d.poll.fixedSlotId;
+      // 確定した候補（保存済みで id が一致するもの）は削除できないので、× を出さない。
+      // 未保存の候補（id が null）を、未確定の調整（fixedSlotId が null）の確定候補と取り違えないよう id があるときだけ比べる
+      const isFixed = s.id !== null && s.id === d.poll.fixedSlotId;
       list.appendChild(
         h(
           "li",
           {},
           h("span", {}, slotText(s, tz, tz).main),
           isFixed
-            ? h("span", { class: "badge badge-fixed" }, "確定")
+            ? null
             : h(
                 "button",
                 {
