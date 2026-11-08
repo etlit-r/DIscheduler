@@ -527,17 +527,17 @@ polls.put("/:id/answers/me", async (c) => {
   const status = effectiveStatus(poll.status, poll.deadline_at, now);
   if (poll.status === "draft") throw new AppError(403, "draft", "この調整はまだ公開されていません。");
   if (!canAnswer(status)) throw new AppError(409, "closed", "この調整にはいま回答できません。");
-  const me = await getParticipant(db, poll.id, session.user_id);
-  if (!me) throw new AppError(403, "not_participant", "この調整の参加者ではないため、回答できません。");
   if (body.choicesVersion !== poll.choices_version) throw new AppError(409, "choices_changed", "選択肢が変更されました。画面を再読み込みしてから入力し直してください。");
   if (!(await hitRateLimit(db, `answer:${session.user_id}`, 30, 600, now))) {
     throw new AppError(429, "rate_limited", "保存の回数が多すぎます。少し待ってからお試しください。");
   }
-  const [slots, choices, existing] = await Promise.all([
-    getSlots(db, poll.id),
-    getChoices(db, poll.id),
-    db.prepare("SELECT * FROM answers WHERE poll_id = ? AND user_id = ?").bind(poll.id, session.user_id).all<{ slot_id: string; choice_id: string; prev_choice_id: string | null }>(),
-  ]);
+  // 参加者・候補・選択肢・これまでの回答は 1 文で読む（回答の保存はいちばん多い書き込みなので、問い合わせを減らす）
+  const data = await readPollWithData(db, poll.id);
+  if (!data) throw new AppError(404, "not_found", "この調整は削除されました。");
+  const { slots, choices } = data;
+  if (!data.participants.some((p) => p.user_id === session.user_id)) {
+    throw new AppError(403, "not_participant", "この調整の参加者ではないため、回答できません。");
+  }
   const slotIds = new Set(slots.map((s) => s.id));
   const choiceIds = new Set(choices.map((ch) => ch.id));
   const seen = new Set<string>();
@@ -546,7 +546,7 @@ polls.put("/:id/answers/me", async (c) => {
     if (seen.has(a.slotId)) throw new AppError(400, "invalid", "同じ候補への回答が重複しています。");
     seen.add(a.slotId);
   }
-  const old = new Map(existing.results.map((r) => [r.slot_id, r]));
+  const old = new Map(data.answers.filter((a) => a.user_id === session.user_id).map((r) => [r.slot_id, r]));
   const isFixed = poll.status === "fixed";
   const stmts: D1PreparedStatement[] = [];
   for (const a of body.answers) {

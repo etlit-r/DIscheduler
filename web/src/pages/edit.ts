@@ -295,7 +295,9 @@ export async function editPage(pollId: string): Promise<void> {
         onChange: () => {
           const t = CHOICE_TEMPLATES.find((x) => x.id === tplSel.value);
           if (!t) return;
-          choices = t.choices.map((c) => ({ id: null, ...c }));
+          // いまの選択肢の ID を並び順で引き継ぐ（回答をそのまま残し、余った古い選択肢には移し先を選べるようにする）
+          const keep = choices.map((c) => c.id);
+          choices = t.choices.map((c, i) => ({ ...c, id: keep[i] ?? null }));
           choicesChanged = true;
           draw();
         },
