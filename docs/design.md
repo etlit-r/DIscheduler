@@ -128,7 +128,7 @@ sequenceDiagram
 
    | オプション | 既定値（指定しない場合） | Web 画面（S2）での変更 |
    |------------|--------------------------|------------------------|
-   | `title`（最大 100 文字） | 空欄（S2 で入力する） | 可。**公開には必須** |
+   | `title`（最大 100 文字） | 空欄（S2 で入力する）。空白や見えない文字だけの値も空欄として扱う | 可。**公開には必須** |
    | `members`（`auto`／`manual`） | `auto`（コマンドを実行したチャンネルを閲覧できるメンバー） | 可 |
    | `role` | なし | 可（指定するとそのロールのメンバーが参加者） |
    | `deadline` | 公開した時点から 7 日後 | 可 |
@@ -153,7 +153,7 @@ sequenceDiagram
   W-->>D: ephemeral 応答「あなた専用の入力リンク（10分有効・1回限り）」
   P->>W: リンクを開く（トークンは URL フラグメント #）
   W->>DB: トークン検証・失効 → セッション発行
-  W-->>P: Cookie(__Host-sid) 設定、入力画面
+  W-->>P: Cookie(__Host-s_{pollId}) 設定、入力画面
   P->>W: 候補ごとに選択肢を選んで保存
   W->>DB: 回答を保存
   W->>D: 募集メッセージの集計を更新（デバウンス）
@@ -172,6 +172,7 @@ sequenceDiagram
 
   - 締切は「この日までに答えてほしい」という目安で、過ぎても入力は止めない。締切はリマインドの対象と、画面・募集メッセージの表示に使う。
   - 確定後に回答を変更しても、確定した日時は自動では変えない（変更は主催者の判断）。主催者が気づけるよう、S4 に「確定後に回答を変更した人」を表示する（§6.5）。
+  - 確定時点で未回答だった候補に後から答えた場合も、「未回答→○」のように変更として記録する（`answers.prev_choice_id` に空文字を入れる）。確定後は、回答の保存で送られなかった候補の回答を消さない。
   - 回答を変更しても、データの保持期間（§7.4）は延びない。
 - 簡易回答として、Discord 上の [全部○] [全部×] のようなショートカットは提供しない（誤操作防止）。代わりに Web 画面に「すべて［先頭の選択肢］にする」「すべて［最後の選択肢］にする」ボタンを置く（既定の ○△× なら「すべて○」「すべて×」）。
 
@@ -225,7 +226,7 @@ sequenceDiagram
 ### 5.1 Bot の登録
 - インストールスコープ: `bot`, `applications.commands`（ギルドインストールのみ。ユーザーインストールは無効）
 - Interactions Endpoint URL: `https://<worker-domain>/discord/interactions`
-- コマンドはデプロイスクリプトから REST API（`PUT /applications/{id}/commands`）で登録
+- コマンドは Worker 自身が REST API（`PUT /applications/{id}/commands`）で登録する。Bot トークンを Cloudflare の外（GitHub など）に置かないため。定義の版（ハッシュ）を D1 の `meta` テーブルに記録し、Interactions Endpoint URL の登録時の PING、各 Interaction、Cron のときに、版が変わっていれば登録し直す 同じ実行環境（isolate）の中では、一度確かめた版を覚えておき、Interaction のたびに D1 を読み直さない（PING と Cron のときは毎回確かめる）。
 
 ### 5.2 必要な Bot 権限（最小権限）
 
@@ -251,6 +252,24 @@ sequenceDiagram
 どちらのモードでも、自動抽出後に主催者が S2 画面で参加者を追加・削除できる。
 Server Members Intent が無効のまま `auto` が選ばれた場合（API が 403 を返す）は、`manual` に自動で切り替えて主催者にその旨を表示する。
 
+#### 5.3.1 サーバーの既定値
+
+主催者が `/schedule`（`/poll`）で `members`・`role` を指定しなかったときに使う参加者の決め方を、サーバーごとに決めておける。
+
+| 既定値 | 参加者 |
+|--------|--------|
+| チャンネル（初期値） | コマンドを実行したチャンネルを閲覧できるメンバー |
+| ロール | 指定したロールのメンバー |
+| 手動 | 主催者だけが入った状態で始め、主催者が S2 で追加する |
+
+- 決める優先順: コマンドのオプション ＞ サーバーの既定値 ＞ チャンネル。作成後も、下書きの間は主催者が S2 で変更できる。
+- **設定できるのは「サーバー管理」（または管理者）権限を持つメンバーだけ。** `/schedule` の応答に、その権限がある人にだけ［サーバーの既定値］ボタンを出す。ボタンを押すと、本人にだけ見えるメッセージで、決め方の選択とロールの選択（Discord 標準のロール選択メニュー）を表示する。設定は Discord の中だけで完結し、Web 画面は使わない。
+- 権限は、ボタン・選択のたびに、署名済みの Interaction に含まれる押した人の権限（`member.permissions`）で確かめる。
+- 既定のロールが削除された・誰も持っていない場合は、チャンネルのメンバーを参加者にし、主催者にその旨を表示する。
+- 最後に変更した人と時刻を記録し、設定画面に表示する（`guild_settings`。§7.2）。
+- 設定画面では、保存済みのロールを本文に表示し、ロールの選択メニューでは選択済みの状態にしない（そのロールが削除されていると、Discord が画面の表示を受け付けないおそれがあるため）。
+- すでにある未入力の下書きを使い回すとき（§4.4）は、その下書きの設定のままにする。
+
 #### 自動抽出（`auto`）の手順
 
 Discord には「チャンネルのメンバー一覧」API がないため、次の手順で算出する。
@@ -269,7 +288,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 
 ### 5.4 コマンドの利用範囲と作成権限
 
-**コマンドを使えるチャンネルは、サーバー管理者が Discord 標準の「連携サービス」設定で指定する。そのチャンネルで誰にコマンドを打たせるかは、Discord のチャンネル権限（発言者の制限）に任せる。** アプリ独自の許可リスト・ロール指定・管理コマンドは作らない。
+**コマンドを使えるチャンネルは、サーバー管理者が Discord 標準の「連携サービス」設定で指定する。そのチャンネルで誰にコマンドを打たせるかは、Discord のチャンネル権限（発言者の制限）に任せる。** アプリ独自の許可リスト・ロール指定・管理コマンドは作らない（アプリ側でサーバーごとに持つ設定は、参加者の決め方の既定値だけ。§5.3.1）。
 
 | 決めること | 決める人 | 方法 |
 |------------|----------|------|
@@ -306,7 +325,11 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 
 ### 5.5 募集メッセージの更新
 - Interaction トークンは 15 分で失効するため、募集メッセージは **Bot トークンで投稿し**、`channel_id` と `message_id` を保存して `PATCH /channels/{id}/messages/{id}` で更新する。
-- **募集中・締切後（`open`・`closed`）**: 回答を保存したときに更新する。ただし回答保存のたびに更新すると Discord の API レート制限に触れるため、最終更新から 30 秒以内の保存では、その場では更新しない。代わりに、その保存のリクエストの中で `ctx.waitUntil` を使い、30 秒の区切りが過ぎた時点で 1 回だけまとめて更新する（後追いの更新）。後追いの更新が重なった場合は、D1 の `last_synced_at` を条件付きで書き換えて 1 回だけ実行されるようにする。
+- **募集中・締切後（`open`・`closed`）**: 回答を保存したときに更新する。ただし回答保存のたびに更新すると Discord の API レート制限に触れるため、最終更新から 20 秒以内の保存では、その場では更新しない。代わりに、その保存のリクエストの中で `ctx.waitUntil` を使い、20 秒の区切りが過ぎた時点で 1 回だけまとめて更新する（後追いの更新）。後追いの更新が重なった場合は、D1 の `last_synced_at` を条件付きで書き換えて 1 回だけ実行されるようにする。間隔を 20 秒にしているのは、`ctx.waitUntil` で応答後に処理を続けられる時間（およそ 30 秒）に収めるため。
+  - 募集メッセージがない（削除された）ときは `last_synced_at` を書き換えない（主催者の画面の「未反映の回答の変更」が 0 件に見えないようにするため）。
+  - 公開は、投稿の前に `polls.publishing_at` に処理中の時刻を入れて権利を取り、同時に公開されても募集メッセージを 1 件だけ投稿する（60 秒より古い取りかけは取り直せる）。
+  - 締切を過ぎて `closed` にした調整は、回答の変更がなくても Cron のときに募集メッセージを「締切を過ぎました」に更新する。
+  - 募集メッセージが Discord で削除された（更新時に 404）ときは、更新しようとしたメッセージの ID がまだ記録されている場合だけ `message_id` を空にし（投稿し直しで新しい ID に変わっていたら残す）、主催者の画面に［もう一度投稿する］を出す。メッセージがあるときも、会話に埋もれた場合などに［チャンネルに投稿し直す］で投稿し直せる（古いメッセージは削除する。1 分に 1 回まで）。
   - 後追いの更新が失敗したとき（Discord の一時的なエラーなど）は、次の回答の保存、主催者の［今すぐ更新］、1 日 2 回の Cron のどれかで反映される。
   - Cron は 1 日 2 回だけなので、短い間隔の追いつきには使わない。
 - **確定後（`fixed`）**: 確定後の回答の変更はまれなため、回答を保存しても募集メッセージは更新せず、1 日 2 回（日本時間 1 時・13 時）の Cron でまとめて更新する。前回の更新から回答が変わった調整だけを対象にする。最新の状況は S3・S4 でいつでも見られる。
@@ -400,7 +423,8 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 - 候補上限 30 件。
 - 公開後も候補の追加は可能（削除は回答済みの場合に確認ダイアログ）。
 - 回答の選択肢は既定で ○△×。[変更] から組み合わせと数を変えられる（§6.9）。
-- 参加者の決め方（`auto`／`manual`）・ロール・参加者以外の回答（`join_policy`、§5.3）・タイムゾーン（§6.7）もここで変えられる。
+- 参加者の決め方（`auto`／`manual`）・ロール・参加者以外の回答（`join_policy`、§5.3）・タイムゾーン（§6.7）もここで変えられる。決め方・ロールを変えると参加者が設定し直されるため、確認ダイアログを出す。
+- 公開後はタイトルを空にできない（募集メッセージの見出しになるため）。締切は変えたときだけ送り、過ぎた締切を保存し直しても止まらないようにする。締切は画面で分まで入力するので、保存も分単位にそろえ、比べるときも分単位で比べる。
 - [公開してチャンネルに投稿] はタイトルと候補が 1 件以上あるときだけ押せる。成功したら S7（公開完了）に移り、「チャンネルに募集を投稿しました」と、集計画面へのリンク、寄付リンク（§6.10）を表示する。
 
 ### 6.4 S3: 回答入力（参加者）
@@ -476,12 +500,15 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
   - 最終更新時刻: 募集メッセージを最後に更新した時刻（`polls.last_synced_at`）。
   - 未反映の回答の変更: 最終更新より後に保存・変更された回答の件数（`answers.updated_at > polls.last_synced_at`）。0 件なら「最新です」と表示し、［今すぐ更新］は押せない。
   - 次の自動更新: 次の 1 時か 13 時（日本時間。閲覧者のタイムゾーンで表示。§5.5）。募集中・締切後は、回答の保存時にも自動で更新される。
-  - ［今すぐ更新］: 押すとその場で募集メッセージを更新し、最終更新時刻を書き換える。Discord の API の回数制限を守るため、同じ調整で 1 分に 1 回まで（サーバー側でも制限）。
+  - ［今すぐ更新］: 押すとその場で募集メッセージを更新し、最終更新時刻を書き換える。未反映の回答がなくても押せる（締切を過ぎた表示への切り替えなど、回答以外の理由でメッセージが古いことがあるため）。Discord の API の回数制限を守るため、同じ調整で 1 分に 1 回まで（サーバー側でも制限）。
   - S2 の上部にも最終更新時刻と［今すぐ更新］を置く。
 - [確定] と [リマインド] は主催者にのみ表示（サーバー側でも認可）。確定すると S7（確定完了）に移る（§4.3）。
 - 確定後に回答を変更した人がいれば、確定した候補の行に「確定後に変更: @a（○→×、11/10 21:05）」のように表示する。Discord への通知はしない（通知が増えすぎないようにするため）。主催者は必要なら確定をやり直せる（もう一度 [確定] を押すと、確定日時・募集メッセージ・Discord イベントを更新する）。
+- 確定し直すときに「Discord イベント」のチェックを外すと、登録済みのイベントは削除する（古い日時のイベントが残らないようにするため）。
+- 確定した候補の日時を S2 で変えたときは、登録済みの Discord イベントの日時も合わせて変える。
+- 調整を削除したときは、登録済みの Discord イベントも削除する。
 - 確定後の募集メッセージの「確定した日時に参加できる人数」は、1 日 2 回（日本時間 1 時・13 時）まとめて更新する（§5.5）。
-- リマインドは未回答者のみメンションして 1 回投稿（同一調整で 12 時間に 1 回まで）。
+- リマインドは未回答者のみメンションして 1 回投稿（同一調整で 12 時間に 1 回まで）。日時を確定したあとはリマインドできない。
 
 ### 6.6 回答の公開範囲
 - 個人ごとの回答（選んだ選択肢）とひとことコメントは **その調整の参加者全員（と主催者）に公開** する（S4 のメンバー別表示）。回答を共有すること自体がこのツールの目的であり、参加者間の共有は仕様とする。
@@ -521,7 +548,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 1. ephemeral メッセージのリンク: `https://<domain>/l#t=<token>`
    - トークンを**フラグメント**に置くことで、サーバーログ・Referer・プロキシに残らない。
 2. S1 の JS がフラグメントを読み取り、`history.replaceState` で URL から即座に消去した上で `POST /api/session` に送信。
-3. サーバーはトークンを検証・失効し、`__Host-sid` Cookie を発行して、トークンの用途（`link_tokens.purpose`）に応じた画面へリダイレクトする。
+3. サーバーはトークンを検証・失効し、`__Host-s_{pollId}` Cookie を発行して、トークンの用途（`link_tokens.purpose`）に応じた画面へリダイレクトする。
 
 | 用途 | 発行するきっかけ | 移る画面 |
 |------|------------------|----------|
@@ -529,7 +556,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 | `answer` | 募集メッセージの [回答する] | S3 |
 | `view` | 募集メッセージの [集計を見る] | S4 |
 
-- 1 つのセッションは 1 つの調整だけに有効（§8.1）。S2・S3・S4・S7 の間は、同じ調整であればセッションのまま行き来できる（参加者のセッションで S2 は開けない）。
+- 1 つのセッションは 1 つの調整だけに有効（§8.1）。Cookie の名前に調整 ID を含め、複数の調整を同じブラウザで同時に開けるようにする（同じブラウザで別の Discord アカウントとして同じ調整を開くと、後から開いた側に置き換わる）。S2・S3・S4・S7 の間は、同じ調整であればセッションのまま行き来できる（参加者のセッションで S2 は開けない）。
 
 ### 6.9 回答の選択肢のカスタマイズ
 
@@ -552,6 +579,8 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 #### 6.9.2 用意するひな形
 
 S2 の [変更] を押すと、ひな形から選ぶか、自分で編集できる。
+
+- ひな形を選んだときは、いまの選択肢の ID を並び順のまま引き継ぐ（1 番目は 1 番目に、2 番目は 2 番目に）。回答は付いたまま残り、ひな形のほうが選択肢が少ないときは、余った選択肢の回答の移し先を選ぶ（§6.9.4）。
 
 | ひな形 | 選択肢（記号 名前／区分／点数） |
 |--------|-------------------------------|
@@ -591,7 +620,7 @@ S2 の [変更] を押すと、ひな形から選ぶか、自分で編集でき�
 
 | 操作 | 回答がまだない場合 | 回答がある場合 |
 |------|-------------------|----------------|
-| 記号・名前・色・並び順の変更 | 可 | 可（回答はそのまま。変更内容を S3 の上部に「選択肢が変更されました」と表示） |
+| 記号・名前・色・並び順の変更 | 可 | 可（回答はそのまま。変更した時刻を `polls.choices_changed_at` に残し、それより前に回答した人の S3 の上部に「選択肢が変更されました」と表示。参加者が［確認しました］を押すまで表示し続ける（`participants.choices_ack_version`）） |
 | 区分・点数の変更 | 可 | 可（確認ダイアログを出し、集計と★を再計算） |
 | 選択肢の追加 | 可 | 可（既存の回答はそのまま） |
 | 選択肢の削除 | 可 | その選択肢を選んだ回答の **移し先** を主催者が選ぶ（例: 「たぶん参加」→「未定」）。移し先を選ばずに削除はできない |
@@ -667,6 +696,9 @@ CREATE TABLE polls (
   discord_event_id TEXT,
   choices_version INTEGER NOT NULL DEFAULT 1, -- 選択肢を変更するたびに +1（§6.9.4）
   last_synced_at  INTEGER,                   -- 募集メッセージ最終更新（主催者の画面に表示。§6.5）
+  last_reminded_at INTEGER,                  -- リマインドの最終実行（12 時間に 1 回まで）
+  publishing_at   INTEGER,                   -- 公開処理中の印（同時の公開で二重に投稿しないため。§5.5）
+  choices_changed_at INTEGER,                -- 公開後に選択肢を変えた時刻（回答画面で知らせるため。§6.9.4）
   created_at      INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL,
   purge_after     INTEGER NOT NULL           -- この時刻以降に物理削除
@@ -705,7 +737,8 @@ CREATE TABLE participants (
   user_id       TEXT NOT NULL,
   display_name  TEXT NOT NULL CHECK (length(display_name) <= 64), -- 表示用キャッシュ
   comment       TEXT CHECK (length(comment) <= 100),
-  answered_at   INTEGER,
+  answered_at   INTEGER,                   -- 回答が 1 件でも残っていれば、最後に保存した時刻。なければ NULL
+  choices_ack_version INTEGER,               -- 選択肢の変更を確認した版（§6.9.4）
   PRIMARY KEY (poll_id, user_id)
 );
 
@@ -715,7 +748,7 @@ CREATE TABLE answers (
   slot_id  TEXT NOT NULL REFERENCES slots(id) ON DELETE CASCADE,
   user_id  TEXT NOT NULL,
   choice_id TEXT NOT NULL REFERENCES choices(id),   -- 削除時は移し先へ付け替えてから消す（§6.9.4）
-  prev_choice_id TEXT,                              -- 確定後に変更した場合の変更前の選択肢（S4 の表示用）
+  prev_choice_id TEXT,                              -- 確定後に変更した場合の、確定時点の選択肢（S4 の表示用。空文字 = 確定時点では未回答）
   updated_at INTEGER NOT NULL,                      -- 最終変更時刻
   PRIMARY KEY (slot_id, user_id),
   FOREIGN KEY (poll_id, user_id) REFERENCES participants(poll_id, user_id) ON DELETE CASCADE
@@ -745,6 +778,21 @@ CREATE TABLE sessions (
 );
 CREATE INDEX idx_sessions_exp ON sessions(expires_at);
 
+-- サーバーごとの既定値（§5.3.1）
+CREATE TABLE guild_settings (
+  guild_id    TEXT PRIMARY KEY,
+  mode        TEXT NOT NULL DEFAULT 'channel' CHECK (mode IN ('channel','role','manual')),
+  role_id     TEXT,                              -- mode = role のときのロール ID
+  updated_by  TEXT NOT NULL,                     -- 最後に変更した管理者
+  updated_at  INTEGER NOT NULL
+);
+
+-- アプリの内部状態（登録済みコマンドの版など。§5.1）
+CREATE TABLE meta (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
+);
+
 -- レート制限カウンタ（固定ウィンドウ）
 CREATE TABLE rate_limits (
   key         TEXT PRIMARY KEY,              -- 例: "answer:<user_id>:<window>"
@@ -768,8 +816,9 @@ CREATE TABLE rate_limits (
 | `fixed` | 確定日時から 6 ヶ月（180 日）後 |
 | `cancelled` | 即時 |
 | link_tokens / sessions / rate_limits | 期限切れ後、日本時間 1 時の Cron で削除 |
+| guild_settings（サーバーの既定値） | Bot がサーバーから外されたとき（日本時間 1 時の Cron で検知して削除） |
 
-主催者は `/schedule` の［自分の調整を管理］から即時削除できる。Bot がギルドから削除された場合（Gateway を使わないため削除イベントは受け取れない）は、日次 Cron で `GET /users/@me/guilds` と保存済みギルドを突き合わせ、または API の 403/404 応答を検知して、該当ギルドのデータを削除する。
+主催者は `/schedule` の［自分の調整を管理］から即時削除できる。Bot がギルドから削除された場合（Gateway を使わないため削除イベントは受け取れない）は、日次 Cron で `GET /users/@me/guilds` と保存済みギルドを突き合わせ、または API の 403/404 応答を検知して、該当ギルドのデータを削除する。Bot が入っているサーバーの一覧を最後まで読めなかった場合（2000 サーバーを超える、途中でエラーになったなど）は、まだ使っているサーバーのデータを消さないよう、その日は削除しない。
 
 ---
 
@@ -781,17 +830,21 @@ CREATE TABLE rate_limits (
 |----------|------|------|------|
 | POST | `/discord/interactions` | Ed25519 署名 | Discord からの Interaction 受信 |
 | POST | `/api/session` | ワンタイムトークン | トークンをセッションへ交換 |
-| DELETE | `/api/session` | セッション + CSRF | ログアウト |
+| DELETE | `/api/polls/{id}/session` | セッション + CSRF | ログアウト（その調整のセッションを消す） |
 | GET | `/api/polls/{id}` | セッション | 調整情報・候補・集計・（参加者のみ）回答一覧 |
 | PATCH | `/api/polls/{id}` | セッション(主催者) + CSRF | タイトル・説明・締切・参加者の決め方・タイムゾーンの更新 |
 | PUT | `/api/polls/{id}/slots` | セッション(主催者) + CSRF | 候補日時の一括更新 |
 | PUT | `/api/polls/{id}/choices` | セッション(主催者) + CSRF | 回答の選択肢の一括更新（削除時は移し先を指定。§6.9.4） |
 | GET | `/api/polls/{id}/member-search?q=` | セッション(主催者) | 手動選択のためのサーバーメンバー検索（最大 25 件。§5.3） |
+| GET | `/api/polls/{id}/roles` | セッション(主催者) | ロールの一覧（参加者をロールで決めるとき） |
+| GET | `/api/polls/{id}/voice-channels` | セッション(主催者) | ボイスチャンネルの一覧（Discord イベントの場所） |
 | PUT | `/api/polls/{id}/participants` | セッション(主催者) + CSRF | 参加者の追加・削除 |
 | POST | `/api/polls/{id}/publish` | セッション(主催者) + CSRF | 公開し募集メッセージ投稿 |
 | PUT | `/api/polls/{id}/answers/me` | セッション(参加者) + CSRF | 自分の回答を保存（状態が `open`・`closed`・`fixed` のとき。§4.2） |
 | POST | `/api/polls/{id}/fix` | セッション(主催者) + CSRF | 確定（イベント登録オプション） |
 | POST | `/api/polls/{id}/remind` | セッション(主催者) + CSRF | 未回答者リマインド |
+| POST | `/api/polls/{id}/repost` | セッション(主催者) + CSRF | 募集メッセージを投稿し直す（削除されたときなど。1 分に 1 回まで。§5.5） |
+| POST | `/api/polls/{id}/choices-ack` | セッション(参加者) + CSRF | 「選択肢が変更されました」を確認した（§6.9.4） |
 | POST | `/api/polls/{id}/sync-message` | セッション(主催者) + CSRF | 募集メッセージを今すぐ更新（同じ調整で 1 分に 1 回まで。§6.5） |
 | DELETE | `/api/polls/{id}` | セッション(主催者) + CSRF | 調整削除 |
 | GET | `/`・`/security` | なし | LP・セキュリティ方針（静的。Worker を通らず配信） |
@@ -799,6 +852,8 @@ CREATE TABLE rate_limits (
 
 - セッションは **発行対象の調整 1 件に限定**（`sessions.poll_id`）。他の調整の API はセッションがあっても 403。
 - すべての JSON 入力は Valibot スキーマで検証し、未知フィールドは拒否。
+- 候補・選択肢の一括更新では、同じ ID が 2 回送られたら拒否する（1 つの行を 2 回書き換えて、並び順や「参加できない」の選択肢の有無が崩れないようにするため）。
+- 参加者の一覧は、どの API・画面でも表示名の日本語の並び順（同じ名前ならユーザー ID 順）で返す。
 
 ### 8.2 リクエスト例
 
@@ -843,6 +898,7 @@ CREATE TABLE rate_limits (
 | `view:{pollId}` | 募集メッセージの [集計を見る]。`answer` と同じく押した本人が参加者の場合のみ、集計閲覧用リンク（`view`）を発行 |
 | `help` | [使い方]。使い方の説明とセキュリティ方針へのリンクを ephemeral で返す |
 | `list` | ［このチャンネルの調整］。Interaction の `channel_id` の進行中の調整一覧を ephemeral で返す |
+| `settings` / `settings_mode` / `settings_role` | ［サーバーの既定値］と、その中の選択メニュー。押した人の `member.permissions` に「サーバー管理」か管理者の権限があるときだけ表示・保存する（§5.3.1） |
 | `manage` | ［自分の調整を管理］。押下ユーザーが主催する調整の一覧を返し、選んだ調整の管理リンク（`edit`）を発行 |
 
 - ［調整を作成する］は URL を開くリンクボタンで、Interaction は発生しない（リンクは `/schedule` の応答を作るときに発行済み）。
@@ -863,6 +919,7 @@ CREATE TABLE rate_limits (
 | D1 ストレージ | 5 GB | 6 ヶ月保持で約 9,000 調整・18 万回答行 ≒ 数十 MB 以内 |
 | Static Assets | 無料・無制限リクエスト | — |
 | Cron Triggers | 無料プランで利用可 | 1 本（1 日 2 回: 日本時間 1 時・13 時。1 時の回で削除も実行） |
+| D1 の問い合わせ回数 | 1 回の実行（リクエスト・Cron）あたり 50 回まで（batch の中の文も 1 文ずつ数える前提で見積もる） | 募集メッセージの更新 1 件で 3 文（最終更新時刻の読み込みと更新権利の取得を 1 回の batch で行い、権利を取れたときだけ調整と関連データを読む。データは権利を取ったあとの内容を読む）。参加者の追加は人数によらず 1 文（JSON で渡す）。Cron は 13 時の回で最大 8 件・約 44 文、1 時の回で最大 4 件と削除で約 43 文まで。削除は調整やサーバーの数によらず決まった文の数で行う。残りは次の機会に反映 |
 
 - 独自ドメインは不要（`*.workers.dev` を使用）。独自ドメインを使う場合のみドメイン費用が発生。
 - 無料枠を超えた場合、Workers はエラー応答になる（課金は発生しない）。表示は §9.1 のとおり、「混雑」などとぼかさず **無料枠を超えたことをそのまま伝える**。
@@ -899,11 +956,11 @@ D1 の上限を超えたときの文面（Discord・Web 共通）:
 | 同時編集 | 回答は本人の行のみ更新するため競合なし。候補編集は `updated_at` による楽観ロック |
 | アクセシビリティ | WCAG 2.2 AA を目標（コントラスト、キーボード操作、スクリーンリーダーラベル） |
 | 対応ブラウザ | 最新の Chrome / Safari / Firefox / Edge、Discord アプリ内ブラウザ |
-| 監視 | Workers Observability（ログは個人情報をマスクし、7 日保持） |
+| 監視 | Workers Observability（アプリが書くログだけを残し、リクエストの記録 invocation logs は無効。ログには ID と出来事の種類だけを出し、トークンは伏せる。7 日保持） |
 
 ---
 
-## 11. リポジトリ構成（予定）
+## 11. リポジトリ構成
 
 ```
 DIscheduler/
@@ -912,18 +969,29 @@ DIscheduler/
 ├── docs/
 │   ├── design.md             # 本書
 │   └── security-design.md    # セキュリティ設計詳細・脅威モデル
-├── src/
-│   ├── index.ts              # Worker エントリ (fetch / scheduled)
-│   ├── discord/
-│   │   ├── verify.ts         # Ed25519 署名検証
-│   │   ├── interactions.ts   # コマンド・ボタン処理
-│   │   ├── rest.ts           # REST クライアント（レート制限対応）
-│   │   └── permissions.ts    # チャンネル閲覧権限計算
-│   ├── api/                  # Web API ハンドラ
-│   ├── auth/                 # トークン・セッション・CSRF
-│   ├── db/                   # D1 クエリ（プリペアドステートメントのみ）
-│   ├── security/             # ヘッダー・レート制限
-│   └── schemas/              # Valibot スキーマ
+├── src/                      # Worker（サーバー側）
+│   ├── index.ts              # エントリ（fetch / scheduled）・セキュリティヘッダー・エラー処理
+│   ├── core/                 # どこからでも使う土台
+│   │   ├── env.ts            #   環境変数の型
+│   │   └── lib.ts            #   乱数・ハッシュ・時刻・エラーの道具
+│   ├── discord/              # Discord とのやり取り
+│   │   ├── verify.ts         #   Ed25519 署名検証
+│   │   ├── interactions.ts   #   コマンド・ボタンの処理
+│   │   ├── commands.ts       #   コマンドの定義と自動登録
+│   │   ├── members.ts        #   参加者の自動抽出（チャンネル閲覧権限の計算）
+│   │   ├── messages.ts       #   募集・お知らせメッセージの組み立て
+│   │   └── rest.ts           #   REST クライアント（レート制限対応）
+│   ├── api/                  # Web 画面から呼ぶ API
+│   │   ├── index.ts          #   エンドポイント
+│   │   └── schemas.ts        #   入力スキーマ（Valibot）
+│   ├── auth/                 # 入力リンク（ワンタイムトークン）・セッション
+│   ├── polls/                # 日程調整そのものの処理（Discord と Web の両方から使う）
+│   │   ├── create.ts         #   下書きの作成・参加者の設定
+│   │   └── sync.ts           #   募集メッセージの更新（後追いの更新を含む）
+│   ├── jobs/                 # 定期処理
+│   │   └── cron.ts           #   1 日 2 回の Cron
+│   ├── db/                   # D1 クエリ（プリペアドステートメントのみ）・レート制限
+│   └── shared/               # Worker と Web 画面で共有（集計・タイムゾーン・文字列の検証）
 ├── public/                   # Workers Static Assets の配信元
 │   ├── index.html            # S0: Bot の案内（LP）
 │   ├── security.html         # S6: セキュリティ方針（公開の正本）
@@ -931,17 +999,23 @@ DIscheduler/
 │   ├── favicon.svg           # ファビコン
 │   ├── _headers              # 静的配信時のセキュリティヘッダー
 │   └── robots.txt            # / と /security 以外のクロールを拒否
-├── web/                      # アプリ画面（S1〜S5・S7）のソース（Vite で public/app/ にビルド）
+├── web/                      # Web 画面（S1〜S5・S7）。Vite で public/app/ にビルド
+│   ├── index.html            #   すべての画面で共通の HTML
+│   └── src/
+│       ├── main.ts           #   URL から画面を選ぶ
+│       ├── app.css           #   スタイル（公開ページの site.css を取り込む）
+│       ├── pages/            #   画面ごとの処理（link・edit・answer・summary・done）
+│       ├── ui/               #   画面共通の部品（タイムゾーン切り替え・更新状況・エラー画面）
+│       └── lib/              #   API 呼び出し・DOM の組み立て
 ├── migrations/               # D1 マイグレーション
 ├── scripts/
-│   ├── prepare-public.sh     # 静的ページへの設定値の埋め込み（§14.2）
-│   └── register-commands.ts  # /schedule・/poll の登録
-├── test/                     # Vitest + @cloudflare/vitest-pool-workers
+│   └── prepare-public.sh     # 静的ページへの設定値の埋め込み（§14.2）
+├── test/                     # Vitest + @cloudflare/vitest-plugin（Workers ランタイム上で実行）
 ├── wrangler.jsonc            # Cloudflare Workers の設定
+├── vite.config.ts / vitest.config.ts
 └── .github/
-    ├── workflows/deploy.yml  # main マージ時のデプロイ（承認制）
-    ├── workflows/            # CI（test, typecheck, audit, CodeQL）※実装時に追加
-    └── dependabot.yml        # Action の更新
+    ├── workflows/deploy.yml  # テスト（PR・main）と main マージ時のデプロイ（承認制）
+    └── dependabot.yml        # Action と npm の更新
 ```
 
 ---
@@ -964,12 +1038,12 @@ DIscheduler/
 |------|------|------|------|
 | コマンド | `/schedule` と別名 `/poll` だけ。オプションなしで作成でき、一覧・管理・使い方は応答のボタンから使う | コマンド入力に慣れていない人でも使えるようにするため。`/poll` は `schedule` の綴りが難しい人向け | §4.1, §4.4 |
 | 作成権限 | コマンドを使えるチャンネルは Discord 標準の連携サービス設定、打てる人はチャンネルの発言権限で管理者が決める。実行できた人は誰でも作成可。作成数はレート制限 | Discord 側で強制され、アプリ側に設定を持たなくて済むため | §5.4 |
-| 参加者の決め方 | 選択式。標準は Server Members Intent による自動抽出（`auto`）、手動選択（`manual`）も選べる | 最初から参加者が入っている状態にしつつ、特権インテントを避けたいサーバーにも対応するため | §5.3 |
+| 参加者の決め方 | 選択式。標準は Server Members Intent による自動抽出（`auto`）、手動選択（`manual`）も選べる。サーバー管理者がサーバーの既定値（チャンネル・ロール・手動）を決められる | 最初から参加者が入っている状態にしつつ、特権インテントを避けたいサーバーや、ロール単位で集まるサーバーにも対応するため | §5.3, §5.3.1 |
 | 回答の選択肢 | 主催者が調整ごとに 2〜5 個で設定できる。既定は ○△× | 集まりの性質によって必要な選択肢が違うため | §6.9 |
 | 回答の公開範囲 | 個人ごとの回答を参加者全員に公開し、参加者以外には見せない | 回答を共有することが日程調整の目的のため | §6.5, §6.6 |
 | 回答画面の集計 | 回答画面で各候補の集計を見ながら入力できる | 他の人の回答を予定入力の目安にする人がいるため | §6.4 |
 | 回答の受付期間 | 調整が存在している間は、締切後・確定後も回答を入力・変更できる | 予定の変更を後から伝えられるようにするため | §4.2 |
-| 募集メッセージの更新 | 回答の保存時（30 秒間隔でまとめる）、主催者の［今すぐ更新］、1 日 2 回の Cron（日本時間 1 時・13 時） | Discord の API 制限と無料枠を守りつつ、回答が入りやすい昼休みと終業後の後に反映するため | §5.5 |
+| 募集メッセージの更新 | 回答の保存時（20 秒間隔でまとめる）、主催者の［今すぐ更新］、1 日 2 回の Cron（日本時間 1 時・13 時） | Discord の API 制限と無料枠を守りつつ、回答が入りやすい昼休みと終業後の後に反映するため | §5.5 |
 | タイムゾーン | 設定変更可能。既定はブラウザのタイムゾーン、不明なら `Asia/Tokyo` | 海外のメンバーにも対応するため | §6.7 |
 | データ保持期間 | 締切・確定から 6 ヶ月（180 日）後に自動削除 | 振り返りや再調整に使えるようにするため | §7.4 |
 | 運営費 | 広告は置かず、寄付リンクを LP・完了画面・無料枠超過の画面に置く。無料枠を超えたときはそのまま伝える | 広告のスクリプトは回答を読める状態になり、セキュリティ方針に反するため | §6.10, §9.1 |
@@ -988,8 +1062,11 @@ flowchart LR
   PR[PR を作成] --> M[main にマージ]
   M --> W[Deploy ワークフロー起動]
   W --> A{production 環境の<br/>承認}
+  M --> T[test: 監査・型検査・テスト・ビルド]
+  T --> A
   A -- 承認 --> R[静的ページに設定値を埋め込む<br/>招待リンク・寄付リンク]
-  R --> D[wrangler deploy]
+  R --> MG[D1 マイグレーション]
+  MG --> D[wrangler deploy]
   D --> CF[(Cloudflare Workers<br/>*.workers.dev)]
 ```
 
@@ -998,7 +1075,13 @@ flowchart LR
 **Cloudflare**
 1. 無料アカウントを作り、「Workers & Pages」で `workers.dev` のサブドメインを決める（公開 URL は `https://discheduler.<サブドメイン>.workers.dev`）。
 2. Account ID を控える。
-3. 「My Profile → API Tokens → Create Token」でテンプレート「Edit Cloudflare Workers」を選び、Account Resources を自分のアカウントだけに限り、有効期限（最長 1 年）を付けてトークンを作る。
+3. 「My Profile → API Tokens → Create Token」でテンプレート「Edit Cloudflare Workers」を選び、Account Resources を自分のアカウントだけに限り、有効期限（最長 1 年）を付けてトークンを作る。権限は「Workers Scripts: Edit」「Account Settings: Read」「User Details: Read」「Memberships: Read」に加えて **「D1: Edit」** を付ける。
+4. 「Storage & Databases → D1」で `discheduler` という名前のデータベースを作り、Database ID を控える。
+5. 初回のデプロイのあと、「Workers & Pages → discheduler → Settings → Variables and Secrets」で、**Secret** として `DISCORD_BOT_TOKEN`（Bot トークン）を登録する。Bot トークンは GitHub には置かない。
+
+**Discord**（初回のデプロイと Bot トークンの登録のあと）
+1. Developer Portal の「General Information」で、Interactions Endpoint URL に `https://discheduler.<サブドメイン>.workers.dev/discord/interactions` を入れて保存する。保存時の PING を受けた Worker が `/schedule`・`/poll` を自動で登録する。
+2. 「Bot」で Server Members Intent をオンにする（参加者の自動設定に必要）。
 
 **GitHub**（リポジトリの Settings → Environments → `production`）
 
@@ -1009,21 +1092,20 @@ flowchart LR
 | Environment secret | `CLOUDFLARE_API_TOKEN` | 上で作った API トークン |
 | Environment secret | `CLOUDFLARE_ACCOUNT_ID` | Account ID |
 | Environment variable | `DISCORD_APPLICATION_ID` | Discord Developer Portal の Application ID（公開値） |
+| Environment variable | `DISCORD_PUBLIC_KEY` | Discord Developer Portal の Public Key（公開値。署名検証に使う） |
+| Environment variable | `D1_DATABASE_ID` | D1 の Database ID（公開しても問題ない値） |
 | Environment variable | `DONATION_URL` | 寄付リンクの URL（任意。未設定なら寄付の欄を出さない） |
 
 ### 14.2 ワークフローの安全策
 - 静的ページへの設定値（招待リンクの Application ID、寄付リンク）の埋め込みは `scripts/prepare-public.sh` で行う。値の形式を検証し、不正なら止める。
 - `permissions: contents: read` のみ。`actions/checkout` は `persist-credentials: false` で GitHub トークンを残さない。
 - サードパーティの Action はコミット SHA で固定し、Dependabot（`.github/dependabot.yml`）で週次に更新 PR を作る。
-- wrangler のバージョンを固定する（`wranglerVersion`）。
+- wrangler は `package-lock.json` で固定した版（`npm ci` で入れたもの）を使う。wrangler-action の `wranglerVersion` は指定しない（指定すると Action が別に入れ、package.json と版がずれるため）。
 - `DISCORD_APPLICATION_ID` は数字 17〜20 桁、`DONATION_URL` は `https://` で始まる URL であることを確かめてから置き換える。置き換え漏れがあればデプロイを止める。
 - 同時に 2 つのデプロイが走らないよう `concurrency` で直列化する。
 - プレビュー URL は無効（`preview_urls: false`）にし、公開されるのは `workers.dev` の本番 URL だけにする。
-- Bot トークンなどの秘密の値は GitHub に置かず、Worker 実装後に `wrangler secret put` で Cloudflare に直接登録する。
-
-### 14.3 実装開始後に追加するもの
-- デプロイ前に `npm ci --ignore-scripts`、型検査、テスト、`npm audit` を実行するジョブ（失敗したらデプロイしない）
-- D1 のマイグレーション（`wrangler d1 migrations apply --remote`）
-- スラッシュコマンドの登録（`scripts/register-commands.ts`）
-- Cron Triggers の設定（`wrangler.jsonc` の `triggers.crons`: `0 4,16 * * *` の 1 本だけ（UTC 4 時・16 時 = 日本時間 13 時・1 時）。削除は UTC 16 時（日本時間 1 時）の回だけ行う）
-- Worker の環境変数 `DONATION_URL`（S5・S7 の寄付リンク用。`vars` で渡す）
+- Bot トークンは GitHub に置かず、Cloudflare のダッシュボードで Worker の Secret として登録する。コマンドの登録も Worker 自身が行う（§5.1）。
+- デプロイの前に test ジョブ（`npm ci --ignore-scripts`、本番の依存の `npm audit`、型検査、テスト、ビルド）が成功している必要がある。プルリクエストでは test だけを実行する。
+- デプロイの前に D1 のマイグレーション（`wrangler d1 migrations apply DB --remote`）を適用する。
+- Worker の環境変数 `DISCORD_APPLICATION_ID`・`DISCORD_PUBLIC_KEY`・`DONATION_URL` は、デプロイ時に GitHub の Environment variable から `wrangler deploy --var` で渡す（値の形式は前の手順で検証済み）。`DONATION_URL` は設定されているときだけ渡す。
+- Cron Triggers は `wrangler.jsonc` の `triggers.crons`（`0 4,16 * * *`。UTC 4 時・16 時 = 日本時間 13 時・1 時）で設定する。
