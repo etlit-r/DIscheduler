@@ -1,6 +1,6 @@
 // 募集メッセージの更新（docs/design.md §5.5）
 import type { Env } from "../core/env";
-import { getPoll, readPollData } from "../db";
+import { readPollWithData } from "../db";
 import { buildPollMessage } from "../discord/messages";
 import { discord, DiscordError } from "../discord/rest";
 import { nowSec, sleep } from "../core/lib";
@@ -9,11 +9,12 @@ import { nowSec, sleep } from "../core/lib";
 export const SYNC_INTERVAL = 20;
 
 /** 募集メッセージを今の内容で更新する。更新できたら true
- * D1 への問い合わせは「調整の読み込み・更新権利の取得・関連データの一括読み込み」の 3 回（失敗時は +1〜2）
+ * D1 への問い合わせは「調整と関連データの読み込み（1 文）・更新権利の取得」の 2 回（失敗時は +1〜2）
  */
 export async function syncNow(env: Env, pollId: string, minInterval = 0): Promise<boolean> {
   const db = env.DB;
-  const poll = await getPoll(db, pollId);
+  const data = await readPollWithData(db, pollId);
+  const poll = data?.poll;
   // 募集メッセージがないときは、最終更新時刻を書き換えない（未反映の件数が 0 に見えてしまうため）
   if (!poll?.message_id) return false;
   const now = nowSec();
@@ -27,15 +28,13 @@ export async function syncNow(env: Env, pollId: string, minInterval = 0): Promis
     .bind(now, pollId, prev, now - minInterval)
     .run();
   if (claimed.meta.changes !== 1) return false;
-  const c = { prev };
   try {
-    const [slots, choices, participants, answers] = await readPollData(db, pollId);
-    const msg = buildPollMessage({ poll, slots, choices, participants, answers, now });
+    const msg = buildPollMessage({ ...data!, now });
     await discord(env, "PATCH", `/channels/${poll.channel_id}/messages/${poll.message_id}`, msg);
     return true;
   } catch (e) {
     // 失敗したら最終更新時刻を戻し、次の機会（回答の保存・手動更新・Cron）に任せる
-    await env.DB.prepare("UPDATE polls SET last_synced_at = ? WHERE id = ? AND last_synced_at = ?").bind(c.prev, pollId, now).run();
+    await env.DB.prepare("UPDATE polls SET last_synced_at = ? WHERE id = ? AND last_synced_at = ?").bind(prev, pollId, now).run();
     if (e instanceof DiscordError && e.status === 404) {
       await env.DB.prepare("UPDATE polls SET message_id = NULL WHERE id = ?").bind(pollId).run();
     }
@@ -45,7 +44,7 @@ export async function syncNow(env: Env, pollId: string, minInterval = 0): Promis
 }
 
 /**
- * 回答の保存のあとに呼ぶ。30 秒以内に更新済みなら、30 秒の区切りが過ぎたところで 1 回だけ後追いで更新する
+ * 回答の保存のあとに呼ぶ。SYNC_INTERVAL（20 秒）以内に更新済みなら、その区切りが過ぎたところで 1 回だけ後追いで更新する
  * （ctx.waitUntil の中で実行する）
  */
 export async function syncAfterAnswer(env: Env, pollId: string): Promise<void> {

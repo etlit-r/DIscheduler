@@ -402,3 +402,47 @@ describe("3 回目のレビューの修正", () => {
   });
 });
 
+describe("4 回目のレビューの修正", () => {
+  it("募集メッセージが消えていたら、もう一度投稿できる", async () => {
+    const calls = mockDiscord((c) => (c.method === "POST" ? { id: "600000000000000099" } : {}));
+    const s = await seedPoll({ messageId: null });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/repost`, {}, org))).status).toBe(200);
+    expect(calls.filter((c) => c.method === "POST" && c.path.endsWith("/messages")).length).toBe(1);
+    const row = await db().prepare("SELECT message_id, publishing_at FROM polls WHERE id = ?").bind(s.pollId).first<{ message_id: string; publishing_at: number | null }>();
+    expect(row).toEqual({ message_id: "600000000000000099", publishing_at: null });
+  });
+
+  it("投稿し直すと、古い募集メッセージは削除する", async () => {
+    const calls = mockDiscord((c) => (c.method === "POST" ? { id: "600000000000000098" } : {}));
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/repost`, {}, org))).status).toBe(200);
+    expect(calls.some((c) => c.method === "DELETE" && c.path.endsWith("/messages/500000000000000001"))).toBe(true);
+  });
+
+  it("参加者は投稿し直せない", async () => {
+    const s = await seedPoll({ messageId: null });
+    const alice = await login(s.pollId, ALICE, "participant");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/repost`, {}, alice))).status).toBe(403);
+  });
+
+  it("ロールの一覧の取得にも回数制限がある", async () => {
+    mockDiscord((c) => (c.path.endsWith("/roles") ? [] : {}));
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    let last = 0;
+    for (let i = 0; i < 31; i++) last = (await call(getReq(`/api/polls/${s.pollId}/roles`, org.cookie))).status;
+    expect(last).toBe(429);
+  });
+
+  it("参加者が多くても 1 文でまとめて追加できる", async () => {
+    const { insertParticipantsStatement } = await import("../src/db");
+    const s = await seedPoll({ participants: [] });
+    const people = Array.from({ length: 100 }, (_, i) => ({ userId: `4100000000000${String(i).padStart(5, "0")}`, displayName: `名前${i}` }));
+    await insertParticipantsStatement(db(), s.pollId, people).run();
+    const n = await db().prepare("SELECT COUNT(*) AS n FROM participants WHERE poll_id = ?").bind(s.pollId).first<{ n: number }>();
+    expect(n!.n).toBe(100);
+  });
+});
+

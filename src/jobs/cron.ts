@@ -8,17 +8,17 @@ import { syncNow } from "../polls/sync";
 
 /**
  * D1 は無料プランだと、1 回の実行（invocation）で問い合わせられる回数が 50 回まで。
- * Cron 1 回で使う回数をこの範囲に収めるため、更新する募集メッセージの数に上限を設ける。
- * - 募集メッセージの更新 1 件: 3 回（調整の読み込み・更新権利の取得・関連データの一括読み込み）、失敗時 +2
+ * batch の中の文も 1 文ずつ数えられる前提で、Cron 1 回で使う文の数をこの範囲に収める。
+ * - 募集メッセージの更新 1 件: 2 文（調整と関連データの読み込み・更新権利の取得）、失敗時 +2
  * - 共通: 締切の処理 1、更新対象の検索 1、コマンドの確認 1〜2
- * - 削除（日本時間 1 時の回だけ）: 期限切れ 2、外されたサーバーの検索 1、サーバーごと 2
+ * - 削除（日本時間 1 時の回だけ）: 期限切れのトークンなど 3、期限切れの調整 7、
+ *   外されたサーバーの検索 1、外されたサーバーの削除 8（サーバーの数によらず）
+ * 13 時の回: 2 + 8 × 4（失敗しても）+ 2 = 36 文まで。1 時の回: 2 + 4 × 4 + 19 + 2 = 39 文まで。
  * 残った分は、次の Cron・回答の保存・主催者の［今すぐ更新］で反映される。
  */
 const MAX_SYNC_PER_RUN = 8;
 /** 削除の回で更新する募集メッセージの上限（削除に回数を残す） */
 const MAX_SYNC_ON_CLEANUP_RUN = 4;
-/** 1 回の実行で削除する「Bot が外されたサーバー」の上限 */
-const MAX_REMOVED_GUILDS_PER_RUN = 5;
 /** Bot が入っているサーバーの一覧を読むページ数の上限（200 件 × 10 = 2000 サーバー） */
 const MAX_GUILD_PAGES = 10;
 
@@ -87,10 +87,13 @@ async function cleanup(env: Env, now: number): Promise<void> {
       return;
     }
     const stored = await db.prepare("SELECT guild_id FROM polls UNION SELECT guild_id FROM guild_settings").all<{ guild_id: string }>();
-    const removed = stored.results.map((g) => g.guild_id).filter((id) => !guilds.has(id)).slice(0, MAX_REMOVED_GUILDS_PER_RUN);
-    for (const guildId of removed) {
-      await db.prepare("DELETE FROM guild_settings WHERE guild_id = ?").bind(guildId).run();
-      await deletePolls(db, { sql: "guild_id = ?", value: guildId });
+    const removed = stored.results.map((g) => g.guild_id).filter((id) => !guilds.has(id));
+    if (removed.length) {
+      // 外されたサーバーの既定値と調整を、サーバーの数によらず 1 回の batch で削除する
+      const ids = JSON.stringify(removed);
+      await deletePolls(db, { sql: "guild_id IN (SELECT value FROM json_each(?))", value: ids }, [
+        db.prepare("DELETE FROM guild_settings WHERE guild_id IN (SELECT value FROM json_each(?))").bind(ids),
+      ]);
     }
   } catch (e) {
     console.error(JSON.stringify({ event: "guild_check_failed", error: e instanceof Error ? e.message : "unknown" }));

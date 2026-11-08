@@ -106,7 +106,42 @@ export function rememberDonation(url: string | null): void {
 
 /** 募集メッセージの更新状況（主催者だけ。§6.5） */
 export function syncPanel(d: PollData, reload: () => void): HTMLElement | null {
-  if (d.me.role !== "organizer" || !d.poll.messageUrl) return null;
+  if (d.me.role !== "organizer" || d.poll.status === "draft") return null;
+  const repostStatus = h("p", { class: "muted", role: "status" });
+  const repostBtn = h(
+    "button",
+    {
+      class: d.poll.messageUrl ? "btn btn-secondary btn-small" : "btn btn-primary btn-small",
+      type: "button",
+      onClick: async () => {
+        const msg = d.poll.messageUrl
+          ? "募集メッセージをチャンネルに投稿し直します（いまのメッセージは削除します）。よろしいですか？"
+          : "募集メッセージをチャンネルにもう一度投稿します。よろしいですか？";
+        if (!confirm(msg)) return;
+        repostBtn.disabled = true;
+        repostStatus.textContent = "投稿しています…";
+        try {
+          await request("POST", `/api/polls/${d.poll.id}/repost`, {});
+          reload();
+        } catch (e) {
+          repostStatus.textContent = e instanceof Error ? e.message : "投稿できませんでした。";
+          repostBtn.disabled = false;
+        }
+      },
+    },
+    d.poll.messageUrl ? "チャンネルに投稿し直す" : "もう一度投稿する",
+  );
+  if (!d.poll.messageUrl) {
+    // Discord で募集メッセージが削除されると、［回答する］ボタンもなくなるため、投稿し直せるようにする
+    return h(
+      "section",
+      { class: "card sync-panel", aria: { label: "募集メッセージ" } },
+      h("h2", { class: "card-title" }, "チャンネルの募集メッセージ", h("span", { class: "tag tag-optional" }, "主催者だけに表示")),
+      notice("warn", "募集メッセージが見つかりません。Discord で削除された可能性があります。参加者が［回答する］を押せるよう、もう一度投稿してください。"),
+      h("div", { class: "row" }, repostBtn),
+      repostStatus,
+    );
+  }
   const tz = viewerTimeZone();
   const pending = d.poll.pendingChanges ?? 0;
   const status = h("p", { class: "muted", role: "status" });
@@ -144,8 +179,9 @@ export function syncPanel(d: PollData, reload: () => void): HTMLElement | null {
       h("dt", {}, "次の自動更新"),
       h("dd", {}, d.poll.nextAutoSyncAt ? dateTimeText(d.poll.nextAutoSyncAt, tz) : "—", d.poll.status === "fixed" ? "" : "（回答の保存時にも自動で更新されます）"),
     ),
-    h("div", { class: "row" }, btn, h("a", { href: d.poll.messageUrl, rel: "noopener noreferrer" }, "募集メッセージを開く")),
+    h("div", { class: "row" }, btn, h("a", { href: d.poll.messageUrl, rel: "noopener noreferrer" }, "募集メッセージを開く"), repostBtn),
     status,
+    repostStatus,
   );
 }
 

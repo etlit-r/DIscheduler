@@ -140,31 +140,67 @@ export function insertChoiceStatements(db: D1Database, pollId: string, choices: 
   );
 }
 
-/** 候補・選択肢・参加者・回答を 1 回の batch でまとめて読む（D1 への問い合わせ回数を減らすため） */
-export async function readPollData(db: D1Database, pollId: string): Promise<[SlotRow[], ChoiceRow[], ParticipantRow[], AnswerRow[]]> {
-  const [slots, choices, participants, answers] = await db.batch([
-    db.prepare("SELECT * FROM slots WHERE poll_id = ? ORDER BY start_at, position").bind(pollId),
-    db.prepare("SELECT * FROM choices WHERE poll_id = ? ORDER BY position").bind(pollId),
-    db.prepare("SELECT * FROM participants WHERE poll_id = ? ORDER BY display_name COLLATE NOCASE").bind(pollId),
-    db.prepare("SELECT * FROM answers WHERE poll_id = ?").bind(pollId),
-  ]);
-  return [
-    (slots?.results ?? []) as SlotRow[],
-    (choices?.results ?? []) as ChoiceRow[],
-    (participants?.results ?? []) as ParticipantRow[],
-    (answers?.results ?? []) as AnswerRow[],
-  ];
+export interface PollWithData {
+  poll: PollRow;
+  slots: SlotRow[];
+  choices: ChoiceRow[];
+  participants: ParticipantRow[];
+  answers: AnswerRow[];
+}
+
+/**
+ * 調整と、その候補・選択肢・参加者・回答を 1 つの SQL 文で読む（D1 の 1 回あたりの問い合わせ回数を節約するため）。
+ * 関連データは JSON の配列として受け取り、並び順は読み込んだあとにそろえる
+ */
+export async function readPollWithData(db: D1Database, pollId: string): Promise<PollWithData | null> {
+  const row = await db
+    .prepare(
+      `SELECT p.*,
+        (SELECT json_group_array(json_object('id', id, 'poll_id', poll_id, 'start_at', start_at, 'end_at', end_at, 'all_day', all_day, 'position', position))
+           FROM slots WHERE poll_id = p.id) AS j_slots,
+        (SELECT json_group_array(json_object('id', id, 'poll_id', poll_id, 'symbol', symbol, 'label', label, 'kind', kind, 'score', score, 'color', color, 'position', position))
+           FROM choices WHERE poll_id = p.id) AS j_choices,
+        (SELECT json_group_array(json_object('poll_id', poll_id, 'user_id', user_id, 'display_name', display_name, 'comment', comment, 'answered_at', answered_at))
+           FROM participants WHERE poll_id = p.id) AS j_participants,
+        (SELECT json_group_array(json_object('poll_id', poll_id, 'slot_id', slot_id, 'user_id', user_id, 'choice_id', choice_id, 'prev_choice_id', prev_choice_id, 'updated_at', updated_at))
+           FROM answers WHERE poll_id = p.id) AS j_answers
+       FROM polls p WHERE p.id = ?`,
+    )
+    .bind(pollId)
+    .first<PollRow & { j_slots: string; j_choices: string; j_participants: string; j_answers: string }>();
+  if (!row) return null;
+  const { j_slots, j_choices, j_participants, j_answers, ...poll } = row;
+  const slots = (JSON.parse(j_slots) as SlotRow[]).sort((a, b) => a.start_at - b.start_at || a.position - b.position);
+  const choices = (JSON.parse(j_choices) as ChoiceRow[]).sort((a, b) => a.position - b.position);
+  const participants = (JSON.parse(j_participants) as ParticipantRow[]).sort((a, b) => a.display_name.localeCompare(b.display_name, "ja"));
+  const answers = JSON.parse(j_answers) as AnswerRow[];
+  return { poll: poll as PollRow, slots, choices, participants, answers };
+}
+
+/**
+ * 参加者をまとめて追加する文（人数によらず 1 文。D1 の問い合わせ回数とバインド変数の上限 100 を避けるため、JSON で渡す）
+ */
+export function insertParticipantsStatement(db: D1Database, pollId: string, people: readonly { userId: string; displayName: string }[]): D1PreparedStatement {
+  return db
+    .prepare(
+      "INSERT OR IGNORE INTO participants (poll_id, user_id, display_name) " +
+        "SELECT ?, json_extract(value, '$.u'), json_extract(value, '$.n') FROM json_each(?)",
+    )
+    .bind(pollId, JSON.stringify(people.map((p) => ({ u: p.userId, n: p.displayName }))));
 }
 
 /**
  * 条件に合う調整と関連データをまとめて削除する（外部キーの CASCADE に頼らず明示的に消す）。
  * 調整の数によらず、1 回の batch（7 文）で済む
  */
-type PollFilter = { sql: "id = ?" | "purge_after <= ?" | "guild_id = ?"; value: string | number };
+type PollFilter =
+  | { sql: "id = ?" | "purge_after <= ?"; value: string | number }
+  | { sql: "guild_id IN (SELECT value FROM json_each(?))"; value: string };
 
-export async function deletePolls(db: D1Database, f: PollFilter): Promise<void> {
+export async function deletePolls(db: D1Database, f: PollFilter, extra: D1PreparedStatement[] = []): Promise<void> {
   const sub = `SELECT id FROM polls WHERE ${f.sql}`;
   await db.batch([
+    ...extra,
     db.prepare(`DELETE FROM answers WHERE poll_id IN (${sub})`).bind(f.value),
     db.prepare(`DELETE FROM participants WHERE poll_id IN (${sub})`).bind(f.value),
     db.prepare(`DELETE FROM slots WHERE poll_id IN (${sub})`).bind(f.value),

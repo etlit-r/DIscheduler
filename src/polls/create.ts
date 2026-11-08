@@ -1,6 +1,6 @@
 // 調整の作成・参加者の設定など、Discord と Web の両方から使う処理
 import type { Env } from "../core/env";
-import { defaultChoiceStatements, hitRateLimit, rateLimitResetIn, type PollRow } from "../db";
+import { defaultChoiceStatements, hitRateLimit, rateLimitResetIn, type PollRow, insertParticipantsStatement } from "../db";
 import { extractParticipants, fetchMember, type Candidate } from "../discord/members";
 import { getGuildSettings } from "../guilds/settings";
 import { DAY, floorToMinute, nowSec, randomId } from "../core/lib";
@@ -100,9 +100,7 @@ export async function createOrReuseDraft(env: Env, opts: CreateOptions): Promise
     );
     stmts.push(...defaultChoiceStatements(db, pollId));
   }
-  for (const p of participants) {
-    stmts.push(db.prepare("INSERT OR IGNORE INTO participants (poll_id, user_id, display_name) VALUES (?, ?, ?)").bind(pollId, p.userId, p.displayName));
-  }
+  if (participants.length) stmts.push(insertParticipantsStatement(db, pollId, participants));
   await db.batch(stmts);
   return { ok: true, pollId, reused: !!existing, notice };
 }
@@ -170,9 +168,7 @@ export async function resetParticipants(
     db.prepare("DELETE FROM answers WHERE poll_id = ?").bind(poll.id),
     db.prepare("DELETE FROM participants WHERE poll_id = ?").bind(poll.id),
     db.prepare("UPDATE polls SET target_type = ?, target_id = ?, updated_at = ? WHERE id = ?").bind(d.targetType, d.roleId, nowSec(), poll.id),
-    ...d.participants.map((p) =>
-      db.prepare("INSERT OR IGNORE INTO participants (poll_id, user_id, display_name) VALUES (?, ?, ?)").bind(poll.id, p.userId, p.displayName),
-    ),
+    ...(d.participants.length ? [insertParticipantsStatement(db, poll.id, d.participants)] : []),
   ]);
   return { notice: d.notice, targetType: d.targetType };
 }
