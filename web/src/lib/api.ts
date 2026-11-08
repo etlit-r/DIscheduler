@@ -32,6 +32,8 @@ export interface PollData {
   choices: { id: string; symbol: string; label: string; kind: ChoiceKind; score: number; color: ChoiceColor }[];
   participants: { userId: string; displayName: string; comment: string | null; answeredAt: number | null }[];
   answers: { slotId: string; userId: string; choiceId: string; prevChoiceId: string | null; updatedAt: number }[];
+  /** サーバーで最近使った時間帯（新しい順・最大 3 件）。主催者にだけ返る */
+  recentTimes: { start: string; end: string }[];
 }
 
 export class ApiError extends Error {
