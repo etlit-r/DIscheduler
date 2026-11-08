@@ -88,19 +88,17 @@ jobs:
           wranglerVersion: "4.151.2"
           command: d1 migrations apply DB --remote
 
+      # Worker の公開値は --var で渡す。値の形式は前の手順（prepare-public.sh と公開値の確認）で検証済み。
+      # DONATION_URL は任意なので、設定されているときだけ渡す（空の値は渡さない）
       - name: Cloudflare Workers へデプロイ
         id: deploy
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
-        env:
-          DISCORD_APPLICATION_ID: ${{ vars.DISCORD_APPLICATION_ID }}
-          DISCORD_PUBLIC_KEY: ${{ vars.DISCORD_PUBLIC_KEY }}
-          DONATION_URL: ${{ vars.DONATION_URL }}
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.151.2"
-          command: deploy
-          vars: |
-            DISCORD_APPLICATION_ID
-            DISCORD_PUBLIC_KEY
-            DONATION_URL
+          command: >-
+            deploy
+            --var DISCORD_APPLICATION_ID:${{ vars.DISCORD_APPLICATION_ID }}
+            --var DISCORD_PUBLIC_KEY:${{ vars.DISCORD_PUBLIC_KEY }}
+            ${{ vars.DONATION_URL != '' && format('--var DONATION_URL:{0}', vars.DONATION_URL) || '' }}

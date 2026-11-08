@@ -106,14 +106,16 @@ async function loadSession(c: C, next: () => Promise<void>) {
   const sid = readCookie(c.req.header("Cookie") ?? null, sessionCookieName(id));
   const session = sid ? await getSession(c.env.DB, id, sid) : null;
   if (!session) throw new AppError(401, "no_session", "リンクの有効期限が切れています。Discord からもう一度リンクを開いてください。");
-  const poll = await getPoll(c.env.DB, id);
-  if (!poll || poll.status === "cancelled") throw new AppError(404, "not_found", "この調整は削除されました。");
+  // GET /:id は、調整と関連データをハンドラで 1 文で読むので、ここでは読まない（同じ行を 2 回読まないため）
+  const isDetail = c.req.method === "GET" && /^\/api\/polls\/[A-Za-z0-9_-]{22}\/?$/.test(c.req.path);
+  const poll = isDetail ? null : await getPoll(c.env.DB, id);
+  if (!isDetail && (!poll || poll.status === "cancelled")) throw new AppError(404, "not_found", "この調整は削除されました。");
   if (c.req.method !== "GET") {
     const token = c.req.header("X-CSRF-Token") ?? "";
     if (!timingSafeEqual(token, session.csrf_token)) throw new AppError(403, "bad_csrf", "不正なリクエストです。画面を再読み込みしてください。");
   }
   c.set("session", session);
-  c.set("poll", poll);
+  if (poll) c.set("poll", poll);
   await next();
 }
 
@@ -128,15 +130,15 @@ function donationUrl(env: Env): string | null {
 }
 
 polls.get("/:id", async (c) => {
-  const { poll, session } = c.var;
+  const { session } = c.var;
   const db = c.env.DB;
   const now = nowSec();
   const isOrganizer = session.role === "organizer";
-  if (poll.status === "draft" && !isOrganizer) throw new AppError(404, "not_found", "この調整はまだ公開されていません。");
   // 調整と関連データは 1 文で読む（画面を開くたびに呼ばれるため、問い合わせの回数を抑える）
-  const data = await readPollWithData(db, poll.id);
-  if (!data) throw new AppError(404, "not_found", "この調整は削除されました。");
-  const { slots, choices, participants, answers } = data;
+  const data = await readPollWithData(db, session.poll_id);
+  if (!data || data.poll.status === "cancelled") throw new AppError(404, "not_found", "この調整は削除されました。");
+  const { poll, slots, choices, participants, answers } = data;
+  if (poll.status === "draft" && !isOrganizer) throw new AppError(404, "not_found", "この調整はまだ公開されていません。");
   const me = participants.find((p) => p.user_id === session.user_id);
   if (!me && !isOrganizer) throw new AppError(403, "not_participant", "この調整の参加者ではありません。");
   const pending = isOrganizer ? await countPendingAnswers(db, poll) : null;
@@ -499,7 +501,8 @@ polls.post("/:id/publish", async (c) => {
     afterPost: async (messageId) => {
       await db
         .prepare(
-          "UPDATE polls SET status = 'open', deadline_at = ?, message_id = ?, last_synced_at = ?, updated_at = ?, purge_after = ?, publishing_at = NULL " +
+          // publishing_at は postPollMessage の finally で外す
+          "UPDATE polls SET status = 'open', deadline_at = ?, message_id = ?, last_synced_at = ?, updated_at = ?, purge_after = ? " +
             "WHERE id = ? AND status = 'draft' AND publishing_at = ?",
         )
         .bind(deadlineAt, messageId, now, now, deadlineAt + RETENTION, poll.id, now)

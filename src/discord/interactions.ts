@@ -180,7 +180,7 @@ function menuRow(admin: boolean) {
 async function handleSettings(env: Env, i: Interaction, id: string, guildId: string, userId: string): Promise<Response> {
   if (!isAdmin(i)) return ephemeral("サーバーの既定値を変更できるのは、「サーバー管理」の権限を持つメンバーだけです。");
   const current = await getGuildSettings(env.DB, guildId);
-  if (id === "settings") return json({ type: 4, data: { ...buildSettingsMessage(current, current.roleId, null), flags: EPHEMERAL } });
+  if (id === "settings") return json({ type: 4, data: { ...buildSettingsMessage(current, null), flags: EPHEMERAL } });
 
   let next: { mode: DefaultMode; roleId: string | null } = { mode: current.mode, roleId: current.roleId };
   let note: string | null = null;
@@ -196,7 +196,7 @@ async function handleSettings(env: Env, i: Interaction, id: string, guildId: str
   }
   await saveGuildSettings(env.DB, guildId, next, userId);
   const saved = await getGuildSettings(env.DB, guildId);
-  return json({ type: 7, data: buildSettingsMessage(saved, saved.roleId, note ?? "保存しました。") });
+  return json({ type: 7, data: buildSettingsMessage(saved, note ?? "保存しました。") });
 }
 
 async function handlePollButton(

@@ -10,15 +10,15 @@ export const SYNC_INTERVAL = 20;
 
 /** 募集メッセージを今の内容で更新する。更新できたら true
  *
- * D1 への問い合わせは 1 回の batch（3 文: 直前の最終更新時刻の読み込み・更新権利の取得・調整と関連データの読み込み）。
- * batch は 1 つのトランザクションとして順に実行されるので、データは権利を取った「あと」の内容を読む。
- * これで、読み込みと権利の取得のあいだに保存された回答が「反映済み」扱いになることはない。
+ * D1 への問い合わせは 3 文: まず 1 回の batch で「直前の最終更新時刻の読み込み・更新権利の取得」を行い、
+ * 権利を取れたときだけ「調整と関連データの読み込み」をする（取れなかったときに重い読み込みをしないため）。
+ * データは権利を取った「あと」に読むので、そのあいだに保存された回答が「反映済み」扱いになることはない。
  * 失敗したときは +1〜2 文。
  */
 export async function syncNow(env: Env, pollId: string, minInterval = 0): Promise<boolean> {
   const db = env.DB;
   const now = nowSec();
-  const [prevRes, claimRes, dataRes] = await db.batch([
+  const [prevRes, claimRes] = await db.batch([
     db.prepare("SELECT last_synced_at FROM polls WHERE id = ?").bind(pollId),
     // 募集メッセージがないときは書き換えない（未反映の件数が 0 に見えてしまうため）
     db
@@ -26,13 +26,15 @@ export async function syncNow(env: Env, pollId: string, minInterval = 0): Promis
         "UPDATE polls SET last_synced_at = ? WHERE id = ? AND message_id IS NOT NULL AND (last_synced_at IS NULL OR last_synced_at <= ?)",
       )
       .bind(now, pollId, now - minInterval),
-    pollWithDataStatement(db, pollId),
   ]);
   if ((claimRes?.meta.changes ?? 0) !== 1) return false;
   const prev = (prevRes?.results[0] as { last_synced_at: number | null } | undefined)?.last_synced_at ?? null;
-  const data = parsePollWithData(dataRes?.results[0] as PollWithDataRow | undefined);
+  const data = parsePollWithData(await pollWithDataStatement(db, pollId).first<PollWithDataRow>());
   const poll = data?.poll;
-  if (!data || !poll?.message_id) return false;
+  if (!data || !poll?.message_id) {
+    await db.prepare("UPDATE polls SET last_synced_at = ? WHERE id = ? AND last_synced_at = ?").bind(prev, pollId, now).run();
+    return false;
+  }
   const messageId = poll.message_id;
   try {
     const msg = buildPollMessage({ ...data, now });

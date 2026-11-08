@@ -912,7 +912,7 @@ CREATE TABLE rate_limits (
 | D1 ストレージ | 5 GB | 6 ヶ月保持で約 9,000 調整・18 万回答行 ≒ 数十 MB 以内 |
 | Static Assets | 無料・無制限リクエスト | — |
 | Cron Triggers | 無料プランで利用可 | 1 本（1 日 2 回: 日本時間 1 時・13 時。1 時の回で削除も実行） |
-| D1 の問い合わせ回数 | 1 回の実行（リクエスト・Cron）あたり 50 回まで（batch の中の文も 1 文ずつ数える前提で見積もる） | 募集メッセージの更新 1 件で 3 文の batch（最終更新時刻の読み込み・更新権利の取得・調整と関連データの読み込み。1 つのトランザクションで順に実行するので、データは権利を取ったあとの内容を読む）。参加者の追加は人数によらず 1 文（JSON で渡す）。Cron は 13 時の回で最大 8 件・約 44 文、1 時の回で最大 4 件と削除で約 43 文まで。削除は調整やサーバーの数によらず決まった文の数で行う。残りは次の機会に反映 |
+| D1 の問い合わせ回数 | 1 回の実行（リクエスト・Cron）あたり 50 回まで（batch の中の文も 1 文ずつ数える前提で見積もる） | 募集メッセージの更新 1 件で 3 文（最終更新時刻の読み込みと更新権利の取得を 1 回の batch で行い、権利を取れたときだけ調整と関連データを読む。データは権利を取ったあとの内容を読む）。参加者の追加は人数によらず 1 文（JSON で渡す）。Cron は 13 時の回で最大 8 件・約 44 文、1 時の回で最大 4 件と削除で約 43 文まで。削除は調整やサーバーの数によらず決まった文の数で行う。残りは次の機会に反映 |
 
 - 独自ドメインは不要（`*.workers.dev` を使用）。独自ドメインを使う場合のみドメイン費用が発生。
 - 無料枠を超えた場合、Workers はエラー応答になる（課金は発生しない）。表示は §9.1 のとおり、「混雑」などとぼかさず **無料枠を超えたことをそのまま伝える**。
@@ -1100,5 +1100,5 @@ flowchart LR
 - Bot トークンは GitHub に置かず、Cloudflare のダッシュボードで Worker の Secret として登録する。コマンドの登録も Worker 自身が行う（§5.1）。
 - デプロイの前に test ジョブ（`npm ci --ignore-scripts`、本番の依存の `npm audit`、型検査、テスト、ビルド）が成功している必要がある。プルリクエストでは test だけを実行する。
 - デプロイの前に D1 のマイグレーション（`wrangler d1 migrations apply DB --remote`）を適用する。
-- Worker の環境変数 `DISCORD_APPLICATION_ID`・`DISCORD_PUBLIC_KEY`・`DONATION_URL` は、デプロイ時に GitHub の Environment variable から渡す。
+- Worker の環境変数 `DISCORD_APPLICATION_ID`・`DISCORD_PUBLIC_KEY`・`DONATION_URL` は、デプロイ時に GitHub の Environment variable から `wrangler deploy --var` で渡す（値の形式は前の手順で検証済み）。`DONATION_URL` は設定されているときだけ渡す。
 - Cron Triggers は `wrangler.jsonc` の `triggers.crons`（`0 4,16 * * *`。UTC 4 時・16 時 = 日本時間 13 時・1 時）で設定する。
