@@ -33,6 +33,12 @@ interface ChoiceDraft {
 const COLOR_LABEL: Record<ChoiceColor, string> = { green: "緑", teal: "青緑", yellow: "黄", orange: "橙", red: "赤", gray: "灰" };
 
 const pad = (n: number) => String(n).padStart(2, "0");
+/** "HH:MM" の 1 時間後（24 時を過ぎたら 0 時から数える） */
+function plusOneHour(hhmm: string): string {
+  const [hh, mm] = hhmm.split(":").map(Number) as [number, number];
+  return `${pad((hh + 1) % 24)}:${pad(mm)}`;
+}
+
 /** 「よく使う」の固定の時間帯 */
 const FIXED_PRESETS = [
   { label: "昼 12:00–13:00", start: "12:00", end: "13:00" },
@@ -303,7 +309,19 @@ export async function editPage(pollId: string): Promise<void> {
   }
 
   function slotSection(): HTMLElement {
-    const startIn = h("input", { type: "time", id: "start-time", value: startTime, disabled: allDay, onChange: () => (startTime = startIn.value || startTime) });
+    const startIn: HTMLInputElement = h("input", {
+      type: "time",
+      id: "start-time",
+      value: startTime,
+      disabled: allDay,
+      onChange: () => {
+        if (!startIn.value) return;
+        startTime = startIn.value;
+        // 開始を決めたら、終了はその 1 時間後にする（日付をまたぐときは候補の追加時に翌日として扱う）
+        endTime = plusOneHour(startTime);
+        endIn.value = endTime;
+      },
+    });
     const endIn = h("input", { type: "time", id: "end-time", value: endTime, disabled: allDay, onChange: () => (endTime = endIn.value || endTime) });
     const allDayIn = h("input", { type: "checkbox", id: "all-day", checked: allDay, onChange: () => { allDay = allDayIn.checked; draw(); } });
     const preset = (label: string, s: string, e: string) =>
