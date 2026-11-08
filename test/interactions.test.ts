@@ -207,3 +207,19 @@ describe("サーバーの既定値（§5.3.1）", () => {
     expect(poll!.target_type).toBe("channel");
   });
 });
+
+describe("6 回目のレビューの修正", () => {
+  it("［サーバーの既定値］では、保存済みのロールを選択状態にしない（削除されていても開けるように）", async () => {
+    mockDiscord();
+    const db = (env as unknown as Env).DB;
+    await db.prepare("INSERT OR REPLACE INTO guild_settings (guild_id, mode, role_id, updated_by, updated_at) VALUES (?, 'role', '900000000000000555', ?, 1)").bind(GUILD, ORGANIZER).run();
+    const res = await call(
+      await signed({ type: 3, id: "9", application_id: "1", token: "tok", guild_id: GUILD, channel_id: CHANNEL, member: member(ORGANIZER, String(1n << 5n)), data: { custom_id: "settings" } }),
+      e(),
+    );
+    const body = JSON.stringify(await res.json());
+    expect(body).not.toContain("default_values");
+    expect(body).toContain("900000000000000555"); // 本文には表示する
+  });
+});
+

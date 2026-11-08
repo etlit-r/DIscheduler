@@ -45,7 +45,7 @@ const MODE_LABEL: Record<DefaultMode, string> = {
 };
 
 /** 既定値の設定メッセージ（本人にだけ表示） */
-export function buildSettingsMessage(s: GuildSettings, roleIdForPicker: string | null, note: string | null) {
+export function buildSettingsMessage(s: GuildSettings, note: string | null) {
   const current =
     s.mode === "role" && s.roleId ? `${MODE_LABEL.role}（<@&${s.roleId}>）` : MODE_LABEL[s.mode];
   const lines = [
@@ -80,7 +80,8 @@ export function buildSettingsMessage(s: GuildSettings, roleIdForPicker: string |
             placeholder: "既定のロールを選ぶ（「指定したロールのメンバー」のとき）",
             min_values: 0,
             max_values: 1,
-            ...(roleIdForPicker ? { default_values: [{ id: roleIdForPicker, type: "role" }] } : {}),
+            // 保存済みのロールは本文に表示し、選択メニューでは選んだ状態にしない
+            // （そのロールが削除されていると、Discord が default_values を受け付けず画面が開けないおそれがあるため）
           },
         ],
       },
