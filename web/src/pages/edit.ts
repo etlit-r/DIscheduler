@@ -599,11 +599,26 @@ export async function editPage(pollId: string): Promise<void> {
         title = titleIn.value;
         // 入力のたびに画面全体を描き直さず、公開ボタンと案内だけを更新する
         if (publishBtn) publishBtn.disabled = !canPublish();
-        publishHint.hidden = !isDraft || canPublish();
+        updatePublishHint();
       },
     });
     const canPublish = () => title.trim().length > 0 && slots.length > 0;
-    const publishHint = h("p", { class: "muted small right", hidden: !isDraft || canPublish() }, "公開するには、タイトルと候補日時（1 件以上）が必要です。");
+    /** 公開に足りない項目（例: 「タイトルを入力してください。」） */
+    const missingText = () => {
+      const items = [!title.trim() ? "タイトル" : null, slots.length === 0 ? "候補日時" : null].filter((x): x is string => x !== null);
+      return items.length ? `${items.join("と")}を入力してください。` : "";
+    };
+    const missingHint = h("p", { class: "missing-hint small right", aria: { live: "polite" } }, missingText());
+    const publishHint = h(
+      "div",
+      { hidden: !isDraft || canPublish() },
+      missingHint,
+      h("p", { class: "muted small right" }, "公開するには、タイトルと候補日時（1 件以上）が必要です。"),
+    );
+    const updatePublishHint = () => {
+      publishHint.hidden = !isDraft || canPublish();
+      missingHint.textContent = missingText();
+    };
     const descIn = h("textarea", { id: "desc", rows: 3, maxLength: LIMITS.descriptionMax, onInput: () => (description = descIn.value) });
     descIn.value = description;
     const tzSel = timeZoneSelect(tz, (v) => {
@@ -653,7 +668,7 @@ export async function editPage(pollId: string): Promise<void> {
         h(
           "section",
           { class: "card" },
-          h("div", { class: "field" }, h("label", { for: "title" }, "タイトル（必須）"), titleIn),
+          h("div", { class: "field" }, h("label", { for: "title" }, "タイトル", h("span", { class: "required" }, "（必須）")), titleIn),
           h("div", { class: "field" }, h("label", { for: "desc" }, "説明（任意・1000 文字まで）"), descIn),
           h("div", { class: "field" }, h("label", { for: "poll-tz" }, "タイムゾーン（候補日時を入力する基準）"), tzSel),
         ),
