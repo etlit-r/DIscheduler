@@ -150,6 +150,18 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .cal-day:disabled { opacity: 0.35; cursor: not-allowed; }
 .cal-day.is-range-start { outline: 3px solid var(--accent); outline-offset: 1px; font-weight: 700; }
 .pick-mode { display: flex; gap: 6px; margin: 0 0 8px; }
+/* 日付を選んだあと、［＋ 選択中の日付に追加］を押すよう促す */
+.add-prompt, .card .add-prompt { margin: 12px 0 6px; font-weight: 700; color: var(--accent); }
+.add-prompt::before { content: "▼ "; }
+.btn-attention { animation: attention-ring 1.6s ease-out infinite; }
+@keyframes attention-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); }
+  70% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-attention { animation: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent); }
+}
 .slot-list, .member-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .slot-list li, .member-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; }
 .choice-summary { display: flex; flex-wrap: wrap; gap: 8px; }
