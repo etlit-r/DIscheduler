@@ -92,18 +92,23 @@ export async function editPage(pollId: string): Promise<void> {
     draw();
   }
 
-  async function save(): Promise<boolean> {
+  async function save(): Promise<string[]> {
+    // 公開後はタイトルを空にできない（募集メッセージの見出しになるため）
+    if (!isDraft && !title.trim()) throw new Error("タイトルを入力してください。公開後はタイトルを空にできません。");
     const patch: Record<string, unknown> = { description: description.trim() ? description : null, joinPolicy };
     if (title.trim()) patch.title = title.trim();
     if (tzChanged) patch.timezone = tz;
+    // 締切は変えたときだけ送る（過ぎた締切をそのまま送ると、保存全体が止まってしまうため）
     if (deadlineLocal) {
       const ep = fromLocalInput(deadlineLocal, tz);
-      if (ep !== null) patch.deadlineAt = ep;
+      if (ep !== null && ep !== d.poll.deadlineAt) patch.deadlineAt = ep;
     }
     await request("PATCH", `/api/polls/${pollId}`, patch);
     tzChanged = false;
+    const warnings: string[] = [];
     if (slotsChanged) {
-      await request("PUT", `/api/polls/${pollId}/slots`, { slots });
+      const r = await request<{ warnings?: string[] }>("PUT", `/api/polls/${pollId}/slots`, { slots });
+      warnings.push(...(r.warnings ?? []));
       slotsChanged = false;
     }
     if (choicesChanged) {
@@ -114,7 +119,7 @@ export async function editPage(pollId: string): Promise<void> {
       });
       choicesChanged = false;
     }
-    return true;
+    return warnings;
   }
 
   async function run(action: () => Promise<void>) {
@@ -423,6 +428,11 @@ export async function editPage(pollId: string): Promise<void> {
     if (roles) for (const r of roles) roleSel.appendChild(h("option", { value: r.id, selected: r.id === d.poll.targetId }, r.name));
     else if (d.poll.targetId) roleSel.appendChild(h("option", { value: d.poll.targetId, selected: true }, "（指定したロール）"));
     const applyMode = () => run(async () => {
+      // 参加者は設定し直され、手で追加・削除した内容は消えるので、先に確かめる
+      if (!confirm("参加者の決め方を変えると、参加者が設定し直され、手で追加・削除した内容は元に戻ります。よろしいですか？")) {
+        draw();
+        return;
+      }
       const members = modeManual.checked ? "manual" : "auto";
       const r = await request<{ notice: string | null }>("PATCH", `/api/polls/${pollId}`, { members, roleId: members === "manual" ? null : roleSel.value || null });
       await reloadAll(r.notice ? notice("warn", r.notice) : notice("ok", "参加者を設定し直しました。"));
@@ -515,8 +525,8 @@ export async function editPage(pollId: string): Promise<void> {
       type: "button",
       class: "btn btn-secondary",
       onClick: () => run(async () => {
-        await save();
-        await reloadAll(notice("ok", "保存しました。"));
+        const warnings = await save();
+        await reloadAll(warnings.length ? notice("warn", "保存しました。", ...warnings.map((w) => h("p", {}, w))) : notice("ok", "保存しました。"));
       }),
     }, isDraft ? "下書きを保存" : "変更を保存");
     const publishBtn = isDraft

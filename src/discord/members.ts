@@ -1,6 +1,7 @@
 // 参加者の自動抽出（docs/design.md §5.3）
 import type { Env } from "../core/env";
 import { LIMITS } from "../shared/model";
+import { PERM } from "./permissions";
 import { sanitizeDisplayName } from "../shared/text";
 import {
   discord,
@@ -11,10 +12,6 @@ import {
   type DiscordRole,
 } from "./rest";
 
-export const PERM = {
-  ADMINISTRATOR: 1n << 3n,
-  VIEW_CHANNEL: 1n << 10n,
-};
 
 const MAX_MEMBER_PAGES = 5; // 5000 人まで
 

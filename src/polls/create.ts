@@ -71,31 +71,13 @@ export async function createOrReuseDraft(env: Env, opts: CreateOptions): Promise
       usedDefaultRole = true;
     }
   }
-  const targetType = o.members === "manual" ? "manual" : o.roleId ? "role" : "channel";
-  let notice: string | null = null;
-  let participants: Candidate[] = [];
-  let finalTarget: "channel" | "role" | "manual" = targetType;
-  if (targetType !== "manual") {
-    let r = await extractParticipants(env, o.guildId, o.channelId, o.roleId);
-    if (r.ok && r.members.length === 0 && usedDefaultRole) {
-      // 既定のロールが削除された・誰も持っていない場合は、チャンネルのメンバーにする
-      r = await extractParticipants(env, o.guildId, o.channelId, null);
-      finalTarget = "channel";
-      o = { ...o, roleId: null };
-      notice = "サーバーの既定のロールを持つメンバーがいないため、このチャンネルのメンバーを参加者にしました。";
-    }
-    if (r.ok) {
-      participants = r.members;
-    } else {
-      finalTarget = "manual";
-      notice = r.message;
-    }
-  }
-  if (finalTarget === "manual") {
-    // 手動のときは主催者だけを最初の参加者にする
-    const me = await fetchMember(env, o.guildId, o.organizerId).catch(() => null);
-    if (me) participants = [me];
-  }
+  const decided = await decideParticipants(env, o.guildId, o.channelId, o.organizerId, o.members === "manual" ? "manual" : "auto", o.roleId, {
+    roleIsDefault: usedDefaultRole,
+  });
+  const finalTarget = decided.targetType;
+  const participants = decided.participants;
+  const notice = decided.notice;
+  o = { ...o, roleId: decided.roleId };
 
   const deadlineAt = o.deadlineDays ? now + o.deadlineDays * DAY : null;
   const pollId = existing?.id ?? randomId();
@@ -105,7 +87,7 @@ export async function createOrReuseDraft(env: Env, opts: CreateOptions): Promise
     stmts.push(
       db
         .prepare("UPDATE polls SET title = ?, target_type = ?, target_id = ?, deadline_at = ?, updated_at = ?, purge_after = ? WHERE id = ?")
-        .bind(o.title, finalTarget, finalTarget === "role" ? o.roleId : null, deadlineAt, now, now + DRAFT_TTL, pollId),
+        .bind(o.title, finalTarget, o.roleId, deadlineAt, now, now + DRAFT_TTL, pollId),
     );
   } else {
     stmts.push(
@@ -114,7 +96,7 @@ export async function createOrReuseDraft(env: Env, opts: CreateOptions): Promise
           "INSERT INTO polls (id, guild_id, channel_id, organizer_id, title, target_type, target_id, deadline_at, created_at, updated_at, purge_after) " +
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(pollId, o.guildId, o.channelId, o.organizerId, o.title, finalTarget, finalTarget === "role" ? o.roleId : null, deadlineAt, now, now, now + DRAFT_TTL),
+        .bind(pollId, o.guildId, o.channelId, o.organizerId, o.title, finalTarget, o.roleId, deadlineAt, now, now, now + DRAFT_TTL),
     );
     stmts.push(...defaultChoiceStatements(db, pollId));
   }
@@ -125,36 +107,72 @@ export async function createOrReuseDraft(env: Env, opts: CreateOptions): Promise
   return { ok: true, pollId, reused: !!existing, notice };
 }
 
+export type TargetType = "channel" | "role" | "manual";
+
+export interface Decided {
+  targetType: TargetType;
+  roleId: string | null;
+  participants: Candidate[];
+  notice: string | null;
+}
+
+/**
+ * 参加者の決め方から、実際の参加者を決める（作成時と、作成画面で決め方を変えたときの共通処理。§5.3）
+ * - 自動: チャンネルの閲覧者、またはロールのメンバー。取得できなければ手動に切り替えて理由を返す
+ * - サーバーの既定のロールを使ったのに誰もいなければ、チャンネルのメンバーにする（§5.3.1）
+ * - 手動: 主催者だけを最初の参加者にする
+ */
+export async function decideParticipants(
+  env: Env,
+  guildId: string,
+  channelId: string,
+  organizerId: string,
+  members: "auto" | "manual",
+  roleId: string | null,
+  opts: { roleIsDefault?: boolean } = {},
+): Promise<Decided> {
+  let targetType: TargetType = members === "manual" ? "manual" : roleId ? "role" : "channel";
+  let role = targetType === "role" ? roleId : null;
+  let notice: string | null = null;
+  let participants: Candidate[] = [];
+  if (targetType !== "manual") {
+    let r = await extractParticipants(env, guildId, channelId, role);
+    if (r.ok && r.members.length === 0 && role && opts.roleIsDefault) {
+      r = await extractParticipants(env, guildId, channelId, null);
+      targetType = "channel";
+      role = null;
+      notice = "サーバーの既定のロールを持つメンバーがいないため、このチャンネルのメンバーを参加者にしました。";
+    }
+    if (r.ok) participants = r.members;
+    else {
+      targetType = "manual";
+      role = null;
+      notice = r.message;
+    }
+  }
+  if (targetType === "manual") {
+    const me = await fetchMember(env, guildId, organizerId).catch(() => null);
+    participants = me ? [me] : [];
+  }
+  return { targetType, roleId: role, participants, notice };
+}
+
 /** 参加者の決め方を変えたときに、参加者を設定し直す（下書きのときだけ） */
 export async function resetParticipants(
   env: Env,
   poll: PollRow,
   members: "auto" | "manual",
   roleId: string | null,
-): Promise<{ notice: string | null; targetType: "channel" | "role" | "manual" }> {
-  let participants: Candidate[] = [];
-  let targetType: "channel" | "role" | "manual" = members === "manual" ? "manual" : roleId ? "role" : "channel";
-  let notice: string | null = null;
-  if (targetType !== "manual") {
-    const r = await extractParticipants(env, poll.guild_id, poll.channel_id, roleId);
-    if (r.ok) participants = r.members;
-    else {
-      targetType = "manual";
-      notice = r.message;
-    }
-  }
-  if (targetType === "manual") {
-    const me = await fetchMember(env, poll.guild_id, poll.organizer_id).catch(() => null);
-    if (me) participants = [me];
-  }
+): Promise<{ notice: string | null; targetType: TargetType }> {
+  const d = await decideParticipants(env, poll.guild_id, poll.channel_id, poll.organizer_id, members, roleId);
   const db = env.DB;
   await db.batch([
     db.prepare("DELETE FROM answers WHERE poll_id = ?").bind(poll.id),
     db.prepare("DELETE FROM participants WHERE poll_id = ?").bind(poll.id),
-    db.prepare("UPDATE polls SET target_type = ?, target_id = ?, updated_at = ? WHERE id = ?").bind(targetType, targetType === "role" ? roleId : null, nowSec(), poll.id),
-    ...participants.map((p) =>
+    db.prepare("UPDATE polls SET target_type = ?, target_id = ?, updated_at = ? WHERE id = ?").bind(d.targetType, d.roleId, nowSec(), poll.id),
+    ...d.participants.map((p) =>
       db.prepare("INSERT OR IGNORE INTO participants (poll_id, user_id, display_name) VALUES (?, ?, ?)").bind(poll.id, p.userId, p.displayName),
     ),
   ]);
-  return { notice, targetType };
+  return { notice: d.notice, targetType: d.targetType };
 }

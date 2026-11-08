@@ -24,6 +24,7 @@ export interface PollRow {
   choices_version: number;
   last_synced_at: number | null;
   last_reminded_at: number | null;
+  publishing_at: number | null;
   created_at: number;
   updated_at: number;
   purge_after: number;

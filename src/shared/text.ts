@@ -46,6 +46,15 @@ export function charLength(s: string): number {
   return Array.from(s).length;
 }
 
+/**
+ * 寄付リンクとして使える URL か（https で、決まった文字だけでできている）。
+ * scripts/prepare-public.sh の DONATION_URL の検証と同じ規則（変えるときは両方そろえる）
+ */
+export const DONATION_URL_PATTERN = /^https:\/\/[A-Za-z0-9.-]+(\/[A-Za-z0-9._~/-]*)?$/;
+export function isValidDonationUrl(u: string | null | undefined): u is string {
+  return typeof u === "string" && DONATION_URL_PATTERN.test(u);
+}
+
 /** 選択肢の記号・名前に使えない文字（メンション・カスタム絵文字の記法など） */
 export function isSafeChoiceText(s: string): boolean {
   return !hasControlChars(s) && !/[<>@`\\]/.test(s);

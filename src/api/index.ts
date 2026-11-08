@@ -32,6 +32,7 @@ import { AppError, DAY, nowSec, randomId, timingSafeEqual } from "../core/lib";
 import { DEFAULT_DEADLINE_DAYS, resetParticipants, RETENTION } from "../polls/create";
 import { canAnswer, effectiveStatus, LIMITS, UNANSWERED } from "../shared/model";
 import { isValidTimeZone, nextCronAt } from "../shared/time";
+import { isValidDonationUrl } from "../shared/text";
 import { syncAfterAnswer, syncNow } from "../polls/sync";
 import { AnswersBody, ChoicesBody, FixBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
 
@@ -121,8 +122,7 @@ function requireOrganizer(c: C): void {
 }
 
 function donationUrl(env: Env): string | null {
-  const u = env.DONATION_URL;
-  return u && /^https:\/\/[A-Za-z0-9.-]+(\/[A-Za-z0-9._~/-]*)?$/.test(u) ? u : null;
+  return isValidDonationUrl(env.DONATION_URL) ? env.DONATION_URL : null;
 }
 
 polls.get("/:id", async (c) => {
@@ -159,7 +159,7 @@ polls.get("/:id", async (c) => {
       fixedAt: poll.fixed_at,
       choicesVersion: poll.choices_version,
       updatedAt: poll.updated_at,
-      messageUrl: poll.message_id && !poll.message_id.startsWith("pending:") ? messageLink(poll.guild_id, poll.channel_id, poll.message_id) : null,
+      messageUrl: poll.message_id ? messageLink(poll.guild_id, poll.channel_id, poll.message_id) : null,
       lastSyncedAt: isOrganizer ? poll.last_synced_at : null,
       pendingChanges: pending,
       nextAutoSyncAt: isOrganizer ? nextCronAt(now) : null,
@@ -192,7 +192,7 @@ polls.patch("/:id", async (c) => {
     sets.push("description = ?");
     binds.push(body.description && body.description.trim() ? body.description.trim() : null);
   }
-  if (body.deadlineAt !== undefined) {
+  if (body.deadlineAt !== undefined && body.deadlineAt !== poll.deadline_at) {
     if (body.deadlineAt < now - DAY || body.deadlineAt > now + 365 * DAY) throw new AppError(400, "invalid", "締切は今日から 1 年以内にしてください。");
     sets.push("deadline_at = ?");
     binds.push(body.deadlineAt);
@@ -228,7 +228,7 @@ polls.patch("/:id", async (c) => {
     binds.push(now);
     await db.prepare(`UPDATE polls SET ${sets.join(", ")} WHERE id = ?`).bind(...binds, poll.id).run();
   }
-  if (poll.status !== "draft" && (body.title !== undefined || body.description !== undefined || body.deadlineAt !== undefined)) {
+  if (poll.status !== "draft" && sets.length > 0) {
     c.executionCtx.waitUntil(syncNow(c.env, poll.id));
   }
   return c.json({ ok: true, notice });
@@ -280,7 +280,15 @@ polls.put("/:id/slots", async (c) => {
   stmts.push(db.prepare("UPDATE polls SET updated_at = ? WHERE id = ?").bind(now, poll.id));
   await db.batch(stmts);
   if (poll.status !== "draft") c.executionCtx.waitUntil(syncNow(c.env, poll.id));
-  return c.json({ ok: true, updatedAt: now });
+  // 確定した候補の日時を変えたときは、登録済みの Discord イベントの日時も合わせる
+  const warnings: string[] = [];
+  const oldFixed = existing.find((s) => s.id === poll.fixed_slot_id);
+  const newFixed = body.slots.find((s) => s.id === poll.fixed_slot_id);
+  if (poll.discord_event_id && oldFixed && newFixed && (oldFixed.start_at !== newFixed.startAt || oldFixed.end_at !== newFixed.endAt || (oldFixed.all_day === 1) !== newFixed.allDay)) {
+    const err = await updateEventTime(c.env, poll, { start_at: newFixed.startAt, end_at: newFixed.endAt, all_day: newFixed.allDay ? 1 : 0 });
+    if (err) warnings.push(err);
+  }
+  return c.json({ ok: true, updatedAt: now, warnings });
 });
 
 polls.put("/:id/choices", async (c) => {
@@ -421,17 +429,13 @@ polls.post("/:id/publish", async (c) => {
   if (participants.length === 0) throw new AppError(400, "no_participants", "参加者を 1 人以上入れてください。");
   const deadlineAt = poll.deadline_at && poll.deadline_at > now ? poll.deadline_at : now + DEFAULT_DEADLINE_DAYS * DAY;
   const published: PollRow = { ...poll, status: "open", deadline_at: deadlineAt };
-  // 同時に 2 回公開されても 1 回だけ投稿するよう、投稿の前に権利を取る（60 秒より古い取りかけは取り直せる）
-  const lock = `pending:${now}`;
+  // 同時に 2 回公開されても 1 回だけ投稿するよう、投稿の前に publishing_at で権利を取る（60 秒より古い取りかけは取り直せる）
   const claimed = await db
-    .prepare(
-      "UPDATE polls SET message_id = ? WHERE id = ? AND status = 'draft' " +
-        "AND (message_id IS NULL OR (message_id LIKE 'pending:%' AND CAST(substr(message_id, 9) AS INTEGER) < ?))",
-    )
-    .bind(lock, poll.id, now - 60)
+    .prepare("UPDATE polls SET publishing_at = ? WHERE id = ? AND status = 'draft' AND (publishing_at IS NULL OR publishing_at < ?)")
+    .bind(now, poll.id, now - 60)
     .run();
   if (claimed.meta.changes !== 1) throw new AppError(409, "publishing", "公開の処理中です。少し待ってから画面を再読み込みしてください。");
-  const release = () => db.prepare("UPDATE polls SET message_id = NULL WHERE id = ? AND message_id = ?").bind(poll.id, lock).run();
+  const release = () => db.prepare("UPDATE polls SET publishing_at = NULL WHERE id = ? AND publishing_at = ?").bind(poll.id, now).run();
   let messageId: string;
   try {
     const msg = buildPollMessage({ poll: published, slots, choices, participants, answers: [], now });
@@ -445,8 +449,11 @@ polls.post("/:id/publish", async (c) => {
     throw e;
   }
   await db
-    .prepare("UPDATE polls SET status = 'open', deadline_at = ?, message_id = ?, last_synced_at = ?, updated_at = ?, purge_after = ? WHERE id = ? AND status = 'draft' AND message_id = ?")
-    .bind(deadlineAt, messageId, now, now, deadlineAt + RETENTION, poll.id, lock)
+    .prepare(
+      "UPDATE polls SET status = 'open', deadline_at = ?, message_id = ?, last_synced_at = ?, updated_at = ?, purge_after = ?, publishing_at = NULL " +
+        "WHERE id = ? AND status = 'draft' AND publishing_at = ?",
+    )
+    .bind(deadlineAt, messageId, now, now, deadlineAt + RETENTION, poll.id, now)
     .run();
   return c.json({ ok: true, redirect: `/p/${poll.id}/done?kind=published` });
 });
@@ -507,7 +514,13 @@ polls.put("/:id/answers/me", async (c) => {
     }
   }
   stmts.push(
-    db.prepare("UPDATE participants SET comment = ?, answered_at = ? WHERE poll_id = ? AND user_id = ?").bind(body.comment || null, body.answers.length > 0 ? now : null, poll.id, session.user_id),
+    // 回答が 1 件でも残っていれば回答済み（確定後は送らなかった候補の回答も残るため、件数ではなく実際の行で判定する）
+    db
+      .prepare(
+        "UPDATE participants SET comment = ?, answered_at = CASE WHEN EXISTS (SELECT 1 FROM answers WHERE poll_id = ? AND user_id = ?) THEN ? ELSE NULL END " +
+          "WHERE poll_id = ? AND user_id = ?",
+      )
+      .bind(body.comment || null, poll.id, session.user_id, now, poll.id, session.user_id),
   );
   await db.batch(stmts);
   // 確定後は 1 日 2 回の Cron と手動更新に任せる（§5.5）
@@ -557,6 +570,26 @@ polls.post("/:id/fix", async (c) => {
   }
   return c.json({ ok: true, redirect: `/p/${poll.id}/done?kind=fixed`, warnings });
 });
+
+/** 登録済みの Discord イベントの日時だけを変える（場所などはそのまま） */
+async function updateEventTime(env: Env, poll: PollRow, slot: { start_at: number; end_at: number | null; all_day: number }): Promise<string | null> {
+  if (!poll.discord_event_id) return null;
+  if (slot.start_at <= nowSec() + 60) return "確定した候補の開始日時が過ぎているため、Discord イベントの日時は変更しませんでした。";
+  const end = slot.end_at ?? slot.start_at + (slot.all_day ? DAY : 3600);
+  try {
+    await discord(env, "PATCH", `/guilds/${poll.guild_id}/scheduled-events/${poll.discord_event_id}`, {
+      scheduled_start_time: new Date(slot.start_at * 1000).toISOString(),
+      scheduled_end_time: new Date(end * 1000).toISOString(),
+    });
+    return null;
+  } catch (e) {
+    if (e instanceof DiscordError && e.status === 404) {
+      await env.DB.prepare("UPDATE polls SET discord_event_id = NULL WHERE id = ?").bind(poll.id).run();
+      return null;
+    }
+    return "Discord イベントの日時を変更できませんでした。Discord で変更してください。";
+  }
+}
 
 async function upsertEvent(
   env: Env,

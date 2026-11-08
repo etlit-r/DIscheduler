@@ -55,14 +55,27 @@ function commandDef(name: string) {
 
 export const COMMANDS = [commandDef("schedule"), commandDef("poll")];
 
-export async function syncCommands(env: Env): Promise<void> {
+/** この isolate で確認済みの版（同じ isolate では D1 を読み直さない） */
+let confirmedVersion: string | null = null;
+
+/** テスト用: 確認済みの記録を消す */
+export function resetCommandsCache(): void {
+  confirmedVersion = null;
+}
+
+export async function syncCommands(env: Env, opts: { force?: boolean } = {}): Promise<void> {
   if (!env.DISCORD_BOT_TOKEN || !env.DISCORD_APPLICATION_ID) return;
   const version = await sha256Hex(JSON.stringify(COMMANDS) + env.DISCORD_APPLICATION_ID);
+  if (!opts.force && confirmedVersion === version) return;
   const row = await env.DB.prepare("SELECT value FROM meta WHERE key = 'commands_version'").first<{ value: string }>();
-  if (row?.value === version) return;
+  if (row?.value === version) {
+    confirmedVersion = version;
+    return;
+  }
   await discord(env, "PUT", `/applications/${env.DISCORD_APPLICATION_ID}/commands`, COMMANDS);
   await env.DB.prepare("INSERT INTO meta (key, value) VALUES ('commands_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     .bind(version)
     .run();
+  confirmedVersion = version;
   console.log(JSON.stringify({ event: "commands_registered" }));
 }

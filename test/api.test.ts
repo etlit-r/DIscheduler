@@ -314,3 +314,42 @@ describe("募集メッセージの更新", () => {
   });
 });
 
+describe("2 回目のレビューの修正", () => {
+  it("締切を過ぎて日がたった調整でも、締切を変えなければ保存できる", async () => {
+    const s = await seedPoll({ deadlineAt: 1000 });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const same = await call(jsonReq("PATCH", `/api/polls/${s.pollId}`, { title: "新しい名前", deadlineAt: 1000 }, org));
+    expect(same.status).toBe(200);
+    const row = await db().prepare("SELECT title FROM polls WHERE id = ?").bind(s.pollId).first<{ title: string }>();
+    expect(row!.title).toBe("新しい名前");
+    // 過去の日時に変えるのはこれまでどおり拒否する
+    expect((await call(jsonReq("PATCH", `/api/polls/${s.pollId}`, { deadlineAt: 2000 }, org))).status).toBe(400);
+  });
+
+  it("確定した候補の日時を変えると、Discord イベントの日時も変える", async () => {
+    const calls = mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: "700000000000000010" } : {}));
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: false, event: { type: "external", channelId: null, location: "Discord" } }, org));
+    const slots = await db().prepare("SELECT id, start_at, end_at FROM slots WHERE poll_id = ? ORDER BY position").bind(s.pollId).all<{ id: string; start_at: number; end_at: number }>();
+    const body = { slots: slots.results.map((x, i) => ({ id: x.id, startAt: i === 0 ? x.start_at + 3600 : x.start_at, endAt: i === 0 ? x.end_at + 3600 : x.end_at, allDay: false })) };
+    const res = await call(jsonReq("PUT", `/api/polls/${s.pollId}/slots`, body, org));
+    expect(res.status).toBe(200);
+    const patch = calls.find((c) => c.method === "PATCH" && c.path.endsWith("/scheduled-events/700000000000000010"));
+    expect(patch).toBeTruthy();
+    expect((patch!.body as { scheduled_start_time: string }).scheduled_start_time).toBe(new Date((slots.results[0]!.start_at + 3600) * 1000).toISOString());
+  });
+
+  it("確定後にひとことだけ保存しても、回答が残っていれば回答済みのまま", async () => {
+    const s = await seedPoll();
+    const alice = await login(s.pollId, ALICE, "participant");
+    await call(jsonReq("PUT", `/api/polls/${s.pollId}/answers/me`, { choicesVersion: 1, answers: [{ slotId: s.slotIds[0], choiceId: s.choiceIds[0] }], comment: null }, alice));
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: false, event: null }, org));
+    await call(jsonReq("PUT", `/api/polls/${s.pollId}/answers/me`, { choicesVersion: 1, answers: [], comment: "遅れます" }, alice));
+    const p = await db().prepare("SELECT answered_at, comment FROM participants WHERE poll_id = ? AND user_id = ?").bind(s.pollId, ALICE).first<{ answered_at: number | null; comment: string }>();
+    expect(p!.answered_at).not.toBeNull();
+    expect(p!.comment).toBe("遅れます");
+  });
+});
+

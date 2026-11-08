@@ -8,7 +8,7 @@ const db = () => (env as unknown as Env).DB;
 afterEach(() => vi.restoreAllMocks());
 
 describe("Cron（1 日 2 回）", () => {
-  it("締切を過ぎた調整を closed にし、未反映の回答がある募集メッセージだけ更新する", async () => {
+  it("締切を過ぎた調整を closed にし、その調整と未反映の回答がある調整の募集メッセージだけ更新する", async () => {
     const calls = mockDiscord((c) => (c.path.startsWith("/users/@me/guilds") ? [{ id: GUILD }] : {}));
     const overdue = await seedPoll({ deadlineAt: 1000 });
     const pending = await seedPoll();
@@ -22,8 +22,9 @@ describe("Cron（1 日 2 回）", () => {
 
     const st = await db().prepare("SELECT status FROM polls WHERE id = ?").bind(overdue.pollId).first<{ status: string }>();
     expect(st!.status).toBe("closed");
+    // 締切を過ぎて closed にした調整と、未反映の回答がある調整の 2 件だけ（反映済みの調整は更新しない）
     const patched = calls.filter((c) => c.method === "PATCH" && c.path.startsWith("/channels/")).length;
-    expect(patched).toBe(1);
+    expect(patched).toBe(2);
   });
 
   it("日本時間 1 時の回だけ、期限切れのデータを削除する", async () => {
@@ -50,6 +51,16 @@ describe("Cron（1 日 2 回）", () => {
     const s = await seedPoll();
     await runCron(testEnv(), Date.parse("2026-11-06T16:00:00Z"));
     expect(await db().prepare("SELECT id FROM polls WHERE id = ?").bind(s.pollId).first()).not.toBeNull();
+  });
+
+  it("締切を過ぎて closed にした調整は、回答の変更がなくても募集メッセージを更新する", async () => {
+    const calls = mockDiscord((c) => (c.path.startsWith("/users/@me/guilds") ? [{ id: GUILD }] : {}));
+    const s = await seedPoll({ deadlineAt: 1000 });
+    await db().prepare("UPDATE polls SET last_synced_at = ? WHERE id = ?").bind(Math.floor(Date.now() / 1000), s.pollId).run();
+    await runCron(testEnv(), Date.parse("2026-11-06T04:00:00Z"));
+    const patch = calls.find((c) => c.method === "PATCH" && c.path.startsWith("/channels/"));
+    expect(patch).toBeTruthy();
+    expect(JSON.stringify(patch!.body)).toContain("締切を過ぎました");
   });
 });
 
