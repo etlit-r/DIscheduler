@@ -40,8 +40,22 @@ describe("Cron（1 日 2 回）", () => {
   it("Bot が外されたサーバーのデータを削除する", async () => {
     mockDiscord((c) => (c.path.startsWith("/users/@me/guilds") ? [] : {}));
     const s = await seedPoll();
+    await db().prepare("INSERT OR REPLACE INTO guild_recent_times (guild_id, ranges, updated_at) VALUES (?, '[]', ?)").bind(GUILD, Math.floor(Date.now() / 1000)).run();
     await runCron(testEnv(), Date.parse("2026-11-06T16:00:00Z"));
     expect(await db().prepare("SELECT id FROM polls WHERE id = ?").bind(s.pollId).first()).toBeNull();
+    expect(await db().prepare("SELECT guild_id FROM guild_recent_times WHERE guild_id = ?").bind(GUILD).first()).toBeNull();
+  });
+
+  it("最近使った時間帯は、最後に使ってから 6 ヶ月たったら削除する", async () => {
+    mockDiscord((c) => (c.path.startsWith("/users/@me/guilds") ? [{ id: GUILD }, { id: "200000000000000777" }] : {}));
+    const at = Math.floor(Date.now() / 1000);
+    await db().batch([
+      db().prepare("INSERT OR REPLACE INTO guild_recent_times (guild_id, ranges, updated_at) VALUES (?, '[]', ?)").bind(GUILD, at - 179 * 86400),
+      db().prepare("INSERT OR REPLACE INTO guild_recent_times (guild_id, ranges, updated_at) VALUES (?, '[]', ?)").bind("200000000000000777", at - 181 * 86400),
+    ]);
+    await runCron(testEnv(), Date.parse("2026-11-06T16:00:00Z"));
+    expect(await db().prepare("SELECT guild_id FROM guild_recent_times WHERE guild_id = ?").bind(GUILD).first()).not.toBeNull();
+    expect(await db().prepare("SELECT guild_id FROM guild_recent_times WHERE guild_id = ?").bind("200000000000000777").first()).toBeNull();
   });
 
   it("サーバーの一覧を最後まで読めなかったときは、何も削除しない", async () => {

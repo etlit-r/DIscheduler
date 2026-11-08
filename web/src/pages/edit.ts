@@ -33,6 +33,11 @@ interface ChoiceDraft {
 const COLOR_LABEL: Record<ChoiceColor, string> = { green: "緑", teal: "青緑", yellow: "黄", orange: "橙", red: "赤", gray: "灰" };
 
 const pad = (n: number) => String(n).padStart(2, "0");
+/** 「よく使う」の固定の時間帯 */
+const FIXED_PRESETS = [
+  { label: "昼 12:00–13:00", start: "12:00", end: "13:00" },
+  { label: "夜 20:00–22:00", start: "20:00", end: "22:00" },
+] as const;
 
 export async function editPage(pollId: string): Promise<void> {
   let d: PollData;
@@ -69,6 +74,8 @@ export async function editPage(pollId: string): Promise<void> {
   const today = epochToZoned(d.now, tz);
   let month = { y: today.year, m: today.month };
   const selectedDates = new Set<string>();
+  // このサーバーで最近使った時間帯。固定の「よく使う」と同じものは出さない（§6.3.1）
+  const recentPresets = (d.recentTimes ?? []).filter((r) => !FIXED_PRESETS.some((p) => p.start === r.start && p.end === r.end));
   let startTime = "20:00";
   let endTime = "22:00";
   let allDay = false;
@@ -259,7 +266,10 @@ export async function editPage(pollId: string): Promise<void> {
       h("h2", { class: "card-title" }, "① 日付を選ぶ"),
       calendar(),
       h("h2", { class: "card-title" }, "② 時間帯"),
-      h("div", { class: "row" }, h("span", { class: "muted small" }, "よく使う:"), preset("昼 12:00–13:00", "12:00", "13:00"), preset("夜 20:00–22:00", "20:00", "22:00")),
+      h("div", { class: "row" }, h("span", { class: "muted small" }, "よく使う:"), ...FIXED_PRESETS.map((p) => preset(p.label, p.start, p.end))),
+      recentPresets.length
+        ? h("div", { class: "row" }, h("span", { class: "muted small" }, "最近使った:"), ...recentPresets.map((r) => preset(`${r.start}–${r.end}`, r.start, r.end)))
+        : null,
       h(
         "div",
         { class: "row" },

@@ -4,6 +4,7 @@ import { deletePolls } from "../db";
 import { syncCommands } from "../discord/commands";
 import { discord } from "../discord/rest";
 import { nowSec } from "../core/lib";
+import { RETENTION } from "../polls/create";
 import { syncNow } from "../polls/sync";
 
 /**
@@ -63,6 +64,8 @@ async function cleanup(env: Env, now: number): Promise<void> {
     db.prepare("DELETE FROM link_tokens WHERE expires_at <= ?").bind(now),
     db.prepare("DELETE FROM sessions WHERE expires_at <= ?").bind(now),
     db.prepare("DELETE FROM rate_limits WHERE expires_at <= ?").bind(now),
+    // 最近使った時間帯は、最後に使ってから保持期間（6 ヶ月）を過ぎたら消す
+    db.prepare("DELETE FROM guild_recent_times WHERE updated_at <= ?").bind(now - RETENTION),
   ]);
   // 保持期間を過ぎた調整を、件数によらず 1 回の batch で削除する
   await deletePolls(db, { sql: "purge_after <= ?", value: now });
@@ -86,13 +89,14 @@ async function cleanup(env: Env, now: number): Promise<void> {
       console.error(JSON.stringify({ event: "guild_check_skipped", reason: "guild_list_incomplete", read: guilds.size }));
       return;
     }
-    const stored = await db.prepare("SELECT guild_id FROM polls UNION SELECT guild_id FROM guild_settings").all<{ guild_id: string }>();
+    const stored = await db.prepare("SELECT guild_id FROM polls UNION SELECT guild_id FROM guild_settings UNION SELECT guild_id FROM guild_recent_times").all<{ guild_id: string }>();
     const removed = stored.results.map((g) => g.guild_id).filter((id) => !guilds.has(id));
     if (removed.length) {
-      // 外されたサーバーの既定値と調整を、サーバーの数によらず 1 回の batch で削除する
+      // 外されたサーバーの既定値・最近使った時間帯と調整を、サーバーの数によらず 1 回の batch で削除する
       const ids = JSON.stringify(removed);
       await deletePolls(db, { sql: "guild_id IN (SELECT value FROM json_each(?))", value: ids }, [
         db.prepare("DELETE FROM guild_settings WHERE guild_id IN (SELECT value FROM json_each(?))").bind(ids),
+        db.prepare("DELETE FROM guild_recent_times WHERE guild_id IN (SELECT value FROM json_each(?))").bind(ids),
       ]);
     }
   } catch (e) {
