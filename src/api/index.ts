@@ -34,6 +34,7 @@ import { DEFAULT_DEADLINE_DAYS, resetParticipants, RETENTION } from "../polls/cr
 import { canAnswer, effectiveStatus, LIMITS, UNANSWERED } from "../shared/model";
 import { isValidTimeZone, nextCronAt } from "../shared/time";
 import { isValidDonationUrl } from "../shared/text";
+import { getRecentTimes, mergeRanges, rangesFromSlots, saveRecentTimesStatement } from "../guilds/recent-times";
 import { syncAfterAnswer, syncNow } from "../polls/sync";
 import { AnswersBody, ChoicesBody, FixBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
 
@@ -142,6 +143,8 @@ polls.get("/:id", async (c) => {
   if (!me && !isOrganizer) throw new AppError(403, "not_participant", "この調整の参加者ではありません。");
   // 未反映の回答の変更は、読み込み済みの回答から数える（問い合わせを増やさない）
   const pending = isOrganizer ? answers.filter((a) => a.updated_at > (poll.last_synced_at ?? 0)).length : null;
+  // サーバーの最近使った時間帯は、候補日時を編集できる主催者にだけ返す（§6.3.1）
+  const recentTimes = isOrganizer ? await getRecentTimes(db, poll.guild_id) : [];
   return c.json({
     now,
     csrfToken: session.csrf_token,
@@ -187,6 +190,7 @@ polls.get("/:id", async (c) => {
     choices: choices.map((ch) => ({ id: ch.id, symbol: ch.symbol, label: ch.label, kind: ch.kind, score: ch.score, color: ch.color })),
     participants: participants.map((p) => ({ userId: p.user_id, displayName: p.display_name, comment: p.comment, answeredAt: p.answered_at })),
     answers: answers.map((a) => ({ slotId: a.slot_id, userId: a.user_id, choiceId: a.choice_id, prevChoiceId: a.prev_choice_id, updatedAt: a.updated_at })),
+    recentTimes,
   });
 });
 
@@ -299,6 +303,9 @@ polls.put("/:id/slots", async (c) => {
       );
     }
   });
+  // 新しく追加した候補の時間帯を、サーバーの最近使った時間帯として覚える（§6.3.1）
+  const newRanges = rangesFromSlots(body.slots.filter((s) => !s.id), poll.timezone);
+  if (newRanges.length) stmts.push(saveRecentTimesStatement(db, poll.guild_id, mergeRanges(newRanges, await getRecentTimes(db, poll.guild_id)), now));
   stmts.push(db.prepare("UPDATE polls SET updated_at = ? WHERE id = ?").bind(now, poll.id));
   await db.batch(stmts);
   if (poll.status !== "draft") c.executionCtx.waitUntil(syncNow(c.env, poll.id));
