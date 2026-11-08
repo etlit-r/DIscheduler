@@ -85,7 +85,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          wranglerVersion: "4.151.2"
+          wranglerVersion: "4.156.2"
           command: d1 migrations apply DB --remote
 
       # Worker の公開値は --var で渡す。値の形式は前の手順（prepare-public.sh と公開値の確認）で検証済み。
@@ -96,7 +96,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          wranglerVersion: "4.151.2"
+          wranglerVersion: "4.156.2"
           command: >-
             deploy
             --var DISCORD_APPLICATION_ID:${{ vars.DISCORD_APPLICATION_ID }}
