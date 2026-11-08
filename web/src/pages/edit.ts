@@ -33,6 +33,11 @@ interface ChoiceDraft {
 const COLOR_LABEL: Record<ChoiceColor, string> = { green: "緑", teal: "青緑", yellow: "黄", orange: "橙", red: "赤", gray: "灰" };
 
 const pad = (n: number) => String(n).padStart(2, "0");
+/** 「よく使う」の固定の時間帯 */
+const FIXED_PRESETS = [
+  { label: "昼 12:00–13:00", start: "12:00", end: "13:00" },
+  { label: "夜 20:00–22:00", start: "20:00", end: "22:00" },
+] as const;
 
 export async function editPage(pollId: string): Promise<void> {
   let d: PollData;
@@ -69,6 +74,12 @@ export async function editPage(pollId: string): Promise<void> {
   const today = epochToZoned(d.now, tz);
   let month = { y: today.year, m: today.month };
   const selectedDates = new Set<string>();
+  // 日付の選び方。range のときは、始まりの日と終わりの日をタップして間の日をまとめて選ぶ
+  let pickMode: "single" | "range" = "single";
+  let rangeStart: string | null = null;
+  let lastPicked: string | null = null; // Shift + クリックで範囲を選ぶときの起点
+  // このサーバーで最近使った時間帯。固定の「よく使う」と同じものは出さない（§6.3.1）
+  const recentPresets = (d.recentTimes ?? []).filter((r) => !FIXED_PRESETS.some((p) => p.start === r.start && p.end === r.end));
   let startTime = "20:00";
   let endTime = "22:00";
   let allDay = false;
@@ -138,6 +149,57 @@ export async function editPage(pollId: string): Promise<void> {
 
   // --- 部品 ---
 
+  /** a〜b（順不同）の日付を、今日以降だけまとめて選ぶ */
+  function selectRange(a: string, b: string): void {
+    const [from, to] = a <= b ? [a, b] : [b, a];
+    const todayKey = `${today.year}-${pad(today.month)}-${pad(today.day)}`;
+    const [fy, fm, fd] = from.split("-").map(Number) as [number, number, number];
+    for (let t = Date.UTC(fy, fm - 1, fd), i = 0; i < 366; t += 86400000, i++) {
+      const d = new Date(t);
+      const key = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+      if (key > to) break;
+      if (key >= todayKey) selectedDates.add(key);
+    }
+  }
+
+  function modeButton(mode: "single" | "range", label: string): HTMLElement {
+    return h(
+      "button",
+      {
+        type: "button",
+        class: `btn btn-small ${pickMode === mode ? "btn-primary" : "btn-secondary"}`,
+        aria: { pressed: String(pickMode === mode) },
+        onClick: () => {
+          pickMode = mode;
+          rangeStart = null;
+          draw();
+        },
+      },
+      label,
+    );
+  }
+
+  function pickHint(): string {
+    if (pickMode === "range" && rangeStart) {
+      const [, m, d] = rangeStart.split("-").map(Number);
+      return `${m}月${d}日から、終わりの日をタップしてください（別の月にも移れます）。`;
+    }
+    // 日付を選んだら、候補にするには［＋ 選択中の日付に追加］を押す必要があることを伝える
+    if (selectedDates.size) return `${selectedDates.size} 日を選択中です。② で時間帯を決めて、下の［＋ 選択中の ${selectedDates.size} 日に追加］を押すと候補になります。`;
+    if (pickMode === "range") return "始まりの日をタップしてください。";
+    return "日付をタップして選びます（複数可。パソコンでは Shift キーを押しながらクリックすると範囲で選べます）。";
+  }
+
+  /** 選んだ日付を候補に追加しないまま保存しようとしたら確かめる。追加しに戻るなら false */
+  function confirmPendingDates(): boolean {
+    if (selectedDates.size === 0) return true;
+    if (confirm(`選択中の ${selectedDates.size} 日は、まだ候補に追加されていません。\n追加しないで保存しますか？\n（追加するときは［キャンセル］を押して、［＋ 選択中の ${selectedDates.size} 日に追加］を押してください）`)) return true;
+    const btn = document.getElementById("add-slots");
+    btn?.scrollIntoView({ block: "center" });
+    btn?.focus();
+    return false;
+  }
+
   function calendar(): HTMLElement {
     const first = new Date(Date.UTC(month.y, month.m - 1, 1));
     const daysInMonth = new Date(Date.UTC(month.y, month.m, 0)).getUTCDate();
@@ -153,12 +215,25 @@ export async function editPage(pollId: string): Promise<void> {
           "button",
           {
             type: "button",
-            class: `cal-day${sel ? " is-selected" : ""}${key === todayKey ? " is-today" : ""}`,
+            class: `cal-day${sel ? " is-selected" : ""}${key === todayKey ? " is-today" : ""}${key === rangeStart ? " is-range-start" : ""}`,
             aria: { pressed: String(sel), label: `${month.m}月${day}日` },
             disabled: key < todayKey,
-            onClick: () => {
-              if (sel) selectedDates.delete(key);
-              else selectedDates.add(key);
+            onClick: (e: MouseEvent) => {
+              if (pickMode === "range") {
+                if (rangeStart === null) {
+                  rangeStart = key;
+                } else {
+                  selectRange(rangeStart, key);
+                  rangeStart = null;
+                }
+              } else if (e.shiftKey && lastPicked && lastPicked !== key) {
+                selectRange(lastPicked, key);
+              } else if (sel) {
+                selectedDates.delete(key);
+              } else {
+                selectedDates.add(key);
+              }
+              lastPicked = key;
               draw();
             },
           },
@@ -181,8 +256,17 @@ export async function editPage(pollId: string): Promise<void> {
         h("strong", {}, `${month.y}年${month.m}月`),
         h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => move(1), aria: { label: "次の月" } }, "▶"),
       ),
+      h(
+        "div",
+        { class: "pick-mode", role: "group", aria: { label: "日付の選び方" } },
+        modeButton("single", "1 日ずつ"),
+        modeButton("range", "範囲で選ぶ"),
+      ),
       grid,
-      h("p", { class: "muted small" }, selectedDates.size ? `${selectedDates.size} 日を選択中` : "日付をタップして選びます（複数可）"),
+      h("p", { class: "muted small", aria: { live: "polite" } }, pickHint()),
+      selectedDates.size || rangeStart
+        ? h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { selectedDates.clear(); rangeStart = null; lastPicked = null; draw(); } }, "選択を解除")
+        : null,
     );
   }
 
@@ -259,7 +343,10 @@ export async function editPage(pollId: string): Promise<void> {
       h("h2", { class: "card-title" }, "① 日付を選ぶ"),
       calendar(),
       h("h2", { class: "card-title" }, "② 時間帯"),
-      h("div", { class: "row" }, h("span", { class: "muted small" }, "よく使う:"), preset("昼 12:00–13:00", "12:00", "13:00"), preset("夜 20:00–22:00", "20:00", "22:00")),
+      h("div", { class: "row" }, h("span", { class: "muted small" }, "よく使う:"), ...FIXED_PRESETS.map((p) => preset(p.label, p.start, p.end))),
+      recentPresets.length
+        ? h("div", { class: "row" }, h("span", { class: "muted small" }, "最近使った:"), ...recentPresets.map((r) => preset(`${r.start}–${r.end}`, r.start, r.end)))
+        : null,
       h(
         "div",
         { class: "row" },
@@ -269,7 +356,14 @@ export async function editPage(pollId: string): Promise<void> {
         endIn,
         h("span", { class: "field-inline" }, allDayIn, h("label", { for: "all-day" }, "終日")),
       ),
-      h("button", { type: "button", class: "btn btn-primary", disabled: selectedDates.size === 0, onClick: addSlots }, "＋ 選択中の日付に追加"),
+      selectedDates.size
+        ? h("p", { class: "add-prompt", role: "status" }, `選んだ ${selectedDates.size} 日を候補にするには、このボタンを押してください。`)
+        : null,
+      h(
+        "button",
+        { type: "button", id: "add-slots", class: `btn btn-primary${selectedDates.size ? " btn-attention" : ""}`, disabled: selectedDates.size === 0, onClick: addSlots },
+        selectedDates.size ? `＋ 選択中の ${selectedDates.size} 日に追加` : "＋ 選択中の日付に追加",
+      ),
       h("h2", { class: "card-title" }, `③ 候補一覧（${slots.length} 件）`),
       slots.length ? list : h("p", { class: "muted" }, "まだ候補がありません。"),
     );
@@ -528,6 +622,7 @@ export async function editPage(pollId: string): Promise<void> {
       type: "button",
       class: "btn btn-secondary",
       onClick: () => run(async () => {
+        if (!confirmPendingDates()) return;
         const warnings = await save();
         await reloadAll(warnings.length ? notice("warn", "保存しました。", ...warnings.map((w) => h("p", {}, w))) : notice("ok", "保存しました。"));
       }),
@@ -538,6 +633,7 @@ export async function editPage(pollId: string): Promise<void> {
           class: "btn btn-primary",
           disabled: !canPublish(),
           onClick: () => run(async () => {
+            if (!confirmPendingDates()) return;
             await save();
             const r = await request<{ redirect: string }>("POST", `/api/polls/${pollId}/publish`, {});
             location.assign(r.redirect);

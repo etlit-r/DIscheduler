@@ -20,7 +20,7 @@ export class DiscordError extends Error {
   }
 }
 
-const UA = "DiscordBot (https://github.com/yuka-okaniwa/DIscheduler, 1.0)";
+const UA = "DiscordBot (https://github.com/etlit-r/DIscheduler, 1.0)";
 
 export async function discord<T = unknown>(
   env: Env,

@@ -8,7 +8,7 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
-    assignees: ["yuka-okaniwa"]
+    assignees: ["etlit-r"]
     groups:
       actions:
         patterns: ["*"]
@@ -19,7 +19,7 @@ updates:
     # 公開直後の版（乗っ取りなどで悪意のある版が出た直後）を避ける。セキュリティアップデートには適用されない
     cooldown:
       default-days: 7
-    assignees: ["yuka-okaniwa"]
+    assignees: ["etlit-r"]
     groups:
       npm:
         patterns: ["*"]

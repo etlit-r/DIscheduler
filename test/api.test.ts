@@ -523,3 +523,60 @@ describe("8 回目のレビューのあとの確認", () => {
   });
 });
 
+
+describe("サーバーの最近使った時間帯（§6.3.1）", () => {
+  const JST = (h: number, m = 0, day = 20) => Math.floor(Date.UTC(2027, 0, day, h - 9, m) / 1000);
+  const newSlot = (sh: number, eh: number, day = 20) => ({ id: null, startAt: JST(sh, 0, day), endAt: JST(eh, 0, day), allDay: false });
+  const recent = async (pollId: string, cookie: Awaited<ReturnType<typeof login>>) =>
+    ((await (await call(getReq(`/api/polls/${pollId}`, cookie.cookie))).json()) as { recentTimes: { start: string; end: string }[] }).recentTimes;
+
+  beforeEach(async () => {
+    await db().prepare("DELETE FROM guild_recent_times").run();
+  });
+
+  it("新しく追加した候補の時間帯を、新しい順に 3 件まで覚えて主催者に返す", async () => {
+    mockDiscord(() => ({}));
+    const s = await seedPoll({ status: "draft", messageId: null });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const put = (slots: object[]) => call(jsonReq("PUT", `/api/polls/${s.pollId}/slots`, { slots }, org));
+
+    expect(await recent(s.pollId, org)).toEqual([]);
+    expect((await put([newSlot(19, 21), newSlot(21, 23, 21), newSlot(19, 21, 22), { id: null, startAt: JST(0, 0, 23), endAt: null, allDay: true }])).status).toBe(200);
+    // 終日の候補は覚えない。同じ時間帯は 1 件にまとめる
+    expect(await recent(s.pollId, org)).toEqual([{ start: "19:00", end: "21:00" }, { start: "21:00", end: "23:00" }]);
+
+    // 保存済みの候補（id あり）は数えず、新しく足した候補だけを先頭に入れる
+    const kept = (await db().prepare("SELECT id, start_at, end_at, all_day FROM slots WHERE poll_id = ?").bind(s.pollId).all<{ id: string; start_at: number; end_at: number | null; all_day: number }>()).results;
+    const keep = kept.map((k) => ({ id: k.id, startAt: k.start_at, endAt: k.end_at, allDay: k.all_day === 1 }));
+    expect((await put([...keep, newSlot(10, 11, 24)])).status).toBe(200);
+    expect(await recent(s.pollId, org)).toEqual([{ start: "10:00", end: "11:00" }, { start: "19:00", end: "21:00" }, { start: "21:00", end: "23:00" }]);
+
+    // 4 件目で一番古いものが落ちる。すでにある時間帯は先頭に移る
+    const kept2 = (await db().prepare("SELECT id, start_at, end_at, all_day FROM slots WHERE poll_id = ?").bind(s.pollId).all<{ id: string; start_at: number; end_at: number | null; all_day: number }>()).results;
+    const keep2 = kept2.map((k) => ({ id: k.id, startAt: k.start_at, endAt: k.end_at, allDay: k.all_day === 1 }));
+    expect((await put([...keep2, newSlot(13, 14, 25), newSlot(21, 23, 26)])).status).toBe(200);
+    expect(await recent(s.pollId, org)).toEqual([{ start: "13:00", end: "14:00" }, { start: "21:00", end: "23:00" }, { start: "10:00", end: "11:00" }]);
+
+    // 保存するのは時刻だけで、誰が入れたかは保存しない
+    const row = await db().prepare("SELECT * FROM guild_recent_times").first<Record<string, unknown>>();
+    expect(Object.keys(row!).sort()).toEqual(["guild_id", "ranges", "updated_at"]);
+  });
+
+  it("参加者には返さない", async () => {
+    mockDiscord(() => ({}));
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("PUT", `/api/polls/${s.pollId}/slots`, { slots: [newSlot(19, 21)] }, org))).status).toBe(200);
+    const alice = await login(s.pollId, ALICE, "participant", "answer");
+    expect(await recent(s.pollId, alice)).toEqual([]);
+  });
+
+  it("壊れた保存値は空として扱う", async () => {
+    mockDiscord(() => ({}));
+    const s = await seedPoll({ status: "draft", messageId: null });
+    const g = await db().prepare("SELECT guild_id FROM polls WHERE id = ?").bind(s.pollId).first<{ guild_id: string }>();
+    await db().prepare("INSERT INTO guild_recent_times (guild_id, ranges, updated_at) VALUES (?, ?, 1)").bind(g!.guild_id, '[{"start":"<b>","end":"22:00"},"x"]').run();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect(await recent(s.pollId, org)).toEqual([]);
+  });
+});

@@ -63,6 +63,17 @@ input[type="text"], input[type="search"], input[type="number"], input[type="time
   border-radius: 8px; padding: 8px 10px; min-height: 44px; max-width: 100%;
 }
 textarea { min-height: 80px; resize: vertical; }
+/* 時刻の入力の時計マーク（選択画面を開くボタン）を、枠と影で立体的なボタンの見た目にする。
+   入力欄そのものは他の入力と同じ見た目のまま。時計マークは Chromium 系のブラウザで表示される */
+input[type="time"]::-webkit-calendar-picker-indicator {
+  cursor: pointer; margin-left: 8px; padding: 5px; border-radius: 6px;
+  background-color: var(--surface-2);
+  border: 1px solid color-mix(in srgb, var(--text) 30%, var(--border));
+  border-bottom-width: 3px; border-bottom-color: color-mix(in srgb, var(--text) 50%, var(--border));
+  box-shadow: 0 2px 4px rgb(0 0 0 / 25%);
+}
+input[type="time"]::-webkit-calendar-picker-indicator:hover { border-color: var(--accent); background-color: color-mix(in srgb, var(--accent) 18%, var(--surface-2)); }
+input[type="time"]::-webkit-calendar-picker-indicator:active { transform: translateY(2px); border-bottom-width: 1px; box-shadow: none; }
 input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-color: var(--accent); }
 .tz-switch { min-height: 36px; padding: 4px 8px; font-size: 0.85rem; max-width: 160px; }
 
@@ -137,6 +148,20 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .cal-day.is-today { border-color: var(--accent); }
 .cal-day.is-selected { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .cal-day:disabled { opacity: 0.35; cursor: not-allowed; }
+.cal-day.is-range-start { outline: 3px solid var(--accent); outline-offset: 1px; font-weight: 700; }
+.pick-mode { display: flex; gap: 6px; margin: 0 0 8px; }
+/* 日付を選んだあと、［＋ 選択中の日付に追加］を押すよう促す */
+.add-prompt, .card .add-prompt { margin: 12px 0 6px; font-weight: 700; color: var(--accent); }
+.add-prompt::before { content: "▼ "; }
+.btn-attention { animation: attention-ring 1.6s ease-out infinite; }
+@keyframes attention-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); }
+  70% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-attention { animation: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent); }
+}
 .slot-list, .member-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .slot-list li, .member-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; }
 .choice-summary { display: flex; flex-wrap: wrap; gap: 8px; }
