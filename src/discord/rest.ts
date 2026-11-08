@@ -2,13 +2,21 @@
 import type { Env } from "../core/env";
 import { sleep } from "../core/lib";
 
+/** ログやエラー文に出す前に、URL の中の Interaction トークンを伏せる（security-design I-4） */
+export function redactPath(path: string): string {
+  return path.replace(/^\/webhooks\/(\d+)\/[^/?]+/, "/webhooks/$1/[redacted]");
+}
+
 export class DiscordError extends Error {
+  readonly path: string;
   constructor(
     readonly status: number,
     readonly body: string,
-    readonly path: string,
+    path: string,
   ) {
-    super(`Discord API ${status} ${path}`);
+    const safe = redactPath(path);
+    super(`Discord API ${status} ${safe}`);
+    this.path = safe;
   }
 }
 

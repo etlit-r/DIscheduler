@@ -88,7 +88,7 @@ flowchart LR
 | I-1 | 参加者以外（外部の人）が回答状況を閲覧 | 個人別の回答は **その調整の参加者間で共有する仕様**（ツールの目的）とし、それ以外の人には一切返さない。閲覧 API はセッション必須で、セッションは署名付き Interaction で本人が参加者と確認できた場合のみ発行。公開閲覧リンク・エクスポート機能は作らない。参加者から外された時点でセッションを即時削除。チャンネルの募集メッセージ・確定通知・Discord イベントには個人別回答を載せない。対策の一覧は設計書 §6.6 |
 | I-2 | 調整 ID の推測による列挙 | ID は 128bit ランダム。ただし **ID を知っていてもセッションがなければ何も見えない**（ID を秘密情報として扱わない設計） |
 | I-3 | XSS による情報窃取 | 後述 §4.2 の CSP、DOM への挿入は `textContent` のみ（`innerHTML` 禁止を ESLint で強制）、Trusted Types を有効化 |
-| I-4 | ログ・エラーからの漏えい | ログに個人情報・トークン・Cookie を出力しない（ロガーで既知キーをマスク）。エラー応答は汎用メッセージと相関 ID のみ。スタックトレースを返さない |
+| I-4 | ログ・エラーからの漏えい | ログに個人情報・トークン・Cookie を出力しない。Discord API のエラー文では、URL の中の Interaction トークンを `[redacted]` に置き換える。Workers Observability はアプリが書くログだけを残し、リクエストの記録（invocation logs）は無効にする（Cookie や接続元の情報を残さないため）。エラー応答は汎用メッセージと相関 ID のみ。スタックトレースを返さない |
 | I-5 | Bot トークン等の漏えい | Cloudflare の **Secrets**（ダッシュボードで登録）で管理し、リポジトリ・`wrangler.jsonc`・GitHub・CI ログに含めない。コマンドの登録も Worker 自身が行うため、Bot トークンを Cloudflare の外に出さない。GitHub の Secret scanning / Push protection を有効化。漏えい時の手順は §7 |
 | I-6 | 過剰なデータ収集 | Message Content Intent・OAuth・メール・IP・アバターを扱わない（設計書 §7.3）。保持期間後は物理削除（設計書 §7.4） |
 | I-7 | Referer による URL 漏えい | `Referrer-Policy: no-referrer`。トークンは URL フラグメントに置き、読み取り後 `history.replaceState` で消去 |

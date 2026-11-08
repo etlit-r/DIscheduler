@@ -99,3 +99,14 @@ describe("チャンネルの閲覧権限の計算（§5.3）", () => {
     expect(canViewChannel(m("4"), "g", "owner", roles, c)).toBe(true);
   });
 });
+
+describe("ログにトークンを残さない（security-design I-4）", () => {
+  it("Discord のエラー文から Interaction トークンを伏せる", async () => {
+    const { DiscordError, redactPath } = await import("../src/discord/rest");
+    const e = new DiscordError(500, "", "/webhooks/100000000000000001/aW50ZXJhY3Rpb246c2VjcmV0/messages/@original");
+    expect(e.message).not.toContain("aW50ZXJhY3Rpb246c2VjcmV0");
+    expect(e.message).toContain("/webhooks/100000000000000001/[redacted]/messages/@original");
+    expect(redactPath("/channels/1/messages/2")).toBe("/channels/1/messages/2");
+  });
+});
+

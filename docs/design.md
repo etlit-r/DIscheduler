@@ -956,7 +956,7 @@ D1 の上限を超えたときの文面（Discord・Web 共通）:
 | 同時編集 | 回答は本人の行のみ更新するため競合なし。候補編集は `updated_at` による楽観ロック |
 | アクセシビリティ | WCAG 2.2 AA を目標（コントラスト、キーボード操作、スクリーンリーダーラベル） |
 | 対応ブラウザ | 最新の Chrome / Safari / Firefox / Edge、Discord アプリ内ブラウザ |
-| 監視 | Workers Observability（ログは個人情報をマスクし、7 日保持） |
+| 監視 | Workers Observability（アプリが書くログだけを残し、リクエストの記録 invocation logs は無効。ログには ID と出来事の種類だけを出し、トークンは伏せる。7 日保持） |
 
 ---
 
