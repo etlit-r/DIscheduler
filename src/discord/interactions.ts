@@ -9,7 +9,7 @@ import { buildSettingsMessage, canManageGuild, getGuildSettings, saveGuildSettin
 import { canAnswer, effectiveStatus } from "../shared/model";
 import { sanitizeDisplayName, sanitizeLine } from "../shared/text";
 import { syncCommands } from "./commands";
-import { PERM } from "./members";
+import { hasPermission, PERM } from "./permissions";
 import { escapeMarkdown, messageLink, NO_MENTIONS } from "./messages";
 import { discord, memberDisplayName, type DiscordMember } from "./rest";
 
@@ -65,7 +65,7 @@ function background(env: Env, ctx: Ctx, i: Interaction, work: () => Promise<void
 export async function handleInteraction(env: Env, ctx: Ctx, i: Interaction, origin: string): Promise<Response> {
   if (i.type === 1) {
     // PING（Interactions Endpoint URL の登録時にも届く）。このときにコマンドを登録・更新する
-    ctx.waitUntil(syncCommands(env).catch((e) => console.error(JSON.stringify({ event: "commands_sync_failed", error: String(e) }))));
+    ctx.waitUntil(syncCommands(env, { force: true }).catch((e) => console.error(JSON.stringify({ event: "commands_sync_failed", error: String(e) }))));
     return json({ type: 1 });
   }
   if (env.MAINTENANCE === "1") return ephemeral("DIscheduler は現在メンテナンス中です。しばらくしてからお試しください。");
@@ -222,7 +222,7 @@ async function handlePollButton(
   const isOrganizer = poll.organizer_id === userId;
   let participant = await getParticipant(env.DB, poll.id, userId);
   if (!participant && !isOrganizer) {
-    const canView = i.member?.permissions ? (BigInt(i.member.permissions) & PERM.VIEW_CHANNEL) === PERM.VIEW_CHANNEL : false;
+    const canView = hasPermission(i.member?.permissions, PERM.VIEW_CHANNEL);
     if (kind === "answer" && poll.join_policy === "open" && canView) {
       const name = sanitizeDisplayName(memberDisplayName(i.member!), 64);
       await env.DB.prepare("INSERT OR IGNORE INTO participants (poll_id, user_id, display_name) VALUES (?, ?, ?)").bind(poll.id, userId, name).run();

@@ -30,6 +30,7 @@ app_id="${DISCORD_APPLICATION_ID:-}"
 donation_url="${DONATION_URL:-}"
 if [[ -n "$donation_url" ]]; then
   # https の URL で、決まった文字だけでできているかを確かめる（HTML や置換の書き換えを防ぐ）
+  # src/shared/text.ts の DONATION_URL_PATTERN と同じ規則（変えるときは両方そろえる）
   [[ "$donation_url" =~ ^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/-]*)?$ ]] \
     || fail "DONATION_URL の形式が正しくありません（https:// で始まる URL を指定してください）"
 fi

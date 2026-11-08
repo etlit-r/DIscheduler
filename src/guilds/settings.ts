@@ -1,6 +1,7 @@
 // サーバーごとの既定値（docs/design.md §5.3.1）
 // 変更できるのは「サーバー管理」権限を持つメンバーだけ。権限は署名済みの Interaction の値で判定する。
 import { nowSec } from "../core/lib";
+import { hasPermission, PERM } from "../discord/permissions";
 
 export type DefaultMode = "channel" | "role" | "manual";
 
@@ -14,13 +15,8 @@ export interface GuildSettings {
 export const DEFAULT_SETTINGS: GuildSettings = { mode: "channel", roleId: null, updatedBy: null, updatedAt: null };
 
 /** 「サーバー管理」権限（MANAGE_GUILD）または管理者権限 */
-const MANAGE_GUILD = 1n << 5n;
-const ADMINISTRATOR = 1n << 3n;
-
 export function canManageGuild(permissions: string | undefined): boolean {
-  if (!permissions || !/^\d+$/.test(permissions)) return false;
-  const p = BigInt(permissions);
-  return (p & MANAGE_GUILD) === MANAGE_GUILD || (p & ADMINISTRATOR) === ADMINISTRATOR;
+  return hasPermission(permissions, PERM.MANAGE_GUILD);
 }
 
 export async function getGuildSettings(db: D1Database, guildId: string): Promise<GuildSettings> {

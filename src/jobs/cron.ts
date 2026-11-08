@@ -15,8 +15,18 @@ export async function runCron(env: Env, scheduledTime: number): Promise<void> {
   const now = nowSec();
   const hourUtc = new Date(scheduledTime).getUTCHours();
 
-  // 締切を過ぎた調整を closed にする
-  await env.DB.prepare("UPDATE polls SET status = 'closed' WHERE status = 'open' AND deadline_at IS NOT NULL AND deadline_at <= ?").bind(now).run();
+  // 締切を過ぎた調整を closed にし、その募集メッセージも「締切を過ぎました」に更新する
+  const closed = await env.DB.prepare(
+    "UPDATE polls SET status = 'closed' WHERE status = 'open' AND deadline_at IS NOT NULL AND deadline_at <= ? RETURNING id, message_id",
+  )
+    .bind(now)
+    .all<{ id: string; message_id: string | null }>();
+  const synced = new Set<string>();
+  for (const p of closed.results) {
+    if (!p.message_id || synced.size >= MAX_SYNC_PER_RUN) continue;
+    await syncNow(env, p.id);
+    synced.add(p.id);
+  }
 
   // 未反映の回答の変更がある募集メッセージを更新する
   const targets = await env.DB.prepare(
@@ -26,12 +36,16 @@ export async function runCron(env: Env, scheduledTime: number): Promise<void> {
   )
     .bind(MAX_SYNC_PER_RUN)
     .all<{ id: string }>();
-  for (const t of targets.results) await syncNow(env, t.id);
+  for (const t of targets.results) {
+    if (synced.has(t.id) || synced.size >= MAX_SYNC_PER_RUN) continue;
+    await syncNow(env, t.id);
+    synced.add(t.id);
+  }
 
   // 日本時間 1 時（UTC 16 時）の回だけ、期限切れデータを削除する
   if (hourUtc === 16) await cleanup(env, now);
 
-  await syncCommands(env).catch((e) => console.error(JSON.stringify({ event: "commands_sync_failed", error: String(e) })));
+  await syncCommands(env, { force: true }).catch((e) => console.error(JSON.stringify({ event: "commands_sync_failed", error: String(e) })));
 }
 
 async function cleanup(env: Env, now: number): Promise<void> {
