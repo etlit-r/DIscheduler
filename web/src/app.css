@@ -14,6 +14,8 @@
   --c-red-soft: #fbe1e4;
   --c-gray: #4b5563;
   --c-gray-soft: #e7e9ee;
+  /* 強調色（テーマの赤）。必須の印や、操作を促す文に使う */
+  --emphasis: #d32f2f;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -29,6 +31,7 @@
     --c-red-soft: #42202a;
     --c-gray: #c5c9d6;
     --c-gray-soft: #2e3242;
+    --emphasis: #ff6b6b;
   }
 }
 
@@ -39,6 +42,9 @@
 .sep { color: var(--border); }
 .description { white-space: pre-wrap; margin: 0; }
 .muted { color: var(--text-muted); }
+.required { color: var(--emphasis); font-weight: 700; }
+.missing-hint { color: var(--emphasis); font-weight: 700; margin: 0 0 2px; }
+.missing-hint:empty { display: none; }
 .small { font-size: 0.88rem; }
 .right { text-align: right; }
 .loading { color: var(--text-muted); }
@@ -151,7 +157,7 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .cal-day.is-range-start { outline: 3px solid var(--accent); outline-offset: 1px; font-weight: 700; }
 .pick-mode { display: flex; gap: 6px; margin: 0 0 8px; }
 /* 日付を選んだあと、［＋ 選択中の日付に追加］を押すよう促す */
-.add-prompt, .card .add-prompt { margin: 12px 0 6px; font-weight: 700; color: var(--accent); }
+.add-prompt, .card .add-prompt { margin: 12px 0 6px; font-weight: 700; color: var(--emphasis); }
 .add-prompt::before { content: "▼ "; }
 .btn-attention { animation: attention-ring 1.6s ease-out infinite; }
 @keyframes attention-ring {
