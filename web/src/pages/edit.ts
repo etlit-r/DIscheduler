@@ -33,6 +33,15 @@ interface ChoiceDraft {
 const COLOR_LABEL: Record<ChoiceColor, string> = { green: "緑", teal: "青緑", yellow: "黄", orange: "橙", red: "赤", gray: "灰" };
 
 const pad = (n: number) => String(n).padStart(2, "0");
+/** 時刻の入力のどこを押しても選択画面を開く（対応していないブラウザでは何もしない） */
+function openPicker(input: HTMLInputElement): void {
+  try {
+    input.showPicker();
+  } catch {
+    // showPicker に対応していない、または開けない状態のときは、ブラウザの通常の動きに任せる
+  }
+}
+
 /** 「よく使う」の固定の時間帯 */
 const FIXED_PRESETS = [
   { label: "昼 12:00–13:00", start: "12:00", end: "13:00" },
@@ -226,11 +235,11 @@ export async function editPage(pollId: string): Promise<void> {
   }
 
   function slotSection(): HTMLElement {
-    const startIn = h("input", { type: "time", id: "start-time", value: startTime, disabled: allDay, onChange: () => (startTime = startIn.value || startTime) });
-    const endIn = h("input", { type: "time", id: "end-time", value: endTime, disabled: allDay, onChange: () => (endTime = endIn.value || endTime) });
+    const startIn = h("input", { type: "time", id: "start-time", value: startTime, disabled: allDay, onClick: (e) => openPicker(e.currentTarget as HTMLInputElement), onChange: () => (startTime = startIn.value || startTime) });
+    const endIn = h("input", { type: "time", id: "end-time", value: endTime, disabled: allDay, onClick: (e) => openPicker(e.currentTarget as HTMLInputElement), onChange: () => (endTime = endIn.value || endTime) });
     const allDayIn = h("input", { type: "checkbox", id: "all-day", checked: allDay, onChange: () => { allDay = allDayIn.checked; draw(); } });
     const preset = (label: string, s: string, e: string) =>
-      h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { startTime = s; endTime = e; allDay = false; draw(); } }, label);
+      h("button", { type: "button", class: "btn btn-small btn-raised", onClick: () => { startTime = s; endTime = e; allDay = false; draw(); } }, label);
     const list = h("ul", { class: "slot-list" });
     for (const s of slots) {
       const hasAnswers = s.id !== null && d.answers.some((a) => a.slotId === s.id);
