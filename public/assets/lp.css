@@ -333,3 +333,9 @@ table.perm tbody td:nth-child(2) { white-space: nowrap; }
   .feature:hover, .btn-large.btn-primary:hover, .btn-xl:hover, .lp .brand:hover .brand-mark { transform: none; }
   .chevron { transition: none; }
 }
+
+/* 広告の枠（寄付リンクと同じく、ADMAX_ID が設定されたときだけ HTML に残る。docs/design.md §6.10.1） */
+.ad-slot { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 0 auto; padding: 32px 16px; }
+.ad-label { margin: 0; font-size: 0.7rem; letter-spacing: 0.08em; color: var(--text-muted); }
+.ad-slot iframe { display: block; width: 300px; max-width: 100%; height: 250px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.doc-body .ad-slot { padding: 40px 0 0; }

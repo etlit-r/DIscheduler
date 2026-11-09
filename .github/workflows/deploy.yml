@@ -55,10 +55,11 @@ jobs:
       - name: Web 画面のビルド
         run: npm run build
 
-      - name: 静的ページに設定値を埋め込む（招待リンク・寄付リンク）
+      - name: 静的ページに設定値を埋め込む（招待リンク・寄付リンク・広告）
         env:
           DISCORD_APPLICATION_ID: ${{ vars.DISCORD_APPLICATION_ID }}
           DONATION_URL: ${{ vars.DONATION_URL }}
+          ADMAX_ID: ${{ vars.ADMAX_ID }}
         run: bash scripts/prepare-public.sh public
 
       - name: D1 データベースの ID を設定する
