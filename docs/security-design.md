@@ -88,7 +88,7 @@ flowchart LR
 | I-1 | 参加者以外（外部の人）が回答状況を閲覧 | 個人別の回答は **その調整の参加者間で共有する仕様**（ツールの目的）とし、それ以外の人には一切返さない。閲覧 API はセッション必須で、セッションは署名付き Interaction で本人が参加者と確認できた場合のみ発行。公開閲覧リンク・エクスポート機能は作らない。参加者から外された時点でセッションを即時削除。チャンネルの募集メッセージ・確定通知・Discord イベントには個人別回答を載せない。対策の一覧は設計書 §6.6 |
 | I-2 | 調整 ID の推測による列挙 | ID は 128bit ランダム。ただし **ID を知っていてもセッションがなければ何も見えない**（ID を秘密情報として扱わない設計） |
 | I-3 | XSS による情報窃取 | 後述 §4.2 の CSP、DOM への挿入は `textContent` のみ（`innerHTML` 禁止を ESLint で強制）、Trusted Types を有効化 |
-| I-4 | ログ・エラーからの漏えい | ログに個人情報・トークン・Cookie を出力しない。Discord API のエラー文では、URL の中の Interaction トークンを `[redacted]` に置き換える。Workers Observability はアプリが書くログだけを残し、リクエストの記録（invocation logs）は無効にする（Cookie や接続元の情報を残さないため）。エラー応答は汎用メッセージと相関 ID のみ。スタックトレースを返さない |
+| I-4 | ログ・エラーからの漏えい | ログに個人情報・トークン・Cookie を出力しない。Discord API のエラー文では、URL の中の Interaction トークンを `[redacted]` に置き換える。Workers Observability はアプリが書くログだけを残し、リクエストの記録（invocation logs）は無効にする（Cookie や接続元の情報を残さないため）。本体の Pages Functions でも、リクエストの記録を保存する設定は有効にしない。エラー応答は汎用メッセージと相関 ID のみ。スタックトレースを返さない |
 | I-5 | Bot トークン等の漏えい | Cloudflare の **Secrets**（ダッシュボードで登録）で管理し、リポジトリ・`wrangler.jsonc`・GitHub・CI ログに含めない。コマンドの登録も Worker 自身が行うため、Bot トークンを Cloudflare の外に出さない。GitHub の Secret scanning / Push protection を有効化。漏えい時の手順は §7 |
 | I-6 | 過剰なデータ収集 | Message Content Intent・OAuth・メール・IP・アバターを扱わない（設計書 §7.3）。保持期間後は物理削除（設計書 §7.4） |
 | I-7 | Referer による URL 漏えい | `Referrer-Policy: no-referrer`。トークンは URL フラグメントに置き、読み取り後 `history.replaceState` で消去 |
@@ -159,6 +159,7 @@ X-Robots-Tag: noindex, nofollow    （/ と /security を除く）
 
 - `'unsafe-inline'` / `'unsafe-eval'` は使用しない。インラインスクリプト・インラインスタイル・`eval` を禁止。
 - 静的配信の LP・セキュリティ方針ページは、広告の枠を埋め込むため `frame-src https://discheduler-ads.etlits.workers.dev` を加える（`public/_headers`）。
+- **正式なアドレスへの集約**（設計書 §14）。本体は Cloudflare Pages（`PUBLIC_ORIGIN`）で動かす。旧アドレスの Worker や、Pages がデプロイごとに作る別名のアドレスへのアクセスは、GET を正式なアドレスへ転送し、それ以外は 404 にする（Discord からの署名付きの通信を除く）。入力リンクは常に正式なアドレスで発行する。
 - **広告の枠は別オリジン**（設計書 §6.10.1）。広告会社のスクリプトは本体とは別の Worker（`discheduler-ads.etlits.workers.dev`）の中だけで動かし、同一オリジンポリシーで本体のページ・Cookie・localStorage から切り離す。iframe の `sandbox` に `allow-top-navigation` を付けず、本体のページの移動を禁止する。広告の枠の CSP は広告会社のスクリプトを許すが、`frame-ancestors` で本体以外への埋め込みを禁止する。閲覧者は枠の下のボタンで広告を拒否でき、拒否すると広告の枠を読み込まない。広告は Worker が返す画面（作成・回答・集計など）には置かない。
 - 設定値はテストで固定化し、緩める変更は CI で検知する。
 

@@ -1,6 +1,6 @@
 # DIscheduler
 
-Discord のチャンネル／ロールのメンバーで日程調整を行う Bot。Cloudflare Workers の無料枠のみで動作するサーバーレス構成です。
+Discord のチャンネル／ロールのメンバーで日程調整を行う Bot。Cloudflare（Pages・Workers・D1）の無料枠のみで動作するサーバーレス構成です。
 
 
 ## ドキュメント
@@ -10,7 +10,7 @@ Discord のチャンネル／ロールのメンバーで日程調整を行う Bo
 - [Bot の案内ページ（LP）のソース](public/index.html)
 
 ## デプロイ
-`main` にマージすると、GitHub Actions が承認待ちになり、承認後に Cloudflare Workers へデプロイされます。初回の準備は [設計書](docs/design.md) の §14 を参照してください。
+`main` にマージすると、GitHub Actions が承認待ちになり、承認後に Cloudflare Pages（本体）と Workers（定期処理）へデプロイされます。初回の準備は [設計書](docs/design.md) の §14 を参照してください。
 
 ## サーバー管理者の方へ
 コマンドを使えるチャンネルは、Discord の「サーバー設定 → 連携サービス → DIscheduler」で指定できます。そのチャンネルで誰がコマンドを打てるかは、チャンネルの発言権限で制限してください。手順は [設計書](docs/design.md) の §5.4.1 を参照してください。
@@ -51,4 +51,4 @@ npm run dev
 
 ## 運用開始の手順
 
-[設計書](docs/design.md) の §14.1 を参照してください。Cloudflare で D1 データベースを作り、GitHub の Environment `production` に設定値を入れて `main` にマージすると、テスト・マイグレーション・デプロイが実行されます。Bot トークンは Cloudflare のダッシュボードで Worker の Secret として登録します。
+[設計書](docs/design.md) の §14.1 を参照してください。Cloudflare で D1 データベースを作り、GitHub の Environment `production` に設定値を入れて `main` にマージすると、テスト・マイグレーション・デプロイが実行されます。Bot トークンは Cloudflare のダッシュボードで Pages のプロジェクトと Worker の Secret として登録します。

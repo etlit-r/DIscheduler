@@ -1,0 +1,3 @@
+# Worker（旧アドレスの転送と Cron を担当）の静的ファイルとしては配信しない Pages 用のファイル
+_worker.js
+_routes.json
