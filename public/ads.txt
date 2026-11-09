@@ -1,0 +1,2 @@
+# 広告枠の販売を許可している事業者の一覧（IAB Tech Lab の ads.txt。docs/design.md §6.10.1）
+google.com, pub-7698368408631991, DIRECT, f08c47fec0942fa0
