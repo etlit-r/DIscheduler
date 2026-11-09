@@ -360,7 +360,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 - スマートフォン（Discord アプリ内ブラウザ）での操作を最優先。最小タップ領域 44px。
 - 日本語 UI。日時の表示・入力は §6.7 のタイムゾーン規則に従う（例: `11/12(水) 20:00–22:00 JST`）。
 - ライト／ダークモード対応（Discord の利用者はダークが多い）。
-- 外部 CDN・外部フォント・解析タグ・広告は一切読み込まない（CSP で禁止。寄付はただのリンク。§6.10）。
+- 外部 CDN・外部フォント・解析タグは一切読み込まない（CSP で禁止。寄付はただのリンク。§6.10）。広告は LP とセキュリティ方針ページの、サイトから切り離した枠の中だけに出す（§6.10.1）。作成・回答・集計・完了の画面には出さない。
 - 色だけに頼らない（選択肢は記号＋色＋読み上げラベルで表示する）。
 - 強調色は赤（ライト `#d32f2f`、ダーク `#ff6b6b`。CSS の `--emphasis`）。必須の印（「（必須）」）、公開に足りない項目の案内、操作を促す文（「選んだ N 日を候補にするには…」）に使う。ボタンなどの基本の色（アクセント色）とは分ける。
 
@@ -399,7 +399,6 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 │    9 10 [11][12] 13 14 15  ...     │
 ├──────────────────────────────────┤
 │ ② 時間帯                          │
-│   よく使う: [昼 12-13] [夜 20-22]  │
 │   最近使った: [19:00–21:00] ...    │
 │   開始 [20:00▼] 終了 [22:00▼]      │
 │   [＋ 選択中の日付に追加]          │
@@ -423,7 +422,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 - 日付の複数選択 × 時間帯の一括適用で、10 候補でも数タップで作成可能。
 - 日付の選び方は「1 日ずつ」と「範囲で選ぶ」を切り替えられる。範囲では、始まりの日と終わりの日をタップすると間の日（今日以降）をまとめて選ぶ。別の月に移ってから終わりの日を選んでもよい。「1 日ずつ」でも、パソコンでは Shift キーを押しながらクリックすると、直前に押した日からの範囲を選べる。［選択を解除］で選び直せる。
 - 日付を選ぶと、カレンダーの下の案内と［＋ 選択中の日付に追加］ボタンの上の一文で、ボタンを押すと候補になることを伝え、ボタンに選んだ日数を出して目立たせる。選んだ日付を追加しないまま保存・公開しようとしたら確認ダイアログを出し、［キャンセル］でボタンの位置に戻す。
-- 「よく使う」「最近使った」の時間帯のボタンは、押せる部品だと分かるよう立体的なボタンの見た目にする。狭い画面では見出し（「よく使う:」など）の下にボタンを並べる。
+- 「最近使った」の時間帯のボタンは、押せる部品だと分かるよう立体的なボタンの見た目にする。狭い画面では見出し（「最近使った:」）の下にボタンを並べる。固定の時間帯のボタン（「よく使う」）は、使う時間帯がサーバーによってまちまちなので置かない。
 - 開始・終了は「ラベル＋入力欄」を組にして並べる。1 行に収まる幅では横に、収まらない幅（560px 以下）では組ごとに 1 行ずつ縦に並べる。
 - 日付の案内文の Shift + クリックの説明は、幅の広い画面（641px 以上）でだけ出す。
 - 開始の時刻を決めると、終了の時刻はその 1 時間後に自動で入る（23 時台なら翌日 0 時台。終了はそのあと自由に変えられる）。
@@ -437,7 +436,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 - [公開してチャンネルに投稿] はタイトルと候補が 1 件以上あるときだけ押せる。押せないときは、ボタンの下に足りない項目を強調色で「タイトルと候補日時を入力してください。」（足りない項目だけ）と出し、その下に「公開するには、タイトルと候補日時（1 件以上）が必要です。」を出す。成功したら S7（公開完了）に移り、「チャンネルに募集を投稿しました」と、集計画面へのリンク、寄付リンク（§6.10）を表示する。
 
 #### 6.3.1 最近使った時間帯
-- 「よく使う」の固定の時間帯（昼 12:00–13:00、夜 20:00–22:00）の下に、**そのサーバーで最近使った時間帯を新しい順に 3 件まで**ボタンで出す。押すと開始・終了の時刻が入る。固定の時間帯と同じものは出さない。
+- 開始・終了の入力の上に、**そのサーバーで最近使った時間帯を新しい順に 3 件まで**ボタンで出す（「最近使った:」）。押すと開始・終了の時刻が入る。まだ使ったことがないサーバーでは出さない。
 - 覚えるのは、候補日時の保存（`PUT /api/polls/:id/slots`）で**新しく追加した候補**の開始・終了の時刻（調整のタイムゾーンでの壁時計の時刻、`HH:MM`）だけ。終日の候補と終了のない候補は覚えない。すでにある時間帯を使うと先頭に移る。
 - サーバー単位で保存する（`guild_recent_times`、§7.2）。同じサーバーの主催者どうしで共有されるが、**誰が入れたかは保存しない**。
 - 返すのは候補日時を編集できる主催者にだけ（`GET /api/polls/:id` の `recentTimes`）。参加者には返さない。
@@ -648,7 +647,7 @@ S2 の [変更] を押すと、ひな形から選ぶか、自分で編集でき�
 
 ### 6.10 寄付リンク
 
-運営費（無料枠を超えたときの有料プラン代、月 5 ドル程度）をまかなうため、寄付リンクを置く。広告は置かない（外部のスクリプトが予定や名前を読める状態になり、§6.6 とセキュリティ方針に反するため）。
+運営費（無料枠を超えたときの有料プラン代、月 5 ドル程度）をまかなうため、寄付リンクを置く。広告は LP とセキュリティ方針ページにだけ置く（§6.10.1）。
 
 | 置く場所 | 表示 |
 |----------|------|
@@ -671,179 +670,23 @@ S2 の [変更] を押すと、ひな形から選ぶか、自分で編集でき�
 
 ---
 
-## 7. データ設計（D1）
+#### 6.10.1 広告
+運営費の足しにするため、LP（S0）とセキュリティ方針ページ（S6）に広告を 1 枠ずつ出す。配信は忍者AdMax（独自ドメインがなくても使え、事前の審査がない）。
 
-### 7.1 ER 概要
-
-```mermaid
-erDiagram
-  polls ||--o{ slots : has
-  polls ||--o{ participants : has
-  polls ||--o{ choices : defines
-  participants ||--o{ answers : gives
-  slots ||--o{ answers : receives
-  choices ||--o{ answers : selected
-  polls ||--o{ link_tokens : issues
-  polls ||--o{ sessions : scopes
-```
-
-### 7.2 テーブル定義
-
-```sql
--- 調整
-CREATE TABLE polls (
-  id              TEXT PRIMARY KEY,          -- ランダム 128bit (base64url)
-  guild_id        TEXT NOT NULL,
-  channel_id      TEXT NOT NULL,
-  message_id      TEXT,                      -- 募集メッセージ
-  organizer_id    TEXT NOT NULL,             -- Discord user ID
-  title           TEXT CHECK (title IS NULL OR length(title) BETWEEN 1 AND 100), -- 下書きでは NULL 可。公開時に必須
-  description     TEXT CHECK (length(description) <= 1000),
-  timezone        TEXT NOT NULL DEFAULT 'Asia/Tokyo', -- IANA 名。主催者のブラウザ TZ で上書き（§6.7）
-  timezone_set    INTEGER NOT NULL DEFAULT 0,       -- 1 = 主催者が設定済み（以後ブラウザ TZ で上書きしない）
-  target_type     TEXT NOT NULL CHECK (target_type IN ('channel','role','manual')), -- members=auto かつ role なし → channel、role あり → role、members=manual → manual
-  target_id       TEXT,
-  join_policy     TEXT NOT NULL DEFAULT 'closed' CHECK (join_policy IN ('closed','open')),
-  status          TEXT NOT NULL DEFAULT 'draft'
-                  CHECK (status IN ('draft','open','closed','fixed','cancelled')),
-  deadline_at     INTEGER,                   -- UNIX 秒 (UTC)。未指定なら公開時に「公開から 7 日後」を入れる
-                                             -- 締切を過ぎたかは画面・API で deadline_at と現在時刻から判定する（status の closed への変更は 1 日 2 回の Cron なので待たない）
-  fixed_slot_id   TEXT,
-  fixed_at        INTEGER,                   -- 確定した時刻。これより後の回答変更を S4 で「確定後に変更」と表示する
-  discord_event_id TEXT,
-  choices_version INTEGER NOT NULL DEFAULT 1, -- 選択肢を変更するたびに +1（§6.9.4）
-  last_synced_at  INTEGER,                   -- 募集メッセージ最終更新（主催者の画面に表示。§6.5）
-  last_reminded_at INTEGER,                  -- リマインドの最終実行（12 時間に 1 回まで）
-  publishing_at   INTEGER,                   -- 公開処理中の印（同時の公開で二重に投稿しないため。§5.5）
-  choices_changed_at INTEGER,                -- 公開後に選択肢を変えた時刻（回答画面で知らせるため。§6.9.4）
-  created_at      INTEGER NOT NULL,
-  updated_at      INTEGER NOT NULL,
-  purge_after     INTEGER NOT NULL           -- この時刻以降に物理削除
-);
-CREATE INDEX idx_polls_channel ON polls(guild_id, channel_id, status);
-CREATE INDEX idx_polls_purge ON polls(purge_after);
-CREATE INDEX idx_polls_draft ON polls(organizer_id, channel_id, status); -- 未入力の下書きの使い回し（§4.4）
-
--- 候補日時
-CREATE TABLE slots (
-  id        TEXT PRIMARY KEY,
-  poll_id   TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
-  start_at  INTEGER NOT NULL,                -- UNIX 秒 (UTC)
-  end_at    INTEGER,                         -- NULL = 終了時刻なし
-  all_day   INTEGER NOT NULL DEFAULT 0,
-  position  INTEGER NOT NULL,
-  UNIQUE (poll_id, start_at, end_at)
-);
-
--- 回答の選択肢（調整ごとに 2〜5 個。§6.9）
-CREATE TABLE choices (
-  id        TEXT PRIMARY KEY,
-  poll_id   TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
-  symbol    TEXT NOT NULL CHECK (length(symbol) BETWEEN 1 AND 8),  -- 表示は 1〜2 書記素（アプリ側で検証）
-  label     TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 10),
-  kind      TEXT NOT NULL CHECK (kind IN ('ok','maybe','ng')),
-  score     INTEGER NOT NULL CHECK (score BETWEEN 0 AND 10),
-  color     TEXT NOT NULL CHECK (color IN ('green','teal','yellow','orange','red','gray')),
-  position  INTEGER NOT NULL,
-  UNIQUE (poll_id, label)
-);
-
--- 参加者
-CREATE TABLE participants (
-  poll_id       TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
-  user_id       TEXT NOT NULL,
-  display_name  TEXT NOT NULL CHECK (length(display_name) <= 64), -- 表示用キャッシュ
-  comment       TEXT CHECK (length(comment) <= 100),
-  answered_at   INTEGER,                   -- 回答が 1 件でも残っていれば、最後に保存した時刻。なければ NULL
-  choices_ack_version INTEGER,               -- 選択肢の変更を確認した版（§6.9.4）
-  PRIMARY KEY (poll_id, user_id)
-);
-
--- 回答
-CREATE TABLE answers (
-  poll_id  TEXT NOT NULL,
-  slot_id  TEXT NOT NULL REFERENCES slots(id) ON DELETE CASCADE,
-  user_id  TEXT NOT NULL,
-  choice_id TEXT NOT NULL REFERENCES choices(id),   -- 削除時は移し先へ付け替えてから消す（§6.9.4）
-  prev_choice_id TEXT,                              -- 確定後に変更した場合の、確定時点の選択肢（S4 の表示用。空文字 = 確定時点では未回答）
-  updated_at INTEGER NOT NULL,                      -- 最終変更時刻
-  PRIMARY KEY (slot_id, user_id),
-  FOREIGN KEY (poll_id, user_id) REFERENCES participants(poll_id, user_id) ON DELETE CASCADE
-);
-CREATE INDEX idx_answers_updated ON answers(poll_id, updated_at); -- 未反映の回答の変更の件数（§6.5）
-
--- 入力リンク用ワンタイムトークン（ハッシュのみ保存）
-CREATE TABLE link_tokens (
-  token_hash  TEXT PRIMARY KEY,              -- SHA-256(token)
-  poll_id     TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
-  user_id     TEXT NOT NULL,
-  role        TEXT NOT NULL CHECK (role IN ('organizer','participant')),
-  purpose     TEXT NOT NULL CHECK (purpose IN ('edit','answer','view')), -- 交換後に移る画面（§6.8）
-  expires_at  INTEGER NOT NULL,              -- 発行から 10 分
-  used_at     INTEGER
-);
-
--- Web セッション（ハッシュのみ保存）
-CREATE TABLE sessions (
-  sid_hash    TEXT PRIMARY KEY,              -- SHA-256(session id)
-  poll_id     TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
-  user_id     TEXT NOT NULL,
-  role        TEXT NOT NULL CHECK (role IN ('organizer','participant')),
-  csrf_token  TEXT NOT NULL,
-  expires_at  INTEGER NOT NULL,              -- 発行から 12 時間（延長なし）
-  created_at  INTEGER NOT NULL
-);
-CREATE INDEX idx_sessions_exp ON sessions(expires_at);
-
--- サーバーごとの既定値（§5.3.1）
-CREATE TABLE guild_settings (
-  guild_id    TEXT PRIMARY KEY,
-  mode        TEXT NOT NULL DEFAULT 'channel' CHECK (mode IN ('channel','role','manual')),
-  role_id     TEXT,                              -- mode = role のときのロール ID
-  updated_by  TEXT NOT NULL,                     -- 最後に変更した管理者
-  updated_at  INTEGER NOT NULL
-);
-
--- サーバーごとの最近使った時間帯（§6.3.1）。誰が入れたかは保存しない
-CREATE TABLE guild_recent_times (
-  guild_id    TEXT PRIMARY KEY,
-  ranges      TEXT NOT NULL,                     -- JSON 配列 [{"start":"20:00","end":"22:00"}, ...]（新しい順・最大 3 件）
-  updated_at  INTEGER NOT NULL
-);
-
--- アプリの内部状態（登録済みコマンドの版など。§5.1）
-CREATE TABLE meta (
-  key    TEXT PRIMARY KEY,
-  value  TEXT NOT NULL
-);
-
--- レート制限カウンタ（固定ウィンドウ）
-CREATE TABLE rate_limits (
-  key         TEXT PRIMARY KEY,              -- 例: "answer:<user_id>:<window>"
-  count       INTEGER NOT NULL,
-  expires_at  INTEGER NOT NULL
-);
-```
-
-### 7.3 保存しないデータ（データ最小化）
-- Discord のアクセストークン・リフレッシュトークン（OAuth を使わないため存在しない）
-- Interaction トークン
-- メールアドレス・IP アドレス（ログにも残さない。レート制限キーにも用いない）
-- メッセージ本文（Message Content Intent を使わない）
-- アバター画像（表示する場合も Discord CDN の URL を都度生成し保存しない → 初版はアバター非表示）
-
-### 7.4 データ保持期間
-| 状態 | 物理削除のタイミング |
-|------|---------------------|
-| `draft`（未公開） | 作成から 3 日後 |
-| `open` / `closed` | 締切から 6 ヶ月（180 日）後 |
-| `fixed` | 確定日時から 6 ヶ月（180 日）後 |
-| `cancelled` | 即時 |
-| link_tokens / sessions / rate_limits | 期限切れ後、日本時間 1 時の Cron で削除 |
-| guild_settings（サーバーの既定値） | Bot がサーバーから外されたとき（日本時間 1 時の Cron で検知して削除） |
-| guild_recent_times（最近使った時間帯） | 最後に使ってから 6 ヶ月（180 日）後、または Bot がサーバーから外されたとき（日本時間 1 時の Cron で削除） |
-
-主催者は `/schedule` の［自分の調整を管理］から即時削除できる。Bot がギルドから削除された場合（Gateway を使わないため削除イベントは受け取れない）は、日次 Cron で `GET /users/@me/guilds` と保存済みギルドを突き合わせ、または API の 403/404 応答を検知して、該当ギルドのデータを削除する。Bot が入っているサーバーの一覧を最後まで読めなかった場合（2000 サーバーを超える、途中でエラーになったなど）は、まだ使っているサーバーのデータを消さないよう、その日は削除しない。
+- **出す場所**：LP の「使い方」の下と、セキュリティ方針ページの末尾だけ。作成・回答・集計・完了の画面（S1〜S5・S7）と、Discord に投稿するメッセージには出さない。入力の邪魔をしないためと、広告会社の規約上、入力フォームだけの画面やログインした人だけが見る画面への掲載は認められにくいため。
+- **別オリジンで切り離す**：広告の枠は、本体とは別の Worker `discheduler-ads`（`https://discheduler-ads.etlits.workers.dev/frame`。`ads/`）で配信し、本体のページに iframe で埋め込む。`workers.dev` は Public Suffix List に載っているので、本体とは別のサイトとして扱われる。
+  - 広告会社のスクリプトは自分の Cookie を使える（興味に合った広告を出すため。運営者の判断）。
+  - 本体のページの内容・Cookie・localStorage には、同一オリジンポリシーにより触れられない。
+  - iframe には `sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"` を付ける。`allow-top-navigation` を付けないので、広告が本体のページごと別のサイトへ移動させることはできない。
+- **CSP**：本体の静的ページ（LP・セキュリティ方針）は `frame-src https://discheduler-ads.etlits.workers.dev` だけを足し、ほかは §4.2 のまま。広告の枠（`ads/public/_headers`）は広告会社のスクリプトを読むため `script-src https: 'unsafe-inline' 'unsafe-eval'` などを許し、`frame-ancestors https://discheduler.etlits.workers.dev` で本体以外への埋め込みを禁止する。広告会社には枠のアドレスだけを送り、本体のページの場所は送らない（本体は `Referrer-Policy: no-referrer`）。
+- **拒否できる**：枠の下に「広告と広告会社の Cookie を拒否する」ボタンを置く（`public/assets/ad-consent.js`）。
+  - 拒否すると iframe を作らず、広告会社には何も送らない。「広告を表示する（広告会社の Cookie を許可）」で戻せる。
+  - 選択は閲覧者のブラウザの localStorage（`discheduler.ads`）にだけ保存し、サーバーには送らない。
+  - 選択がまだなく、ブラウザで Global Privacy Control（`navigator.globalPrivacyControl`）が有効なら、拒否として扱う。
+  - スクリプトが動かない環境では広告を出さない。
+- **出し分け**：GitHub の `production` 環境の変数 `ADMAX_ID`（広告コードの `https://adm.shinobi.jp/s/` に続く 32 文字）があるときだけ、`scripts/prepare-public.sh` が `<!-- ad:start -->`〜`<!-- ad:end -->` を残して `ads/public/frame.html` に ID を埋め込み、デプロイで広告の枠の Worker も公開する。ないときは広告の枠・説明・`ad-consent.js` を消し、広告の枠の Worker はデプロイしない。セキュリティ方針の「しないこと」なども、広告の有無で文言を切り替える（`<!-- no-ad:start -->`）。
+- **Google AdSense の審査**：AdSense にはサイト `etlits.workers.dev`（`workers.dev` は Public Suffix List に載っているため、その一つ下がサイトの単位になる）を登録し、所有の確認にはメタタグ `<meta name="google-adsense-account" content="ca-pub-7698368408631991">` を LP とセキュリティ方針ページに置く。メタタグは情報を示すだけで、スクリプトは読み込まない（CSP は変わらない）。承認されたら、忍者AdMax と AdSense のどちらを使うかを決め直す。
+- **開示**：セキュリティ方針ページに「広告について」（表示する場所、切り離し方、広告会社に届く情報と Cookie、拒否する方法）と、残っているリスク（不適切な広告が出る可能性）を書く。
 
 ---
 
@@ -1017,12 +860,16 @@ DIscheduler/
 │   │   └── cron.ts           #   1 日 2 回の Cron
 │   ├── db/                   # D1 クエリ（プリペアドステートメントのみ）・レート制限
 │   └── shared/               # Worker と Web 画面で共有（集計・タイムゾーン・文字列の検証）
+├── ads/                      # 広告の枠だけを配信する別の Worker（discheduler-ads。§6.10.1）
+│   ├── wrangler.jsonc
+│   └── public/               # frame.html（広告の枠）と _headers
 ├── public/                   # Workers Static Assets の配信元
 │   ├── index.html            # S0: Bot の案内（LP）
 │   ├── security.html         # S6: セキュリティ方針（公開の正本）
 │   ├── assets/site.css       # 公開ページ共通のスタイル
 │   ├── assets/lp.css         # LP とセキュリティ方針ページのデザイン（暗い配色）
 │   ├── assets/lucide-LICENSE.txt # 埋め込んだアイコン（Lucide）のライセンス
+│   ├── assets/ad-consent.js  # 広告の表示と拒否の切り替え（§6.10.1）
 │   ├── favicon.svg           # ファビコン
 │   ├── _headers              # 静的配信時のセキュリティヘッダー
 │   └── robots.txt            # / と /security 以外のクロールを拒否
@@ -1073,7 +920,7 @@ DIscheduler/
 | 募集メッセージの更新 | 回答の保存時（20 秒間隔でまとめる）、主催者の［今すぐ更新］、1 日 2 回の Cron（日本時間 1 時・13 時） | Discord の API 制限と無料枠を守りつつ、回答が入りやすい昼休みと終業後の後に反映するため | §5.5 |
 | タイムゾーン | 設定変更可能。既定はブラウザのタイムゾーン、不明なら `Asia/Tokyo` | 海外のメンバーにも対応するため | §6.7 |
 | データ保持期間 | 締切・確定から 6 ヶ月（180 日）後に自動削除 | 振り返りや再調整に使えるようにするため | §7.4 |
-| 運営費 | 広告は置かず、寄付リンクを LP・完了画面・無料枠超過の画面に置く。無料枠を超えたときはそのまま伝える | 広告のスクリプトは回答を読める状態になり、セキュリティ方針に反するため | §6.10, §9.1 |
+| 運営費 | 寄付リンクを LP・完了画面・無料枠超過の画面に置く。広告は LP とセキュリティ方針ページだけに、別オリジンで切り離した枠で出し、閲覧者が拒否できるようにする（§6.10.1）。無料枠を超えたときはそのまま伝える | 回答や名前が出る画面に広告のスクリプトを入れると読める状態になり、セキュリティ方針に反するため。広告は公開ページだけに、サイトから切り離して出す | §6.10, §6.10.1, §9.1 |
 | ドメイン | `*.workers.dev` を使用 | 維持費をかけないため | §9 |
 
 - Server Members Intent は、Bot の導入サーバーが 100 未満なら Discord の審査なしで、Developer Portal の設定だけで有効化できる。100 サーバー以上になる場合は Discord への申請が必要。
@@ -1122,17 +969,19 @@ flowchart LR
 | Environment variable | `DISCORD_PUBLIC_KEY` | Discord Developer Portal の Public Key（公開値。署名検証に使う） |
 | Environment variable | `D1_DATABASE_ID` | D1 の Database ID（公開しても問題ない値） |
 | Environment variable | `DONATION_URL` | 寄付リンクの URL（任意。未設定なら寄付の欄を出さない） |
+| Environment variable | `ADMAX_ID` | 忍者AdMax の広告枠の ID（任意。英小文字と数字の 32 文字。未設定なら広告の枠を出さない。§6.10.1） |
 
 ### 14.2 ワークフローの安全策
 - 静的ページへの設定値（招待リンクの Application ID、寄付リンク）の埋め込みは `scripts/prepare-public.sh` で行う。値の形式を検証し、不正なら止める。
 - `permissions: contents: read` のみ。`actions/checkout` は `persist-credentials: false` で GitHub トークンを残さない。
 - サードパーティの Action はコミット SHA で固定し、Dependabot（`.github/dependabot.yml`）で週次に更新 PR を作る。
 - wrangler は `package-lock.json` で固定した版（`npm ci` で入れたもの）を使う。wrangler-action の `wranglerVersion` は指定しない（指定すると Action が別に入れ、package.json と版がずれるため）。
-- `DISCORD_APPLICATION_ID` は数字 17〜20 桁、`DONATION_URL` は `https://` で始まる URL であることを確かめてから置き換える。置き換え漏れがあればデプロイを止める。
+- `DISCORD_APPLICATION_ID` は数字 17〜20 桁、`DONATION_URL` は `https://` で始まる URL、`ADMAX_ID` は英小文字と数字の 32 文字であることを確かめてから置き換える。置き換え漏れがあればデプロイを止める。
 - 同時に 2 つのデプロイが走らないよう `concurrency` で直列化する。
 - プレビュー URL は無効（`preview_urls: false`）にし、公開されるのは `workers.dev` の本番 URL だけにする。
 - Bot トークンは GitHub に置かず、Cloudflare のダッシュボードで Worker の Secret として登録する。コマンドの登録も Worker 自身が行う（§5.1）。
 - デプロイの前に test ジョブ（`npm ci --ignore-scripts`、本番の依存の `npm audit`、型検査、テスト、ビルド）が成功している必要がある。プルリクエストでは test だけを実行する。
 - デプロイの前に D1 のマイグレーション（`wrangler d1 migrations apply DB --remote`）を適用する。
+- `ADMAX_ID` があるときだけ、本体より先に広告の枠の Worker（`ads/wrangler.jsonc`）をデプロイする（§6.10.1）。
 - Worker の環境変数 `DISCORD_APPLICATION_ID`・`DISCORD_PUBLIC_KEY`・`DONATION_URL` は、デプロイ時に GitHub の Environment variable から `wrangler deploy --var` で渡す（値の形式は前の手順で検証済み）。`DONATION_URL` は設定されているときだけ渡す。
 - Cron Triggers は `wrangler.jsonc` の `triggers.crons`（`0 4,16 * * *`。UTC 4 時・16 時 = 日本時間 13 時・1 時）で設定する。

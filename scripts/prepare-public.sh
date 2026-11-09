@@ -3,11 +3,18 @@
 #
 #   DISCORD_APPLICATION_ID  必須。招待リンクの client_id（数字 17〜20 桁）
 #   DONATION_URL            任意。寄付リンクの URL（https://...）
+#   ADMAX_ID                任意。忍者AdMax の広告枠の ID（英小文字と数字の 32 文字）。LP とセキュリティ方針ページの広告の枠
 #
 # 寄付リンクの表示切り替え:
 #   <!-- donation:start --> ... <!-- donation:end -->        寄付リンクがあるときだけ残す
 #   <!-- no-donation:start --> ... <!-- no-donation:end -->  寄付リンクがないときだけ残す
 # どちらの場合も、目印のコメント自体は取り除く。
+#
+# 広告の表示切り替え（ADMAX_ID。docs/design.md §6.10.1）:
+#   <!-- ad:start --> ... <!-- ad:end -->        広告の ID があるときだけ残す
+#   <!-- no-ad:start --> ... <!-- no-ad:end -->  広告の ID がないときだけ残す
+#   広告の ID があるときは、広告の枠の Worker（ads/public/frame.html）に ID を埋め込む。
+#   広告の ID がないときは、広告の表示を切り替えるスクリプト（assets/ad-consent.js）も消す。
 #
 # 使い方: scripts/prepare-public.sh [対象ディレクトリ（既定: public）]
 set -euo pipefail
@@ -35,6 +42,12 @@ if [[ -n "$donation_url" ]]; then
     || fail "DONATION_URL の形式が正しくありません（https:// で始まる URL を指定してください）"
 fi
 
+# --- 広告 ---
+admax_id="${ADMAX_ID:-}"
+if [[ -n "$admax_id" ]]; then
+  [[ "$admax_id" =~ ^[0-9a-f]{32}$ ]] || fail "ADMAX_ID の形式が正しくありません（広告コードの https://adm.shinobi.jp/s/ に続く 32 文字を指定してください）"
+fi
+
 for f in "${files[@]}"; do
   sed -i "s/__DISCORD_APPLICATION_ID__/${app_id}/g" "$f"
 
@@ -45,11 +58,28 @@ for f in "${files[@]}"; do
     perl -0pi -e 's/<!-- donation:start -->.*?<!-- donation:end -->//gs; s/<!-- no-donation:(start|end) -->//g' "$f"
   fi
 
+  if [[ -n "$admax_id" ]]; then
+    perl -0pi -e 's/<!-- no-ad:start -->.*?<!-- no-ad:end -->//gs; s/<!-- (ad):(start|end) -->//g' "$f"
+    sed -i "s/__ADMAX_ID__/${admax_id}/g" "$f"
+  else
+    perl -0pi -e 's/<!-- ad:start -->.*?<!-- ad:end -->//gs; s/<!-- no-ad:(start|end) -->//g' "$f"
+  fi
+
   # 置き換え漏れ・目印の残りがあれば止める
-  if grep -qE "__DISCORD_APPLICATION_ID__|__DONATION_URL__|<!-- (no-)?donation:" "$f"; then
+  if grep -qE "__DISCORD_APPLICATION_ID__|__DONATION_URL__|__ADMAX_ID__|<!-- (no-)?(donation|ad):" "$f"; then
     fail "$f の置き換えに失敗しました"
   fi
 done
+
+ads_frame="${ADS_FRAME_FILE:-$(dirname "$0")/../ads/public/frame.html}"
+if [[ -z "$admax_id" ]]; then
+  rm -f "$dir/assets/ad-consent.js"
+  echo "広告: なし（広告の枠を表示しません）"
+else
+  sed -i "s/__ADMAX_ID__/${admax_id}/g" "$ads_frame"
+  if grep -q "__ADMAX_ID__" "$ads_frame"; then fail "$ads_frame の置き換えに失敗しました"; fi
+  echo "広告: あり"
+fi
 
 if [[ -n "$donation_url" ]]; then
   echo "寄付リンク: あり"
