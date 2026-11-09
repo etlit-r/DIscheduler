@@ -2,7 +2,7 @@
 
 DIscheduler のセキュリティ方針は、Web ページとして公開しています。
 
-- 公開ページ: `https://<デプロイ先>.workers.dev/security`
+- 公開ページ: `https://<デプロイ先>.pages.dev/security`
 - ページのソース: [public/security.html](public/security.html)
 - 設計の詳細（脅威モデル・対策・残存リスク）: [docs/security-design.md](docs/security-design.md)
 
