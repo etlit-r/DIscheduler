@@ -13,7 +13,8 @@
 # 広告の表示切り替え（ADMAX_ID。docs/design.md §6.10.1）:
 #   <!-- ad:start --> ... <!-- ad:end -->        広告の ID があるときだけ残す
 #   <!-- no-ad:start --> ... <!-- no-ad:end -->  広告の ID がないときだけ残す
-#   広告の ID がないときは、広告の枠のページ（ad-frame.html）も消す。
+#   広告の ID があるときは、広告の枠の Worker（ads/public/frame.html）に ID を埋め込む。
+#   広告の ID がないときは、広告の表示を切り替えるスクリプト（assets/ad-consent.js）も消す。
 #
 # 使い方: scripts/prepare-public.sh [対象ディレクトリ（既定: public）]
 set -euo pipefail
@@ -64,17 +65,19 @@ for f in "${files[@]}"; do
     perl -0pi -e 's/<!-- ad:start -->.*?<!-- ad:end -->//gs; s/<!-- no-ad:(start|end) -->//g' "$f"
   fi
 
-  # 置き換え漏れ・目印の残りがあれば止める（広告の ID がないときの広告の枠のページは、このあと消す）
-  if [[ -z "$admax_id" && "$(basename "$f")" == "ad-frame.html" ]]; then continue; fi
+  # 置き換え漏れ・目印の残りがあれば止める
   if grep -qE "__DISCORD_APPLICATION_ID__|__DONATION_URL__|__ADMAX_ID__|<!-- (no-)?(donation|ad):" "$f"; then
     fail "$f の置き換えに失敗しました"
   fi
 done
 
+ads_frame="${ADS_FRAME_FILE:-$(dirname "$0")/../ads/public/frame.html}"
 if [[ -z "$admax_id" ]]; then
-  rm -f "$dir/ad-frame.html"
+  rm -f "$dir/assets/ad-consent.js"
   echo "広告: なし（広告の枠を表示しません）"
 else
+  sed -i "s/__ADMAX_ID__/${admax_id}/g" "$ads_frame"
+  if grep -q "__ADMAX_ID__" "$ads_frame"; then fail "$ads_frame の置き換えに失敗しました"; fi
   echo "広告: あり"
 fi
 
