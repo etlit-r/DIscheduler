@@ -39,12 +39,6 @@ function plusOneHour(hhmm: string): string {
   return `${pad((hh + 1) % 24)}:${pad(mm)}`;
 }
 
-/** 「よく使う」の固定の時間帯 */
-const FIXED_PRESETS = [
-  { label: "昼 12:00–13:00", start: "12:00", end: "13:00" },
-  { label: "夜 20:00–22:00", start: "20:00", end: "22:00" },
-] as const;
-
 export async function editPage(pollId: string): Promise<void> {
   let d: PollData;
   try {
@@ -84,8 +78,8 @@ export async function editPage(pollId: string): Promise<void> {
   let pickMode: "single" | "range" = "single";
   let rangeStart: string | null = null;
   let lastPicked: string | null = null; // Shift + クリックで範囲を選ぶときの起点
-  // このサーバーで最近使った時間帯。固定の「よく使う」と同じものは出さない（§6.3.1）
-  const recentPresets = (d.recentTimes ?? []).filter((r) => !FIXED_PRESETS.some((p) => p.start === r.start && p.end === r.end));
+  // このサーバーで最近使った時間帯（§6.3.1）
+  const recentPresets = d.recentTimes ?? [];
   let startTime = "20:00";
   let endTime = "22:00";
   let allDay = false;
@@ -367,12 +361,6 @@ export async function editPage(pollId: string): Promise<void> {
       h("h2", { class: "card-title" }, "① 日付を選ぶ"),
       calendar(),
       h("h2", { class: "card-title" }, "② 時間帯"),
-      h(
-        "div",
-        { class: "preset-row" },
-        h("span", { class: "preset-label muted small" }, "よく使う:"),
-        h("div", { class: "preset-btns" }, ...FIXED_PRESETS.map((p) => preset(p.label, p.start, p.end))),
-      ),
       recentPresets.length
         ? h(
             "div",
