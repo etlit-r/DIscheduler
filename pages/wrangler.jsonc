@@ -1,0 +1,22 @@
+// Cloudflare Pages の設定（docs/design.md §14）。LP・Web 画面・Web API・Discord からの通信を受ける本体。
+// 1 日 2 回の自動処理（Cron）は Pages では動かないため、ルートの wrangler.jsonc の Worker が担当する。
+// __ で囲んだ値は、デプロイ時に GitHub の Environment variable で置き換える（.github/workflows/deploy.yml）。
+// Bot トークン（DISCORD_BOT_TOKEN）は、Cloudflare のダッシュボードで Pages のプロジェクトに Secret として登録する。
+{
+  "name": "__PAGES_PROJECT__",
+  "pages_build_output_dir": "../public",
+  "compatibility_date": "2026-10-20",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "discheduler",
+      "database_id": "__D1_DATABASE_ID__"
+    }
+  ],
+  "vars": {
+    "DISCORD_APPLICATION_ID": "__DISCORD_APPLICATION_ID__",
+    "DISCORD_PUBLIC_KEY": "__DISCORD_PUBLIC_KEY__",
+    "PUBLIC_ORIGIN": "__PUBLIC_ORIGIN__",
+    "DONATION_URL": "__DONATION_URL__"
+  }
+}

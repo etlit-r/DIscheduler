@@ -23,7 +23,7 @@ Discord 上の集まり（ゲーム会・勉強会・オフ会など）の日程
 | R3 | メンバーが簡単に予定を入力できる | Discord のボタン → 本人専用リンク（ログイン不要）→ 選択肢（既定は ○△×）をタップするだけの Web 画面。選択肢の組み合わせと数は主催者が変更できる（§6.9） | ◎ |
 | R4 | 入力方法がわかりやすく、候補日時が見やすい | 表形式（候補×メンバー）＋集計＋最有力候補のハイライト。回答画面でも各候補の集計を見ながら入力できる。スマホ優先レイアウト | ◎ |
 | R5 | 確定日時を Discord イベントとして登録 | Guild Scheduled Event API で作成（Bot に「イベントの作成」権限が必要） | ◯（任意機能。権限がなければスキップ） |
-| R6 | Cloudflare Workers でサーバーレス完結・維持費ゼロ | Workers Free + D1 Free + Static Assets + Cron Triggers のみ使用 | ◎（§9 で無料枠試算） |
+| R6 | Cloudflare Workers でサーバーレス完結・維持費ゼロ | Pages Free（Pages Functions）+ Workers Free（Cron Triggers）+ D1 Free のみ使用 | ◎（§9 で無料枠試算） |
 | R7 | セキュリティ対策を徹底し、対策内容を公開 | 署名検証・最小権限・データ最小化・CSP 等を実装し、`/security` ページ（S6）とセキュリティ設計書で公開 | ◎ |
 
 ### 1.3 スコープ外（初版）
@@ -81,11 +81,11 @@ flowchart LR
 
 | 区分 | 技術 | 理由 |
 |------|------|------|
-| 実行環境 | Cloudflare Workers（Free） | 常駐プロセス不要。HTTP Interactions 方式なら Gateway 接続が不要 |
+| 実行環境 | Cloudflare Pages（Free。Pages Functions の advanced mode で Worker のコードをそのまま動かす）＋ Cloudflare Workers（Free。Cron と旧アドレスの転送） | 常駐プロセス不要。HTTP Interactions 方式なら Gateway 接続が不要。公開アドレスを `<プロジェクト名>.pages.dev` にすることで、`pages.dev` が Public Suffix List に載っているため、アドレスの直下に AdSense の所有確認や `ads.txt` を置ける（§6.10.1） |
 | Discord 連携 | HTTP Interactions Endpoint + REST API | WebSocket 常駐が不要でサーバーレスと相性が良い |
 | DB | Cloudflare D1（Free） | SQL・トランザクション・プリペアドステートメントが使える。書込上限が KV より大きい |
-| 静的配信 | Workers Static Assets | 無料・同一オリジンで配信でき CSP を厳しくできる |
-| 定期処理 | Cron Triggers | **1 日 2 回（日本時間 1 時・13 時）だけ** 実行する。回答が入りやすい昼休み（12〜13 時）と終業後の夜の直後に反映するため。未反映の回答の変更がある募集メッセージの更新、締切を過ぎた調整の `closed` への変更。1 時の回は期限切れデータの削除も行う |
+| 静的配信 | Cloudflare Pages の静的配信（`public/`） | 無料・同一オリジンで配信でき CSP を厳しくできる。`_routes.json` で、Pages Functions を動かすパス（`/discord/*`・`/api/*`・`/l`・`/p/*`）以外は静的ファイルとして配信し、`_headers` のヘッダーを付ける |
+| 定期処理 | Cron Triggers（Worker `discheduler`。Pages は Cron に対応していないため） | **1 日 2 回（日本時間 1 時・13 時）だけ** 実行する。回答が入りやすい昼休み（12〜13 時）と終業後の夜の直後に反映するため。未反映の回答の変更がある募集メッセージの更新、締切を過ぎた調整の `closed` への変更。1 時の回は期限切れデータの削除も行う |
 | 言語 | TypeScript | 型による入力検証の取りこぼし防止 |
 | ルーティング | Hono | Workers ネイティブで軽量、依存が少ない |
 | 入力検証 | Valibot | 軽量なスキーマ検証 |
@@ -225,7 +225,7 @@ sequenceDiagram
 
 ### 5.1 Bot の登録
 - インストールスコープ: `bot`, `applications.commands`（ギルドインストールのみ。ユーザーインストールは無効）
-- Interactions Endpoint URL: `https://<worker-domain>/discord/interactions`
+- Interactions Endpoint URL: `https://<プロジェクト名>.pages.dev/discord/interactions`（正式な公開アドレス `PUBLIC_ORIGIN`。§14）
 - コマンドは Worker 自身が REST API（`PUT /applications/{id}/commands`）で登録する。Bot トークンを Cloudflare の外（GitHub など）に置かないため。定義の版（ハッシュ）を D1 の `meta` テーブルに記録し、Interactions Endpoint URL の登録時の PING、各 Interaction、Cron のときに、版が変わっていれば登録し直す 同じ実行環境（isolate）の中では、一度確かめた版を覚えておき、Interaction のたびに D1 を読み直さない（PING と Cron のときは毎回確かめる）。
 
 ### 5.2 必要な Bot 権限（最小権限）
@@ -685,8 +685,8 @@ S2 の [変更] を押すと、ひな形から選ぶか、自分で編集でき�
   - 選択がまだなく、ブラウザで Global Privacy Control（`navigator.globalPrivacyControl`）が有効なら、拒否として扱う。
   - スクリプトが動かない環境では広告を出さない。
 - **出し分け**：GitHub の `production` 環境の変数 `ADMAX_ID`（広告コードの `https://adm.shinobi.jp/s/` に続く 32 文字）があるときだけ、`scripts/prepare-public.sh` が `<!-- ad:start -->`〜`<!-- ad:end -->` を残して `ads/public/frame.html` に ID を埋め込み、デプロイで広告の枠の Worker も公開する。ないときは広告の枠・説明・`ad-consent.js` を消し、広告の枠の Worker はデプロイしない。セキュリティ方針の「しないこと」なども、広告の有無で文言を切り替える（`<!-- no-ad:start -->`）。
-- **Google AdSense の審査**：AdSense にはサイト `etlits.workers.dev`（`workers.dev` は Public Suffix List に載っているため、その一つ下がサイトの単位になる）を登録し、所有の確認にはメタタグ `<meta name="google-adsense-account" content="ca-pub-7698368408631991">` を LP とセキュリティ方針ページに置く。メタタグは情報を示すだけで、スクリプトは読み込まない（CSP は変わらない）。承認されたら、忍者AdMax と AdSense のどちらを使うかを決め直す。
-- **ads.txt**：広告枠の販売を許可した事業者の一覧。AdSense の行（`google.com, pub-7698368408631991, DIRECT, f08c47fec0942fa0`）を `public/ads.txt` に置き、`robots.txt` で読み取りを許す。ただし ads.txt は本来サイトの単位（`etlits.workers.dev`）の直下に置くもので、`workers.dev` の直下には置けないため、`discheduler.etlits.workers.dev/ads.txt` が AdSense に認識されるかは分からない。
+- **Google AdSense の審査**：AdSense には正式な公開アドレス（`<プロジェクト名>.pages.dev`。`pages.dev` は Public Suffix List に載っているため、これがサイトの単位になる）を登録し、所有の確認にはメタタグ `<meta name="google-adsense-account" content="ca-pub-7698368408631991">` を LP とセキュリティ方針ページに置く。メタタグは情報を示すだけで、スクリプトは読み込まない（CSP は変わらない）。承認されたら、忍者AdMax と AdSense のどちらを使うかを決め直す。
+- **ads.txt**：広告枠の販売を許可した事業者の一覧。AdSense の行（`google.com, pub-7698368408631991, DIRECT, f08c47fec0942fa0`）を `public/ads.txt` に置き、`robots.txt` で読み取りを許す。Pages に移したことで、サイトの単位（`<プロジェクト名>.pages.dev`）の直下に置ける。（`workers.dev` で動かしていたときは、サイトの単位 `etlits.workers.dev` の直下に何も置けず、所有確認に失敗した。）
 - **開示**：セキュリティ方針ページに「広告について」（表示する場所、切り離し方、広告会社に届く情報と Cookie、拒否する方法）と、残っているリスク（不適切な広告が出る可能性）を書く。
 
 ---
@@ -790,7 +790,7 @@ S2 の [変更] を押すと、ひな形から選ぶか、自分で編集でき�
 | Cron Triggers | 無料プランで利用可 | 1 本（1 日 2 回: 日本時間 1 時・13 時。1 時の回で削除も実行） |
 | D1 の問い合わせ回数 | 1 回の実行（リクエスト・Cron）あたり 50 回まで（batch の中の文も 1 文ずつ数える前提で見積もる） | 募集メッセージの更新 1 件で 3 文（最終更新時刻の読み込みと更新権利の取得を 1 回の batch で行い、権利を取れたときだけ調整と関連データを読む。データは権利を取ったあとの内容を読む）。参加者の追加は人数によらず 1 文（JSON で渡す）。Cron は 13 時の回で最大 8 件・約 44 文、1 時の回で最大 4 件と削除で約 43 文まで。削除は調整やサーバーの数によらず決まった文の数で行う。残りは次の機会に反映 |
 
-- 独自ドメインは不要（`*.workers.dev` を使用）。独自ドメインを使う場合のみドメイン費用が発生。
+- 独自ドメインは不要（`*.pages.dev` を使用）。独自ドメインを使う場合のみドメイン費用が発生。Pages Functions へのリクエストは Workers の無料枠（1 日 10 万リクエスト）と共通で数え、静的ファイルの配信は無料・無制限。
 - 無料枠を超えた場合、Workers はエラー応答になる（課金は発生しない）。表示は §9.1 のとおり、「混雑」などとぼかさず **無料枠を超えたことをそのまま伝える**。
 - **有料プランへの自動アップグレードは行わない**（Cloudflare アカウントに支払い情報を登録しない運用も可能）。
 
@@ -864,7 +864,11 @@ DIscheduler/
 ├── ads/                      # 広告の枠だけを配信する別の Worker（discheduler-ads。§6.10.1）
 │   ├── wrangler.jsonc
 │   └── public/               # frame.html（広告の枠）と _headers
-├── public/                   # Workers Static Assets の配信元
+├── pages/wrangler.jsonc      # Cloudflare Pages（本体）の設定。値はデプロイ時に埋め込む
+├── public/                   # Cloudflare Pages の配信元（静的ファイルと Pages Functions の入口）
+│   ├── _worker.js            # Pages Functions の入口（src/index.ts をそのまま使う）
+│   ├── _routes.json          # Pages Functions を動かすパス
+│   ├── .assetsignore         # Worker の静的ファイルから除くファイル
 │   ├── index.html            # S0: Bot の案内（LP）
 │   ├── security.html         # S6: セキュリティ方針（公開の正本）
 │   ├── assets/site.css       # 公開ページ共通のスタイル
@@ -923,7 +927,7 @@ DIscheduler/
 | タイムゾーン | 設定変更可能。既定はブラウザのタイムゾーン、不明なら `Asia/Tokyo` | 海外のメンバーにも対応するため | §6.7 |
 | データ保持期間 | 締切・確定から 6 ヶ月（180 日）後に自動削除 | 振り返りや再調整に使えるようにするため | §7.4 |
 | 運営費 | 寄付リンクを LP・完了画面・無料枠超過の画面に置く。広告は LP とセキュリティ方針ページだけに、別オリジンで切り離した枠で出し、閲覧者が拒否できるようにする（§6.10.1）。無料枠を超えたときはそのまま伝える | 回答や名前が出る画面に広告のスクリプトを入れると読める状態になり、セキュリティ方針に反するため。広告は公開ページだけに、サイトから切り離して出す | §6.10, §6.10.1, §9.1 |
-| ドメイン | `*.workers.dev` を使用 | 維持費をかけないため | §9 |
+| ドメイン | `*.pages.dev` を使用（旧アドレス `discheduler.etlits.workers.dev` は正式なアドレスへ転送） | 維持費をかけないため。`pages.dev` はアドレスの直下にファイルを置けるので、AdSense の所有確認と `ads.txt` を置ける | §9, §14 |
 
 - Server Members Intent は、Bot の導入サーバーが 100 未満なら Discord の審査なしで、Developer Portal の設定だけで有効化できる。100 サーバー以上になる場合は Discord への申請が必要。
 
@@ -931,32 +935,42 @@ DIscheduler/
 
 ## 14. デプロイ
 
-GitHub Actions から Cloudflare Workers にデプロイする（`.github/workflows/deploy.yml`）。
+GitHub Actions から Cloudflare にデプロイする（`.github/workflows/deploy.yml`）。
+
+| 置き場所 | アドレス | 担当 | 設定 |
+|---|---|---|---|
+| Cloudflare Pages（本体） | 正式な公開アドレス `PUBLIC_ORIGIN`（例: `https://discheduler.pages.dev`） | LP・セキュリティ方針・Web 画面・Web API・Discord からの通信 | `pages/wrangler.jsonc`、`public/_worker.js`、`public/_routes.json` |
+| Cloudflare Workers（`discheduler`） | 旧アドレス `https://discheduler.etlits.workers.dev` | 1 日 2 回の自動処理（Cron）と、旧アドレスへのアクセスの転送 | `wrangler.jsonc` |
+| Cloudflare Workers（`discheduler-ads`） | `https://discheduler-ads.etlits.workers.dev` | 広告の枠（`ADMAX_ID` があるときだけ。§6.10.1） | `ads/wrangler.jsonc` |
+
+- Pages と Worker は同じコード（`src/index.ts`）と同じ D1 データベースを使う。
+- **正式なアドレス以外へのアクセスは転送する**：`PUBLIC_ORIGIN` と違うアドレス（旧アドレスの Worker、Pages がデプロイごとに作る別名のアドレス）への GET は、同じパスのまま正式なアドレスへ 301 で転送し、それ以外の書き込みは 404 にする。入力リンクの `#t=` は転送後も保たれる。
+- Discord からの通信（`POST /discord/interactions`）だけは、Interactions Endpoint URL を切り替えるまでの間も旧アドレスで受けられるよう、転送せずに処理する（Discord は転送に従わない）。どちらで受けても、入力リンクと案内は正式なアドレスで出す。
+- Worker は `run_worker_first` で静的ファイルより先にコードを動かし、旧アドレスのページへのアクセスもすべて転送する。
 
 ```mermaid
 flowchart LR
-  PR[PR を作成] --> M[main にマージ]
-  M --> W[Deploy ワークフロー起動]
-  W --> A{production 環境の<br/>承認}
-  M --> T[test: 監査・型検査・テスト・ビルド]
-  T --> A
-  A -- 承認 --> R[静的ページに設定値を埋め込む<br/>招待リンク・寄付リンク]
+  M[main にマージ] --> T[test: 監査・型検査・テスト・ビルド]
+  T --> A{production 環境の<br/>承認}
+  A -- 承認 --> R[設定値を埋め込む<br/>静的ページ・Pages・Worker]
   R --> MG[D1 マイグレーション]
-  MG --> D[wrangler deploy]
-  D --> CF[(Cloudflare Workers<br/>*.workers.dev)]
+  MG --> AD[広告の枠の Worker<br/>ADMAX_ID があるとき]
+  AD --> P[(Cloudflare Pages<br/>*.pages.dev)]
+  P --> W[(Cloudflare Workers<br/>Cron・転送)]
 ```
 
 ### 14.1 初回の準備
 
 **Cloudflare**
-1. 無料アカウントを作り、「Workers & Pages」で `workers.dev` のサブドメインを決める（公開 URL は `https://discheduler.<サブドメイン>.workers.dev`）。
+1. 無料アカウントを作り、「Workers & Pages」で `workers.dev` のサブドメインを決める（Cron と転送の Worker は `https://discheduler.<サブドメイン>.workers.dev`）。
 2. Account ID を控える。
-3. 「My Profile → API Tokens → Create Token」でテンプレート「Edit Cloudflare Workers」を選び、Account Resources を自分のアカウントだけに限り、有効期限（最長 1 年）を付けてトークンを作る。権限は「Workers Scripts: Edit」「Account Settings: Read」「User Details: Read」「Memberships: Read」に加えて **「D1: Edit」** を付ける。
+3. 「My Profile → API Tokens → Create Token」でテンプレート「Edit Cloudflare Workers」を選び、Account Resources を自分のアカウントだけに限り、有効期限（最長 1 年）を付けてトークンを作る。権限は「Workers Scripts: Edit」「Account Settings: Read」「User Details: Read」「Memberships: Read」に加えて **「D1: Edit」** と **「Cloudflare Pages: Edit」** を付ける。
 4. 「Storage & Databases → D1」で `discheduler` という名前のデータベースを作り、Database ID を控える。
-5. 初回のデプロイのあと、「Workers & Pages → discheduler → Settings → Variables and Secrets」で、**Secret** として `DISCORD_BOT_TOKEN`（Bot トークン）を登録する。Bot トークンは GitHub には置かない。
+5. 「Workers & Pages → Create → Pages」で、直接アップロード（Direct Upload）の Pages プロジェクトを作る（名前は例: `discheduler`。作成時に仮のファイルを 1 つアップロードしてよい。本番のブランチは `main`）。表示された `https://<プロジェクト名>.pages.dev` を控える（名前が使われていると、末尾に文字が付いたアドレスになる）。
+6. Pages のプロジェクトの「Settings → Variables and Secrets」で、本番（Production）の **Secret** として `DISCORD_BOT_TOKEN`（Bot トークン）を登録する。初回のデプロイのあと、Worker（`discheduler`）にも同じ Secret を登録する（Cron が Discord の API を呼ぶため）。Bot トークンは GitHub には置かない。
 
 **Discord**（初回のデプロイと Bot トークンの登録のあと）
-1. Developer Portal の「General Information」で、Interactions Endpoint URL に `https://discheduler.<サブドメイン>.workers.dev/discord/interactions` を入れて保存する。保存時の PING を受けた Worker が `/schedule`・`/poll` を自動で登録する。
+1. Developer Portal の「General Information」で、Interactions Endpoint URL に `https://<プロジェクト名>.pages.dev/discord/interactions` を入れて保存する。保存時の PING を受けた Pages が `/schedule`・`/poll` を自動で登録する。
 2. 「Bot」で Server Members Intent をオンにする（参加者の自動設定に必要）。
 
 **GitHub**（リポジトリの Settings → Environments → `production`）
@@ -970,8 +984,17 @@ flowchart LR
 | Environment variable | `DISCORD_APPLICATION_ID` | Discord Developer Portal の Application ID（公開値） |
 | Environment variable | `DISCORD_PUBLIC_KEY` | Discord Developer Portal の Public Key（公開値。署名検証に使う） |
 | Environment variable | `D1_DATABASE_ID` | D1 の Database ID（公開しても問題ない値） |
+| Environment variable | `PAGES_PROJECT` | Cloudflare Pages のプロジェクト名（例: `discheduler`） |
+| Environment variable | `PUBLIC_ORIGIN` | 正式な公開アドレス（例: `https://discheduler.pages.dev`。末尾の `/` なし） |
 | Environment variable | `DONATION_URL` | 寄付リンクの URL（任意。未設定なら寄付の欄を出さない） |
 | Environment variable | `ADMAX_ID` | 忍者AdMax の広告枠の ID（任意。英小文字と数字の 32 文字。未設定なら広告の枠を出さない。§6.10.1） |
+
+### 14.1.1 Workers から Pages への移行（2026 年 11 月）
+本体を `discheduler.etlits.workers.dev`（Workers）から `<プロジェクト名>.pages.dev`（Pages）へ移したときの手順。
+1. 上の Cloudflare 5・6（Pages のプロジェクトと Secret）、API トークンへの「Cloudflare Pages: Edit」の追加、GitHub の `PAGES_PROJECT`・`PUBLIC_ORIGIN` の登録を済ませる。
+2. `main` にマージしてデプロイする。Pages に本体が公開され、Worker は Cron と転送の役に変わる。旧アドレスの募集メッセージのリンクは、正式なアドレスへ転送される。
+3. Discord の Interactions Endpoint URL を正式なアドレスに切り替える（切り替えるまでは旧アドレスの Worker が処理する）。
+4. AdSense のサイトを正式なアドレスで登録し直す（§6.10.1）。
 
 ### 14.2 ワークフローの安全策
 - 静的ページへの設定値（招待リンクの Application ID、寄付リンク）の埋め込みは `scripts/prepare-public.sh` で行う。値の形式を検証し、不正なら止める。
@@ -980,10 +1003,11 @@ flowchart LR
 - wrangler は `package-lock.json` で固定した版（`npm ci` で入れたもの）を使う。wrangler-action の `wranglerVersion` は指定しない（指定すると Action が別に入れ、package.json と版がずれるため）。
 - `DISCORD_APPLICATION_ID` は数字 17〜20 桁、`DONATION_URL` は `https://` で始まる URL、`ADMAX_ID` は英小文字と数字の 32 文字であることを確かめてから置き換える。置き換え漏れがあればデプロイを止める。
 - 同時に 2 つのデプロイが走らないよう `concurrency` で直列化する。
-- プレビュー URL は無効（`preview_urls: false`）にし、公開されるのは `workers.dev` の本番 URL だけにする。
-- Bot トークンは GitHub に置かず、Cloudflare のダッシュボードで Worker の Secret として登録する。コマンドの登録も Worker 自身が行う（§5.1）。
+- Worker のプレビュー URL は無効（`preview_urls: false`）にする。Pages はデプロイごとに別名のアドレス（`<ハッシュ>.<プロジェクト名>.pages.dev`）を作るが、正式なアドレス以外へのアクセスは転送・拒否する（§14）。Cookie はアドレスごとに分かれ、Web API は `Origin` の完全一致を確かめるので、別名のアドレスから正式なアドレスのセッションは使えない。
+- Bot トークンは GitHub に置かず、Cloudflare のダッシュボードで Pages のプロジェクトと Worker の Secret として登録する。コマンドの登録も Pages・Worker 自身が行う（§5.1）。
 - デプロイの前に test ジョブ（`npm ci --ignore-scripts`、本番の依存の `npm audit`、型検査、テスト、ビルド）が成功している必要がある。プルリクエストでは test だけを実行する。
 - デプロイの前に D1 のマイグレーション（`wrangler d1 migrations apply DB --remote`）を適用する。
 - `ADMAX_ID` があるときだけ、本体より先に広告の枠の Worker（`ads/wrangler.jsonc`）をデプロイする（§6.10.1）。
-- Worker の環境変数 `DISCORD_APPLICATION_ID`・`DISCORD_PUBLIC_KEY`・`DONATION_URL` は、デプロイ時に GitHub の Environment variable から `wrangler deploy --var` で渡す（値の形式は前の手順で検証済み）。`DONATION_URL` は設定されているときだけ渡す。
+- 環境変数 `DISCORD_APPLICATION_ID`・`DISCORD_PUBLIC_KEY`・`PUBLIC_ORIGIN`・`DONATION_URL` は、Pages には `pages/wrangler.jsonc` に埋め込んで（`wrangler pages deploy` は `--var` に対応していないため）、Worker には `wrangler deploy --var` で渡す。`PAGES_PROJECT`・`PUBLIC_ORIGIN` を含め、値の形式を確かめてから使い、置き換え漏れがあればデプロイを止める。
+- 本体（Pages）を先に、Worker（Cron・転送）をあとにデプロイする。
 - Cron Triggers は `wrangler.jsonc` の `triggers.crons`（`0 4,16 * * *`。UTC 4 時・16 時 = 日本時間 13 時・1 時）で設定する。

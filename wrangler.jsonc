@@ -1,4 +1,7 @@
 // Cloudflare Workers の設定（docs/design.md §14）
+// 本体は Cloudflare Pages（pages/wrangler.jsonc）で動かす。この Worker（旧アドレス discheduler.etlits.workers.dev）は、
+// 1 日 2 回の自動処理（Cron。Pages では動かない）と、旧アドレスへのアクセスを正式なアドレス（PUBLIC_ORIGIN）へ転送する役を担う。
+// Interactions Endpoint URL を切り替えるまでの間は、Discord からの通信もここで処理する。
 // database_id はデプロイ時に GitHub の Environment variable D1_DATABASE_ID で置き換える。
 // Bot トークン（DISCORD_BOT_TOKEN）は Cloudflare のダッシュボードで Secret として登録する。
 {
@@ -11,7 +14,9 @@
     "directory": "./public",
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash",
-    "not_found_handling": "none"
+    "not_found_handling": "none",
+    // 静的ファイルより先にコードを動かし、旧アドレスへのアクセスをすべて正式なアドレスへ転送する
+    "run_worker_first": true
   },
   "d1_databases": [
     {

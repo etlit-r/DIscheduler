@@ -223,3 +223,37 @@ describe("6 回目のレビューの修正", () => {
   });
 });
 
+
+describe("正式なアドレス（PUBLIC_ORIGIN）への転送（docs/design.md §14）", () => {
+  const CANONICAL = "https://discheduler.example.pages.dev";
+  const env2 = () => testEnv({ DISCORD_PUBLIC_KEY: publicHex, PUBLIC_ORIGIN: CANONICAL });
+
+  it("正式なアドレス以外への GET は、パスと検索条件を保ったまま正式なアドレスへ転送する", async () => {
+    const res = await call(new Request(`${ORIGIN}/p/AAAAAAAAAAAAAAAAAAAAAA/answer?x=1`), env2());
+    expect(res.status).toBe(301);
+    expect(res.headers.get("Location")).toBe(`${CANONICAL}/p/AAAAAAAAAAAAAAAAAAAAAA/answer?x=1`);
+    expect(res.headers.get("Content-Security-Policy")).toContain("default-src 'none'");
+  });
+
+  it("正式なアドレス以外への API の書き込みは受け付けない", async () => {
+    const res = await call(new Request(`${ORIGIN}/api/session`, { method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json" }, body: "{}" }), env2());
+    expect(res.status).toBe(404);
+  });
+
+  it("Discord からの通信は、旧アドレスでも処理し、入力リンクや案内には正式なアドレスを使う", async () => {
+    const res = await call(
+      await signed({ type: 3, id: "9", application_id: "1", token: "tok", guild_id: GUILD, channel_id: CHANNEL, member: member(ALICE), data: { custom_id: "help" } }),
+      env2(),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { content: string } };
+    expect(body.data.content).toContain(`${CANONICAL}/security`);
+    expect(body.data.content).not.toContain(ORIGIN);
+  });
+
+  it("正式なアドレスへのアクセスはそのまま処理する", async () => {
+    const res = await call(new Request(`${CANONICAL}/api/session`, { method: "POST", headers: { Origin: CANONICAL, "Content-Type": "application/json" }, body: "{}" }), env2());
+    expect(res.status).not.toBe(301);
+    expect(res.status).not.toBe(404);
+  });
+});

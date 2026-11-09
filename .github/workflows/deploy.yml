@@ -43,7 +43,7 @@ jobs:
       cancel-in-progress: false
     environment:
       name: production
-      url: ${{ steps.deploy.outputs.deployment-url }}
+      url: ${{ vars.PUBLIC_ORIGIN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -62,24 +62,33 @@ jobs:
           ADMAX_ID: ${{ vars.ADMAX_ID }}
         run: bash scripts/prepare-public.sh public
 
-      - name: D1 データベースの ID を設定する
+      # 設定値の形式を確かめてから、Pages（本体）と Worker（Cron・旧アドレスの転送）の設定ファイルに埋め込む。
+      # DISCORD_APPLICATION_ID と DONATION_URL の形式は、前の手順（prepare-public.sh）で確認済み
+      - name: Pages と Worker の設定値を埋め込む
         env:
           D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
-        run: |
-          if [[ ! "$D1_DATABASE_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
-            echo "::error::Environment variable D1_DATABASE_ID が未設定か、形式が正しくありません"
-            exit 1
-          fi
-          sed -i "s/__D1_DATABASE_ID__/${D1_DATABASE_ID}/" wrangler.jsonc
-
-      - name: Worker の公開値を確かめる
-        env:
           DISCORD_PUBLIC_KEY: ${{ vars.DISCORD_PUBLIC_KEY }}
+          DISCORD_APPLICATION_ID: ${{ vars.DISCORD_APPLICATION_ID }}
+          DONATION_URL: ${{ vars.DONATION_URL }}
+          PAGES_PROJECT: ${{ vars.PAGES_PROJECT }}
+          PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN }}
         run: |
-          if [[ ! "$DISCORD_PUBLIC_KEY" =~ ^[0-9a-f]{64}$ ]]; then
-            echo "::error::Environment variable DISCORD_PUBLIC_KEY が未設定か、形式が正しくありません"
-            exit 1
-          fi
+          fail() { echo "::error::$1"; exit 1; }
+          [[ "$D1_DATABASE_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || fail "Environment variable D1_DATABASE_ID が未設定か、形式が正しくありません"
+          [[ "$DISCORD_PUBLIC_KEY" =~ ^[0-9a-f]{64}$ ]] || fail "Environment variable DISCORD_PUBLIC_KEY が未設定か、形式が正しくありません"
+          [[ "$PAGES_PROJECT" =~ ^[a-z0-9][a-z0-9-]{0,57}$ ]] || fail "Environment variable PAGES_PROJECT（Cloudflare Pages のプロジェクト名）が未設定か、形式が正しくありません"
+          [[ "$PUBLIC_ORIGIN" =~ ^https://[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || fail "Environment variable PUBLIC_ORIGIN（例: https://discheduler.pages.dev。末尾の / なし）が未設定か、形式が正しくありません"
+          sed -i "s/__D1_DATABASE_ID__/${D1_DATABASE_ID}/" wrangler.jsonc
+          sed -i \
+            -e "s|__PAGES_PROJECT__|${PAGES_PROJECT}|" \
+            -e "s|__D1_DATABASE_ID__|${D1_DATABASE_ID}|" \
+            -e "s|__DISCORD_APPLICATION_ID__|${DISCORD_APPLICATION_ID}|" \
+            -e "s|__DISCORD_PUBLIC_KEY__|${DISCORD_PUBLIC_KEY}|" \
+            -e "s|__PUBLIC_ORIGIN__|${PUBLIC_ORIGIN}|" \
+            -e "s|__DONATION_URL__|${DONATION_URL}|" \
+            pages/wrangler.jsonc
+          sed -i "s|__PUBLIC_ORIGIN__|${PUBLIC_ORIGIN}|" ads/public/_headers
+          if grep -q "__[A-Z0-9_]*__" wrangler.jsonc pages/wrangler.jsonc ads/public/_headers; then fail "設定値の置き換えに失敗しました"; fi
 
       # wrangler は npm ci で入れた版（package-lock.json で固定）をそのまま使う。
       # wranglerVersion は指定しない。指定すると、Dependabot が package.json を上げたときに版がずれ、
@@ -101,10 +110,18 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy --config ads/wrangler.jsonc
 
-      # Worker の公開値は --var で渡す。値の形式は前の手順（prepare-public.sh と公開値の確認）で検証済み。
-      # DONATION_URL は任意なので、設定されているときだけ渡す（空の値は渡さない）
+      # 本体（LP・Web 画面・Web API・Discord からの通信）を Cloudflare Pages へデプロイする。
+      # 設定は pages/wrangler.jsonc（前の手順で値を埋め込み済み）。Bot トークンは Pages のプロジェクトの Secret
+      - name: Cloudflare Pages へデプロイ
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy --cwd pages --branch main --commit-hash ${{ github.sha }} --commit-dirty=true
+
+      # Worker（旧アドレス）は、1 日 2 回の自動処理と、旧アドレスへのアクセスの転送を担当する（Pages のあとにデプロイする）。
+      # 公開値は --var で渡す。値の形式は前の手順で検証済み。DONATION_URL は任意なので、設定されているときだけ渡す
       - name: Cloudflare Workers へデプロイ
-        id: deploy
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -113,4 +130,5 @@ jobs:
             deploy
             --var DISCORD_APPLICATION_ID:${{ vars.DISCORD_APPLICATION_ID }}
             --var DISCORD_PUBLIC_KEY:${{ vars.DISCORD_PUBLIC_KEY }}
+            --var PUBLIC_ORIGIN:${{ vars.PUBLIC_ORIGIN }}
             ${{ vars.DONATION_URL != '' && format('--var DONATION_URL:{0}', vars.DONATION_URL) || '' }}

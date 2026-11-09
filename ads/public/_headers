@@ -1,9 +1,9 @@
 # 広告の枠のレスポンスヘッダー（docs/design.md §6.10.1、docs/security-design.md §4.2）
 # - 広告会社のスクリプトは複数のドメインから読み込まれるため、https に限って許可する
-# - 埋め込みは本体の LP・セキュリティ方針ページからだけ許す
+# - 埋め込みは本体の LP・セキュリティ方針ページからだけ許す（__PUBLIC_ORIGIN__ はデプロイ時に本体の正式なアドレスに置き換える）
 # - 広告会社には、この枠のドメイン名だけを送る（本体のページの場所は送らない）
 /*
-  Content-Security-Policy: default-src 'none'; script-src https: 'unsafe-inline' 'unsafe-eval'; style-src https: 'unsafe-inline'; img-src https: data:; media-src https:; font-src https: data:; connect-src https:; frame-src https:; form-action 'none'; base-uri 'none'; frame-ancestors https://discheduler.etlits.workers.dev; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'none'; script-src https: 'unsafe-inline' 'unsafe-eval'; style-src https: 'unsafe-inline'; img-src https: data:; media-src https:; font-src https: data:; connect-src https:; frame-src https:; form-action 'none'; base-uri 'none'; frame-ancestors __PUBLIC_ORIGIN__; upgrade-insecure-requests
   Strict-Transport-Security: max-age=63072000; includeSubDomains
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
