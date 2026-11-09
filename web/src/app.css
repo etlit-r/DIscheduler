@@ -69,7 +69,7 @@ input[type="text"], input[type="search"], input[type="number"], input[type="time
   border-radius: 8px; padding: 8px 10px; min-height: 44px; max-width: 100%;
 }
 textarea { min-height: 80px; resize: vertical; }
-/* 時間帯のボタン（よく使う・最近使った）は、押せる部品だと分かるよう枠と影で立体的にする */
+/* 時間帯のボタン（最近使った）は、押せる部品だと分かるよう枠と影で立体的にする */
 .btn-raised {
   color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums;
   border: 1px solid color-mix(in srgb, var(--text) 28%, var(--border));
