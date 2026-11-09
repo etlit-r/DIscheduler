@@ -1,0 +1,15 @@
+// 広告の枠だけを配信する Worker（docs/design.md §6.10.1）
+// 本体（discheduler）とは別のオリジン（discheduler-ads.etlits.workers.dev）にすることで、
+// 広告会社のスクリプトが自分の Cookie を使えるようにしつつ、本体のページ・Cookie・保存データには触れられないようにする。
+// 広告の ID（ADMAX_ID）が設定されているときだけ、GitHub Actions がデプロイする。
+{
+  "name": "discheduler-ads",
+  "compatibility_date": "2026-10-20",
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./public",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none"
+  }
+}

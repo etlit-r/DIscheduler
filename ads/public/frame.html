@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="color-scheme" content="dark">
+  <title>広告</title>
+  <!--
+    広告の枠（docs/design.md §6.10.1）。本体の LP とセキュリティ方針ページに iframe で埋め込む。
+    本体とは別のオリジンなので、広告のスクリプトは本体のページ・Cookie・保存データに触れられない。
+  -->
+  <style>html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }</style>
+</head>
+<body>
+  <script src="https://adm.shinobi.jp/s/__ADMAX_ID__"></script>
+</body>
+</html>
