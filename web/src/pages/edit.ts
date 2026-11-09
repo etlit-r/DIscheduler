@@ -185,7 +185,7 @@ export async function editPage(pollId: string): Promise<void> {
     );
   }
 
-  function pickHint(): string {
+  function pickHint(): string | HTMLElement[] {
     if (pickMode === "range" && rangeStart) {
       const [, m, d] = rangeStart.split("-").map(Number);
       return `${m}月${d}日から、終わりの日をタップしてください（別の月にも移れます）。`;
@@ -193,7 +193,11 @@ export async function editPage(pollId: string): Promise<void> {
     // 日付を選んだら、候補にするには［＋ 選択中の日付に追加］を押す必要があることを伝える
     if (selectedDates.size) return `${selectedDates.size} 日を選択中です。② で時間帯を決めて、下の［＋ 選択中の ${selectedDates.size} 日に追加］を押すと候補になります。`;
     if (pickMode === "range") return "始まりの日をタップしてください。";
-    return "日付をタップして選びます（複数可。パソコンでは Shift キーを押しながらクリックすると範囲で選べます）。";
+    // Shift + クリックの案内は、幅の広い画面（パソコン）でだけ出す
+    return [
+      h("span", { class: "narrow-only" }, "日付をタップして選びます（複数可）。"),
+      h("span", { class: "wide-only" }, "日付をタップして選びます（複数可。パソコンでは Shift キーを押しながらクリックすると範囲で選べます）。"),
+    ];
   }
 
   /** 選んだ日付を候補に追加しないまま保存しようとしたら確かめる。追加しに戻るなら false */
@@ -269,7 +273,7 @@ export async function editPage(pollId: string): Promise<void> {
         modeButton("range", "範囲で選ぶ"),
       ),
       grid,
-      h("p", { class: "muted small", aria: { live: "polite" } }, pickHint()),
+      h("p", { class: "muted small", aria: { live: "polite" } }, ...[pickHint()].flat()),
       selectedDates.size || rangeStart
         ? h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { selectedDates.clear(); rangeStart = null; lastPicked = null; draw(); } }, "選択を解除")
         : null,
@@ -325,7 +329,7 @@ export async function editPage(pollId: string): Promise<void> {
     const endIn = h("input", { type: "time", id: "end-time", value: endTime, disabled: allDay, onChange: () => (endTime = endIn.value || endTime) });
     const allDayIn = h("input", { type: "checkbox", id: "all-day", checked: allDay, onChange: () => { allDay = allDayIn.checked; draw(); } });
     const preset = (label: string, s: string, e: string) =>
-      h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { startTime = s; endTime = e; allDay = false; draw(); } }, label);
+      h("button", { type: "button", class: "btn btn-small btn-raised", onClick: () => { startTime = s; endTime = e; allDay = false; draw(); } }, label);
     const list = h("ul", { class: "slot-list" });
     for (const s of slots) {
       const hasAnswers = s.id !== null && d.answers.some((a) => a.slotId === s.id);
@@ -363,18 +367,27 @@ export async function editPage(pollId: string): Promise<void> {
       h("h2", { class: "card-title" }, "① 日付を選ぶ"),
       calendar(),
       h("h2", { class: "card-title" }, "② 時間帯"),
-      h("div", { class: "row" }, h("span", { class: "muted small" }, "よく使う:"), ...FIXED_PRESETS.map((p) => preset(p.label, p.start, p.end))),
-      recentPresets.length
-        ? h("div", { class: "row" }, h("span", { class: "muted small" }, "最近使った:"), ...recentPresets.map((r) => preset(`${r.start}–${r.end}`, r.start, r.end)))
-        : null,
       h(
         "div",
-        { class: "row" },
-        h("label", { for: "start-time" }, "開始"),
-        startIn,
-        h("label", { for: "end-time" }, "終了"),
-        endIn,
-        h("span", { class: "field-inline" }, allDayIn, h("label", { for: "all-day" }, "終日")),
+        { class: "preset-row" },
+        h("span", { class: "preset-label muted small" }, "よく使う:"),
+        h("div", { class: "preset-btns" }, ...FIXED_PRESETS.map((p) => preset(p.label, p.start, p.end))),
+      ),
+      recentPresets.length
+        ? h(
+            "div",
+            { class: "preset-row" },
+            h("span", { class: "preset-label muted small" }, "最近使った:"),
+            h("div", { class: "preset-btns" }, ...recentPresets.map((r) => preset(`${r.start}–${r.end}`, r.start, r.end))),
+          )
+        : null,
+      // 開始・終了は、ラベルと入力欄を組にして並べる。1 行に収まらない幅では、それぞれを 1 行ずつ縦に並べる
+      h(
+        "div",
+        { class: "time-fields" },
+        h("div", { class: "time-field" }, h("label", { for: "start-time" }, "開始"), startIn),
+        h("div", { class: "time-field" }, h("label", { for: "end-time" }, "終了"), endIn),
+        h("div", { class: "time-field time-field-check" }, allDayIn, h("label", { for: "all-day" }, "終日")),
       ),
       selectedDates.size
         ? h("p", { class: "add-prompt", role: "status" }, `選んだ ${selectedDates.size} 日を候補にするには、このボタンを押してください。`)
