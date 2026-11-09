@@ -685,6 +685,7 @@ S2 の [変更] を押すと、ひな形から選ぶか、自分で編集でき�
   - 選択がまだなく、ブラウザで Global Privacy Control（`navigator.globalPrivacyControl`）が有効なら、拒否として扱う。
   - スクリプトが動かない環境では広告を出さない。
 - **出し分け**：GitHub の `production` 環境の変数 `ADMAX_ID`（広告コードの `https://adm.shinobi.jp/s/` に続く 32 文字）があるときだけ、`scripts/prepare-public.sh` が `<!-- ad:start -->`〜`<!-- ad:end -->` を残して `ads/public/frame.html` に ID を埋め込み、デプロイで広告の枠の Worker も公開する。ないときは広告の枠・説明・`ad-consent.js` を消し、広告の枠の Worker はデプロイしない。セキュリティ方針の「しないこと」なども、広告の有無で文言を切り替える（`<!-- no-ad:start -->`）。
+- **Google AdSense の審査**：AdSense にはサイト `etlits.workers.dev`（`workers.dev` は Public Suffix List に載っているため、その一つ下がサイトの単位になる）を登録し、所有の確認にはメタタグ `<meta name="google-adsense-account" content="ca-pub-7698368408631991">` を LP とセキュリティ方針ページに置く。メタタグは情報を示すだけで、スクリプトは読み込まない（CSP は変わらない）。承認されたら、忍者AdMax と AdSense のどちらを使うかを決め直す。
 - **開示**：セキュリティ方針ページに「広告について」（表示する場所、切り離し方、広告会社に届く情報と Cookie、拒否する方法）と、残っているリスク（不適切な広告が出る可能性）を書く。
 
 ---
