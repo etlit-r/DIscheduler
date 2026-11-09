@@ -1,7 +1,7 @@
 # Workers Static Assets のレスポンスヘッダー（docs/security-design.md §4.2 と同じ値）
 # アセットは Worker のコードを通らずに配信されるため、ここで付与する
 /*
-  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; require-trusted-types-for 'script'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-src https://discheduler-ads.etlits.workers.dev; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; require-trusted-types-for 'script'; upgrade-insecure-requests
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
@@ -15,18 +15,3 @@
 
 /app/assets/*
   Cache-Control: public, max-age=31536000, immutable
-
-# 広告の枠（docs/design.md §6.10.1）。LP とセキュリティ方針ページの iframe の中だけで表示する。
-# - CSP の sandbox で不透明なオリジンにし、サイトの Cookie・保存データ・親ページに触れられないようにする
-#   （直接開かれても同じ）。広告のスクリプトは複数の広告会社から読み込まれるため、https に限って許可する
-# - 埋め込みは同じサイトからだけ許す（frame-ancestors 'self'）
-# - 広告会社にはドメイン名だけを送る（ページのパスは送らない）
-/ad-frame
-  ! Content-Security-Policy
-  ! X-Frame-Options
-  ! Referrer-Policy
-  Content-Security-Policy: sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; script-src https: 'unsafe-inline' 'unsafe-eval'; style-src https: 'unsafe-inline'; img-src https: data:; media-src https:; font-src https: data:; connect-src https:; frame-src https:; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; upgrade-insecure-requests
-  X-Frame-Options: SAMEORIGIN
-  Referrer-Policy: strict-origin
-  X-Robots-Tag: noindex, nofollow
-  Cache-Control: no-cache
