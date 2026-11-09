@@ -69,6 +69,35 @@ input[type="text"], input[type="search"], input[type="number"], input[type="time
   border-radius: 8px; padding: 8px 10px; min-height: 44px; max-width: 100%;
 }
 textarea { min-height: 80px; resize: vertical; }
+/* 時間帯のボタン（よく使う・最近使った）は、押せる部品だと分かるよう枠と影で立体的にする */
+.btn-raised {
+  color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums;
+  border: 1px solid color-mix(in srgb, var(--text) 28%, var(--border));
+  border-bottom: 4px solid color-mix(in srgb, var(--text) 45%, var(--border));
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--surface) 80%, #fff 20%), var(--surface-2));
+  box-shadow: 0 1px 0 rgb(255 255 255 / 10%) inset, 0 3px 6px rgb(0 0 0 / 22%);
+  transition: border-color .15s, transform .05s;
+}
+.btn-raised:hover { color: var(--text); border-color: var(--accent); border-bottom-color: color-mix(in srgb, var(--accent) 70%, #000); }
+.btn-raised:active { transform: translateY(3px); border-bottom-width: 1px; margin-bottom: 3px; box-shadow: 0 1px 3px rgb(0 0 0 / 25%) inset; }
+.preset-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 8px 0; }
+.preset-label { min-width: 5.5em; }
+.preset-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+/* 開始・終了：広い画面では 1 行、狭い画面ではラベルと入力欄の組を 1 行ずつ縦に並べる */
+.time-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; margin: 14px 0 8px; }
+.time-field { display: flex; align-items: center; gap: 8px; }
+.time-field > label { font-weight: 600; }
+.time-field-check > input { margin: 0; }
+@media (max-width: 560px) {
+  .preset-row { flex-direction: column; align-items: flex-start; }
+  .time-fields { flex-direction: column; align-items: stretch; }
+  .time-field > label { width: 3em; flex: none; }
+  .time-field > input[type="time"] { flex: 1; }
+}
+/* 幅で出し分ける文 */
+.wide-only { display: none; }
+@media (min-width: 641px) { .wide-only { display: inline; } .narrow-only { display: none; } }
+
 /* 時刻の入力の時計マーク（選択画面を開くボタン）を、枠と影で立体的なボタンの見た目にする。
    入力欄そのものは他の入力と同じ見た目のまま。時計マークは Chromium 系のブラウザで表示される */
 input[type="time"]::-webkit-calendar-picker-indicator {
