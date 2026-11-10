@@ -5,11 +5,17 @@ import type { Env } from "../core/env";
 import {
   clearSessionCookie,
   consumeLink,
+  consumeListLink,
+  createListSession,
   createSession,
+  getListSession,
   getSession,
+  listCookieName,
+  listSessionCookie,
   readCookie,
   sessionCookie,
   sessionCookieName,
+  type ListSessionRow,
 } from "../auth";
 import {
   deletePollData,
@@ -36,7 +42,7 @@ import { isValidTimeZone, nextCronAt } from "../shared/time";
 import { isValidDonationUrl } from "../shared/text";
 import { getRecentTimes, mergeRanges, rangesFromSlots, saveRecentTimesStatement } from "../guilds/recent-times";
 import { syncAfterAnswer, syncNow } from "../polls/sync";
-import { AnswersBody, ChoicesBody, FixBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
+import { AnswersBody, ChoicesBody, FixBody, OpenPollBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
 
 type Vars = { session: SessionRow; poll: PollRow };
 type C = Context<{ Bindings: Env; Variables: Vars }>;
@@ -81,6 +87,15 @@ async function readJson<T extends v.GenericSchema>(c: C | Context<{ Bindings: En
 api.post("/session", async (c) => {
   const body = await readJson(c, SessionBody);
   const link = await consumeLink(c.env.DB, body.token);
+  if (!link) {
+    // 主催者の調整一覧（S9）のリンクなら、サーバー単位のセッションを発行する（§6.11）
+    const list = await consumeListLink(c.env.DB, body.token);
+    if (list) {
+      const { sid } = await createListSession(c.env.DB, list.guild_id, list.user_id);
+      c.header("Set-Cookie", listSessionCookie(list.guild_id, sid));
+      return c.json({ redirect: `/g/${list.guild_id}/polls` });
+    }
+  }
   if (!link) throw new AppError(401, "link_expired", "リンクの有効期限が切れているか、すでに使われています。Discord からもう一度リンクを開いてください。");
   const poll = await getPoll(c.env.DB, link.poll_id);
   if (!poll || poll.status === "cancelled") throw new AppError(404, "not_found", "この調整は削除されました。");
@@ -775,23 +790,28 @@ polls.post("/:id/repost", async (c) => {
   return c.json({ ok: true });
 });
 
-polls.delete("/:id", async (c) => {
-  requireOrganizer(c);
-  const { poll } = c.var;
+/** 調整を削除する。募集メッセージを「削除されました」に変え、Discord イベントも消してから、データを消す */
+async function deletePollEverywhere(env: Env, poll: PollRow): Promise<string[]> {
   if (poll.message_id) {
-    await discord(c.env, "PATCH", `/channels/${poll.channel_id}/messages/${poll.message_id}`, buildDeletedMessage(poll.title)).catch(() => undefined);
+    await discord(env, "PATCH", `/channels/${poll.channel_id}/messages/${poll.message_id}`, buildDeletedMessage(poll.title)).catch(() => undefined);
   }
   // 確定時に登録した Discord イベントも、調整と一緒に消す
   const warnings: string[] = [];
   if (poll.discord_event_id) {
     try {
-      await discord(c.env, "DELETE", `/guilds/${poll.guild_id}/scheduled-events/${poll.discord_event_id}`);
+      await discord(env, "DELETE", `/guilds/${poll.guild_id}/scheduled-events/${poll.discord_event_id}`);
     } catch (e) {
       if (!(e instanceof DiscordError && e.status === 404)) warnings.push("Discord イベントを削除できませんでした。Discord で削除してください。");
     }
   }
-  await deletePollData(c.env.DB, poll.id);
-  c.header("Set-Cookie", clearSessionCookie(poll.id));
+  await deletePollData(env.DB, poll.id);
+  return warnings;
+}
+
+polls.delete("/:id", async (c) => {
+  requireOrganizer(c);
+  const warnings = await deletePollEverywhere(c.env, c.var.poll);
+  c.header("Set-Cookie", clearSessionCookie(c.var.poll.id));
   return c.json({ ok: true, warnings });
 });
 
@@ -802,4 +822,99 @@ polls.delete("/:id/session", async (c) => {
 });
 
 api.route("/polls", polls);
+
+// --- 主催者の調整一覧（S9。docs/design.md §6.11。サーバー単位のセッション必須） ---
+
+type ListVars = { list: ListSessionRow };
+type LC = Context<{ Bindings: Env; Variables: ListVars }>;
+const guilds = new Hono<{ Bindings: Env; Variables: ListVars }>();
+
+guilds.use("/:guildId/*", async (c: LC, next) => {
+  const guildId = c.req.param("guildId") ?? "";
+  if (!/^\d{17,20}$/.test(guildId)) throw new AppError(404, "not_found", "見つかりません。");
+  const sid = readCookie(c.req.header("Cookie") ?? null, listCookieName(guildId));
+  const list = sid ? await getListSession(c.env.DB, guildId, sid) : null;
+  if (!list) throw new AppError(401, "no_session", "リンクの有効期限が切れています。Discord の［自分の調整を管理］からもう一度開いてください。");
+  if (c.req.method !== "GET") {
+    const token = c.req.header("X-CSRF-Token") ?? "";
+    if (!timingSafeEqual(token, list.csrf_token)) throw new AppError(403, "bad_csrf", "不正なリクエストです。画面を再読み込みしてください。");
+  }
+  c.set("list", list);
+  await next();
+});
+
+/** 一覧のセッションの持ち主が、このサーバーで主催している調整だけを返す。それ以外は見つからない扱い */
+async function ownPoll(c: LC): Promise<PollRow> {
+  const poll = await getPoll(c.env.DB, c.req.param("pollId") ?? "");
+  const { list } = c.var;
+  if (!poll || poll.status === "cancelled" || poll.guild_id !== list.guild_id || poll.organizer_id !== list.user_id) {
+    throw new AppError(404, "not_found", "この調整は見つかりませんでした。削除された可能性があります。");
+  }
+  return poll;
+}
+
+guilds.get("/:guildId/polls", async (c: LC) => {
+  const { list } = c.var;
+  const now = nowSec();
+  const rows = await c.env.DB.prepare(
+    "SELECT p.id, p.title, p.status, p.deadline_at, p.channel_id, p.message_id, p.created_at, p.updated_at, p.timezone, " +
+      "s.start_at AS fixed_start, s.end_at AS fixed_end, s.all_day AS fixed_all_day, " +
+      "(SELECT COUNT(*) FROM participants pa WHERE pa.poll_id = p.id) AS participants, " +
+      "(SELECT COUNT(*) FROM participants pa WHERE pa.poll_id = p.id AND pa.answered_at IS NOT NULL) AS answered " +
+      "FROM polls p LEFT JOIN slots s ON s.id = p.fixed_slot_id " +
+      "WHERE p.guild_id = ? AND p.organizer_id = ? AND p.status != 'cancelled' ORDER BY p.updated_at DESC LIMIT 200",
+  )
+    .bind(list.guild_id, list.user_id)
+    .all<{
+      id: string;
+      title: string | null;
+      status: PollRow["status"];
+      deadline_at: number | null;
+      channel_id: string;
+      message_id: string | null;
+      created_at: number;
+      updated_at: number;
+      timezone: string;
+      fixed_start: number | null;
+      fixed_end: number | null;
+      fixed_all_day: number | null;
+      participants: number;
+      answered: number;
+    }>();
+  return c.json({
+    now,
+    csrfToken: list.csrf_token,
+    polls: rows.results.map((r) => ({
+      id: r.id,
+      title: r.title,
+      status: effectiveStatus(r.status, r.deadline_at, now),
+      deadlineAt: r.deadline_at,
+      timezone: r.timezone,
+      fixed: r.fixed_start === null ? null : { startAt: r.fixed_start, endAt: r.fixed_end, allDay: r.fixed_all_day === 1 },
+      participants: r.participants,
+      answered: r.answered,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      messageUrl: r.message_id ? messageLink(list.guild_id, r.channel_id, r.message_id) : null,
+    })),
+  });
+});
+
+// 一覧から調整を開く。主催者本人であることを確かめてから、その調整だけに有効なセッションを発行する
+guilds.post("/:guildId/polls/:pollId/open", async (c: LC) => {
+  const body = await readJson(c as unknown as Context<{ Bindings: Env }>, OpenPollBody);
+  const poll = await ownPoll(c);
+  if (body.to === "summary" && poll.status === "draft") throw new AppError(409, "draft", "下書きの調整には集計画面がありません。");
+  const { sid } = await createSession(c.env.DB, poll.id, c.var.list.user_id, "organizer");
+  c.header("Set-Cookie", sessionCookie(poll.id, sid));
+  return c.json({ redirect: body.to === "edit" ? `/p/${poll.id}/edit` : `/p/${poll.id}` });
+});
+
+guilds.delete("/:guildId/polls/:pollId", async (c: LC) => {
+  const poll = await ownPoll(c);
+  const warnings = await deletePollEverywhere(c.env, poll);
+  return c.json({ ok: true, warnings });
+});
+
+api.route("/guilds", guilds);
 

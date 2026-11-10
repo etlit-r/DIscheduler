@@ -580,3 +580,84 @@ describe("サーバーの最近使った時間帯（§6.3.1）", () => {
     expect(await recent(s.pollId, org)).toEqual([]);
   });
 });
+
+describe("主催者の調整一覧（§6.11）", () => {
+  const OTHER_GUILD = "200000000000000999";
+  async function listLogin(guildId: string, userId: string) {
+    const { issueListLink } = await import("../src/auth");
+    const url = await issueListLink(db(), ORIGIN, guildId, userId);
+    const res = await call(jsonReq("POST", "/api/session", { token: tokenFromUrl(url) }));
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { redirect: string }).redirect).toBe(`/g/${guildId}/polls`);
+    const cookie = res.headers.get("Set-Cookie")!.split(";")[0]!;
+    expect(cookie.startsWith(`__Host-l_${guildId}=`)).toBe(true);
+    const list = await call(getReq(`/api/guilds/${guildId}/polls`, cookie));
+    const data = (await list.json()) as { csrfToken: string; polls: { id: string; status: string; answered: number; participants: number }[] };
+    return { cookie, csrf: data.csrfToken, polls: data.polls };
+  }
+
+  it("このサーバーで自分が主催した調整だけを返す", async () => {
+    const mine = await seedPoll();
+    const draft = await seedPoll({ status: "draft", messageId: null });
+    const others = await seedPoll();
+    await db().prepare("UPDATE polls SET organizer_id = ? WHERE id = ?").bind(ALICE, others.pollId).run();
+    const otherGuild = await seedPoll();
+    await db().prepare("UPDATE polls SET guild_id = ? WHERE id = ?").bind(OTHER_GUILD, otherGuild.pollId).run();
+    await db().prepare("UPDATE participants SET answered_at = 1 WHERE poll_id = ? AND user_id = ?").bind(mine.pollId, ALICE).run();
+
+    const { polls } = await listLogin("200000000000000001", ORGANIZER);
+    const ids = polls.map((p) => p.id);
+    expect(ids).toContain(mine.pollId);
+    expect(ids).toContain(draft.pollId);
+    expect(ids).not.toContain(others.pollId);
+    expect(ids).not.toContain(otherGuild.pollId);
+    const m = polls.find((p) => p.id === mine.pollId)!;
+    expect(m).toMatchObject({ status: "open", answered: 1, participants: 3 });
+  });
+
+  it("一覧から開くと、主催者本人のときだけ、その調整のセッションを発行する", async () => {
+    const mine = await seedPoll();
+    const draft = await seedPoll({ status: "draft", messageId: null });
+    const others = await seedPoll();
+    await db().prepare("UPDATE polls SET organizer_id = ? WHERE id = ?").bind(ALICE, others.pollId).run();
+    const { cookie, csrf } = await listLogin("200000000000000001", ORGANIZER);
+
+    const res = await call(jsonReq("POST", `/api/guilds/200000000000000001/polls/${mine.pollId}/open`, { to: "edit" }, { cookie, csrf }));
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { redirect: string }).redirect).toBe(`/p/${mine.pollId}/edit`);
+    const pollCookie = res.headers.get("Set-Cookie")!.split(";")[0]!;
+    expect(pollCookie.startsWith(`__Host-s_${mine.pollId}=`)).toBe(true);
+    const detail = await call(getReq(`/api/polls/${mine.pollId}`, pollCookie));
+    expect(((await detail.json()) as { me: { role: string } }).me.role).toBe("organizer");
+
+    expect((await call(jsonReq("POST", `/api/guilds/200000000000000001/polls/${others.pollId}/open`, { to: "edit" }, { cookie, csrf }))).status).toBe(404);
+    expect((await call(jsonReq("POST", `/api/guilds/200000000000000001/polls/${draft.pollId}/open`, { to: "summary" }, { cookie, csrf }))).status).toBe(409);
+    // CSRF トークンがなければ受け付けない
+    expect((await call(jsonReq("POST", `/api/guilds/200000000000000001/polls/${mine.pollId}/open`, { to: "edit" }, { cookie }))).status).toBe(403);
+  });
+
+  it("一覧から削除できるのは自分の調整だけ", async () => {
+    mockDiscord(() => ({}));
+    const mine = await seedPoll();
+    const others = await seedPoll();
+    await db().prepare("UPDATE polls SET organizer_id = ? WHERE id = ?").bind(ALICE, others.pollId).run();
+    const { cookie, csrf } = await listLogin("200000000000000001", ORGANIZER);
+    expect((await call(jsonReq("DELETE", `/api/guilds/200000000000000001/polls/${others.pollId}`, {}, { cookie, csrf }))).status).toBe(404);
+    expect(await db().prepare("SELECT id FROM polls WHERE id = ?").bind(others.pollId).first()).not.toBeNull();
+    expect((await call(jsonReq("DELETE", `/api/guilds/200000000000000001/polls/${mine.pollId}`, {}, { cookie, csrf }))).status).toBe(200);
+    expect(await db().prepare("SELECT id FROM polls WHERE id = ?").bind(mine.pollId).first()).toBeNull();
+  });
+
+  it("別のサーバーの一覧には、そのサーバーのセッションがなければ入れない", async () => {
+    const { cookie } = await listLogin("200000000000000001", ORGANIZER);
+    expect((await call(getReq(`/api/guilds/${OTHER_GUILD}/polls`, cookie))).status).toBe(401);
+    expect((await call(getReq(`/api/guilds/200000000000000001/polls`))).status).toBe(401);
+  });
+
+  it("一覧のリンクも 1 回だけ使える", async () => {
+    const { issueListLink } = await import("../src/auth");
+    const url = await issueListLink(db(), ORIGIN, "200000000000000001", ORGANIZER);
+    expect((await call(jsonReq("POST", "/api/session", { token: tokenFromUrl(url) }))).status).toBe(200);
+    expect((await call(jsonReq("POST", "/api/session", { token: tokenFromUrl(url) }))).status).toBe(401);
+  });
+});

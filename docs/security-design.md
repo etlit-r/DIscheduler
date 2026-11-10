@@ -61,7 +61,7 @@ flowchart LR
 |----|------|------|
 | S-1 | 第三者が `/discord/interactions` に偽の Interaction を送り、他人として操作 | **Ed25519 署名検証**（`X-Signature-Ed25519` / `X-Signature-Timestamp`）を Web Crypto で実施。検証前に本文をパースしない。失敗時は 401。タイムスタンプが ±5 分を超えたら拒否（リプレイ対策） |
 | S-2 | 入力リンクの横取り・推測による他人の回答改ざん | トークンは CSPRNG（`crypto.getRandomValues`）で 256bit 生成。**ephemeral メッセージ**で本人にのみ表示。**10 分で失効・1 回限り**。DB には SHA-256 ハッシュのみ保存。URL フラグメントに置きサーバーログ・Referer に残さない |
-| S-3 | セッション Cookie の窃取 | `__Host-s_{pollId}; Secure; HttpOnly; SameSite=Strict; Path=/`。有効期限 12 時間・延長なし。**1 調整にスコープ**し、窃取時の影響を当該調整に限定。DB にはハッシュのみ保存 |
+| S-3 | セッション Cookie の窃取 | `__Host-s_{pollId}; Secure; HttpOnly; SameSite=Strict; Path=/`。有効期限 12 時間・延長なし。**1 調整にスコープ**し、窃取時の影響を当該調整に限定。DB にはハッシュのみ保存。主催者の調整一覧（設計書 §6.11）は別のサーバー単位のセッション `__Host-l_{guildId}`（同じ属性・12 時間）で、本人がそのサーバーで主催した調整の一覧・削除と、調整を開くことだけに使え、回答や他人の調整には使えない |
 | S-4 | 主催者になりすまして確定・削除 | 主催者権限はセッション発行時に `polls.organizer_id` と Interaction の `user.id` の一致で付与。API ごとに `role = organizer` を再確認 |
 | S-5 | 偽の DIscheduler サイトへの誘導（フィッシング） | 公式ドメインを README・［使い方］ボタン・`/security` に明記。本アプリは **Discord のパスワードや OAuth 同意を一切求めない** ことを周知 |
 
@@ -183,6 +183,7 @@ stateDiagram-v2
 - トークン交換は `UPDATE link_tokens SET used_at=? WHERE token_hash=? AND used_at IS NULL AND expires_at>?` の 1 文で行い、**競合時の二重使用を防ぐ**（変更行数 1 のときのみ成功）。
 - 比較は DB のハッシュ一致で行うためタイミング攻撃の影響を受けない。CSRF トークン比較は定数時間比較を使用。
 - セッション発行時に参加者であることを再確認。主催者が参加者から外した場合、既存セッションも即時削除。
+- 主催者の調整一覧のリンク（`list_tokens`）とセッション（`list_sessions`）も同じ形（ハッシュのみ保存・1 回限り・10 分／12 時間）。一覧から調整を開くときは、調整の `guild_id` と `organizer_id` がセッションと一致することを確かめてから、その調整の主催者のセッションを発行する。
 
 ### 4.4 入力検証と出力エンコード
 
@@ -241,7 +242,7 @@ stateDiagram-v2
 2. **封じ込め**
    - Bot トークン漏えい疑い → Developer Portal で即時 Reset Token → Cloudflare Secret 更新
    - Web 側の脆弱性 → 環境変数 `MAINTENANCE=1` で Web API を停止（Discord 側は「メンテナンス中」応答）
-   - 全セッション失効: `DELETE FROM sessions; DELETE FROM link_tokens;`
+   - 全セッション失効: `DELETE FROM sessions; DELETE FROM link_tokens; DELETE FROM list_sessions; DELETE FROM list_tokens;`
 3. **根絶・復旧**: 修正 → テスト → デプロイ
 4. **報告**: 影響範囲・原因・対策を GitHub Security Advisory として公開。影響サーバーには Discord 上で告知
 

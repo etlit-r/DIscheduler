@@ -83,3 +83,66 @@ export function readCookie(header: string | null, name: string): string | null {
   }
   return null;
 }
+
+// --- 主催者の調整一覧（S9。docs/design.md §6.11） ---
+// サーバー単位のセッション。そのサーバーで自分が主催した調整の一覧だけを扱い、
+// 調整を開くときは、主催者本人であることを確かめてから調整ごとのセッションを別に発行する。
+
+export interface ListSessionRow {
+  sid_hash: string;
+  guild_id: string;
+  user_id: string;
+  csrf_token: string;
+  expires_at: number;
+  created_at: number;
+}
+
+export function listCookieName(guildId: string): string {
+  return `__Host-l_${guildId}`;
+}
+
+/** 一覧ページを開くリンクを発行する（入力リンクと同じ中継ページ /l を使う） */
+export async function issueListLink(db: D1Database, origin: string, guildId: string, userId: string): Promise<string> {
+  const token = randomToken(32);
+  await db
+    .prepare("INSERT INTO list_tokens (token_hash, guild_id, user_id, expires_at) VALUES (?, ?, ?, ?)")
+    .bind(await sha256Hex(token), guildId, userId, nowSec() + LINK_TTL)
+    .run();
+  return `${origin}/l#t=${token}`;
+}
+
+/** 一覧ページのリンクのトークンを 1 回だけ使えるように消費する */
+export async function consumeListLink(db: D1Database, token: string): Promise<{ guild_id: string; user_id: string } | null> {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
+  const hash = await sha256Hex(token);
+  const now = nowSec();
+  const r = await db
+    .prepare("UPDATE list_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?")
+    .bind(now, hash, now)
+    .run();
+  if (r.meta.changes !== 1) return null;
+  return db.prepare("SELECT guild_id, user_id FROM list_tokens WHERE token_hash = ?").bind(hash).first<{ guild_id: string; user_id: string }>();
+}
+
+export async function createListSession(db: D1Database, guildId: string, userId: string): Promise<{ sid: string; csrf: string }> {
+  const sid = randomToken(32);
+  const csrf = randomToken(32);
+  const now = nowSec();
+  await db
+    .prepare("INSERT INTO list_sessions (sid_hash, guild_id, user_id, csrf_token, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(await sha256Hex(sid), guildId, userId, csrf, now + SESSION_TTL, now)
+    .run();
+  return { sid, csrf };
+}
+
+export async function getListSession(db: D1Database, guildId: string, sid: string): Promise<ListSessionRow | null> {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(sid)) return null;
+  return db
+    .prepare("SELECT * FROM list_sessions WHERE sid_hash = ? AND guild_id = ? AND expires_at > ?")
+    .bind(await sha256Hex(sid), guildId, nowSec())
+    .first<ListSessionRow>();
+}
+
+export function listSessionCookie(guildId: string, sid: string): string {
+  return `${listCookieName(guildId)}=${sid}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${SESSION_TTL}`;
+}

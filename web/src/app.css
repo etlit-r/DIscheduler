@@ -161,6 +161,18 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .star { color: var(--star); font-weight: 700; }
 .badge { display: inline-block; font-size: 0.78rem; font-weight: 700; border-radius: 999px; padding: 1px 8px; }
 .badge-fixed { color: #fff; background: var(--c-green); }
+/* 主催者の調整一覧（S9。§6.11） */
+.badge-status { flex: none; }
+.badge-draft { color: var(--c-gray); background: var(--c-gray-soft); }
+.badge-open { color: var(--c-teal); background: var(--c-teal-soft); }
+.badge-closed { color: var(--c-orange); background: var(--c-orange-soft); }
+.mine-filter { margin: 4px 0 0; }
+.mine-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.mine-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mine-title { margin: 0; font-size: 1.05rem; line-height: 1.5; overflow-wrap: anywhere; }
+.mine-info { margin: 6px 0 4px; display: flex; flex-wrap: wrap; gap: 0 14px; }
+.mine-info span { white-space: nowrap; }
+.mine-delete { margin-left: auto; }
 
 /* S4 集計 */
 .tally-table td.num, .data td.num { text-align: center; }

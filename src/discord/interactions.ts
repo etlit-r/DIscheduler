@@ -1,7 +1,7 @@
 // Discord Interaction の処理（docs/design.md §4, §8.3）
 // ユーザー ID は必ず署名済みの Interaction 本体の値を使い、custom_id の値は信用しない。
 import type { Env } from "../core/env";
-import { issueLink } from "../auth";
+import { issueLink, issueListLink } from "../auth";
 import { getParticipant, getPoll, hitRateLimit } from "../db";
 import { AppError, isQuotaError, nowSec, QUOTA_MESSAGE } from "../core/lib";
 import { createOrReuseDraft } from "../polls/create";
@@ -93,9 +93,10 @@ export async function handleInteraction(env: Env, ctx: Ctx, i: Interaction, orig
       return deferred();
     }
     if (id === "manage") {
-      background(env, ctx, i, () => handleManage(env, i, guildId, userId));
+      background(env, ctx, i, () => handleManage(env, i, origin, guildId, userId));
       return deferred();
     }
+    // 以前の［自分の調整を管理］の選択メニュー（すでに送ったメッセージに残っている分）にも応える
     if (id === "manage_select") {
       const pollId = i.data?.values?.[0] ?? "";
       const poll = await getPoll(env.DB, pollId);
@@ -278,34 +279,26 @@ async function handleList(env: Env, i: Interaction, guildId: string, channelId: 
   await editOriginal(env, i, ["このチャンネルの調整です。回答は各募集メッセージの［回答する］から入力できます。", ...lines].join("\n"));
 }
 
-async function handleManage(env: Env, i: Interaction, guildId: string, userId: string): Promise<void> {
-  const rows = await env.DB.prepare(
-    "SELECT id, title, status FROM polls WHERE guild_id = ? AND organizer_id = ? AND status != 'cancelled' ORDER BY updated_at DESC LIMIT 25",
-  )
+/** ［自分の調整を管理］: このサーバーで自分が主催した調整の一覧ページ（S9。§6.11）のリンクを本人にだけ返す */
+async function handleManage(env: Env, i: Interaction, origin: string, guildId: string, userId: string): Promise<void> {
+  const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM polls WHERE guild_id = ? AND organizer_id = ? AND status != 'cancelled'")
     .bind(guildId, userId)
-    .all<{ id: string; title: string | null; status: string }>();
-  if (rows.results.length === 0) {
-    await editOriginal(env, i, "あなたが主催している調整はありません。`/schedule` で作成できます。");
+    .first<{ n: number }>();
+  if (!row || row.n === 0) {
+    await editOriginal(env, i, "このサーバーであなたが主催している調整はありません。`/schedule` で作成できます。");
     return;
   }
-  const label: Record<string, string> = { draft: "下書き", open: "募集中", closed: "締切後", fixed: "確定" };
-  await editOriginal(env, i, "管理する調整を選んでください。", [
-    {
-      type: 1,
-      components: [
-        {
-          type: 3,
-          custom_id: "manage_select",
-          placeholder: "調整を選ぶ",
-          options: rows.results.map((r) => ({
-            label: (r.title ?? "（タイトル未入力）").slice(0, 90),
-            description: label[r.status] ?? r.status,
-            value: r.id,
-          })),
-        },
-      ],
-    },
-  ]);
+  if (!(await hitRateLimit(env.DB, `link:${userId}`, 20, 3600, nowSec()))) {
+    await editOriginal(env, i, "リンクの発行回数の上限（1 時間に 20 回）に達しました。しばらくしてからお試しください。");
+    return;
+  }
+  const url = await issueListLink(env.DB, origin, guildId, userId);
+  await editOriginal(
+    env,
+    i,
+    `このサーバーであなたが主催している調整（${row.n} 件）の一覧です。編集・集計・削除ができます。\nリンクは 10 分有効・1 回限りです。他の人に渡さないでください。`,
+    [{ type: 1, components: [linkButton("自分の調整の一覧を開く", url)] }],
+  );
 }
 
 export function helpText(origin: string): string {

@@ -5,11 +5,14 @@ import { answerPage } from "./pages/answer";
 import { donePage } from "./pages/done";
 import { editPage } from "./pages/edit";
 import { linkPage } from "./pages/link";
+import { minePage } from "./pages/mine";
 import { summaryPage } from "./pages/summary";
 
 async function route(): Promise<void> {
   const path = location.pathname;
   if (path === "/l") return linkPage();
+  const g = /^\/g\/(\d{17,20})\/polls\/?$/.exec(path);
+  if (g) return minePage(g[1]!);
   const m = /^\/p\/([A-Za-z0-9_-]{22})(?:\/(edit|answer|done))?\/?$/.exec(path);
   if (!m) return showError(new ApiError(404, "not_found", "ページが見つかりません。"));
   const id = m[1]!;

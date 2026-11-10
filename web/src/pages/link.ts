@@ -13,7 +13,7 @@ export async function linkPage(): Promise<void> {
   }
   try {
     const res = await request<{ redirect: string }>("POST", "/api/session", { token: m[1] });
-    if (/^\/p\/[A-Za-z0-9_-]{22}(\/(edit|answer))?$/.test(res.redirect)) location.replace(res.redirect);
+    if (/^\/p\/[A-Za-z0-9_-]{22}(\/(edit|answer))?$/.test(res.redirect) || /^\/g\/\d{17,20}\/polls$/.test(res.redirect)) location.replace(res.redirect);
     else throw new Error("不正な応答です。");
   } catch (e) {
     showError(e);
