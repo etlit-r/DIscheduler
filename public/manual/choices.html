@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>回答の選択肢を変える｜マニュアル｜DIscheduler</title>
+  <meta name="description" content="○△× 以外の回答の選択肢（2 択、4 段階など）を使う方法と、公開後に変えるときの決まり。">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta name="color-scheme" content="dark">
+  <link rel="stylesheet" href="/assets/site.css">
+  <link rel="stylesheet" href="/assets/lp.css">
+  <!-- アイコン: Lucide（ISC License。/assets/lucide-LICENSE.txt） -->
+  <!-- マニュアル（docs/design.md §6.2 S8）。目次は全ページ共通。ページを足すときは全ページの目次と前後のリンクを直す -->
+</head>
+<body class="lp">
+  <a class="skip-link" href="#main">本文へ移動</a>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="/">
+        <span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg></span>
+        <span class="brand-name">DIscheduler<span class="brand-badge">Bot</span></span>
+      </a>
+      <nav class="site-nav" aria-label="メインメニュー">
+        <ul>
+          <li class="nav-optional"><a href="/#features">機能</a></li>
+          <li class="nav-optional"><a href="/#how">使い方</a></li>
+          <li class="nav-optional"><a href="/#admin">管理者の方へ</a></li>
+          <li><a href="/manual/" aria-current="page">マニュアル</a></li>
+          <li class="nav-sm-hide"><a href="/security">セキュリティ</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc manual">
+    <div class="container">
+      <nav class="toc manual-toc" id="toc" aria-label="マニュアルの目次">
+        <h2>マニュアル</h2>
+        <ol>
+          <li><a href="/manual/">はじめに</a></li>
+          <li><a href="/manual/install">サーバーに追加する</a></li>
+          <li><a href="/manual/channels">使えるチャンネルを決める</a></li>
+          <li><a href="/manual/create">調整を作る</a></li>
+          <li><a href="/manual/slots">候補日時を入れる</a></li>
+          <li><a href="/manual/choices" aria-current="page">回答の選択肢を変える</a></li>
+          <li><a href="/manual/participants">参加者を決める</a></li>
+          <li><a href="/manual/publish">公開する</a></li>
+          <li><a href="/manual/answer">回答する</a></li>
+          <li><a href="/manual/summary">集計を見て確定する</a></li>
+          <li><a href="/manual/message">募集メッセージの更新</a></li>
+          <li><a href="/manual/manage">調整を管理・削除する</a></li>
+          <li><a href="/manual/troubleshooting">困ったときは</a></li>
+        </ol>
+      </nav>
+
+      <article class="doc-body">
+        <p class="manual-crumb"><a href="/manual/">マニュアル</a><span aria-hidden="true"> › </span>回答の選択肢を変える</p>
+        <p class="toc-jump"><a href="#toc">目次へ</a></p>
+        <h1>回答の選択肢を変える</h1>
+        <p>回答の選択肢は、既定では ○ 参加・△ 未定・× 不可 の 3 つです。作成画面の「回答の選択肢」の［変更］から、組み合わせと数を変えられます。</p>
+
+        <h2 id="templates">ひな形</h2>
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr><th scope="col">ひな形</th><th scope="col">選択肢</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">標準（既定）</th><td>○ 参加、△ 未定、× 不可</td></tr>
+              <tr><th scope="row">2 択</th><td>○ 参加、× 不可</td></tr>
+              <tr><th scope="row">4 段階</th><td>◎ ぜひ参加、○ 参加できる、△ 未定、× 不可</td></tr>
+              <tr><th scope="row">時間の条件つき</th><td>○ 参加、遅 遅れて参加、早 途中で抜ける、× 不可</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="custom">自分で作る</h2>
+        <p>ひな形をもとに、選択肢ごとに次の項目を編集・追加・削除できます。選択肢は 2〜5 個です。</p>
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr><th scope="col">項目</th><th scope="col">内容</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">記号</th><td>ボタンと表に出す 1〜2 文字（例: ◎ ○ △ × ？）</td></tr>
+              <tr><th scope="row">名前</th><td>記号の意味（1〜10 文字。同じ調整の中で重ならないように）</td></tr>
+              <tr><th scope="row">区分</th><td>参加できる／未定／参加できない。集計や最有力候補（★）の判定、チャンネルの表示に使います。「参加できる」と「参加できない」はそれぞれ 1 つ以上必要です。</td></tr>
+              <tr><th scope="row">点数</th><td>最有力候補の判定に使う重み（0〜10）。区分を選ぶと自動で入ります。</td></tr>
+              <tr><th scope="row">色</th><td>決まった色の中から選びます。</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="after-publish">公開後に変えるとき</h2>
+        <ul>
+          <li>記号・名前・色・並び順・区分・点数の変更と、選択肢の追加は、回答があってもできます。前に回答した参加者の画面には「選択肢が変更されました」と表示されます。</li>
+          <li>回答が付いている選択肢を削除するときは、その回答をどの選択肢に移すかを選びます。</li>
+          <li>締切を過ぎたあとと、日時を確定したあとは、選択肢を変更できません（回答の意味が途中で変わらないようにするため）。</li>
+        </ul>
+
+        <nav class="pager" aria-label="前後のページ">
+          <a class="prev" href="/manual/slots"><small>前へ</small><span>候補日時を入れる</span></a>
+          <a class="next" href="/manual/participants"><small>次へ</small><span>参加者を決める</span></a>
+        </nav>
+      </article>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <a class="footer-brand" href="/"><span class="brand-mark brand-mark-sm"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg></span>DIscheduler</a>
+      <ul>
+        <li><a href="/">トップ</a></li>
+        <li><a href="/manual/">マニュアル</a></li>
+        <li><a href="/security">セキュリティ方針</a></li>
+        <li><a href="/security#report">脆弱性の報告</a></li>
+        <!-- donation:start --><li><a href="/#support">運営の支援</a></li><!-- donation:end -->
+        <li><a href="https://github.com/etlit-r/DIscheduler" rel="noopener noreferrer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>GitHub</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>

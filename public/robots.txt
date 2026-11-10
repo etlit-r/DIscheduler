@@ -1,5 +1,6 @@
 User-agent: *
 Allow: /$
 Allow: /security
+Allow: /manual/
 Allow: /ads.txt
 Disallow: /

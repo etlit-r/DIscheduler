@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>集計を見て確定する｜マニュアル｜DIscheduler</title>
+  <meta name="description" content="主催者向け。集計表の見方、最有力候補（★）、リマインド、日時の確定と Discord イベントの登録。">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta name="color-scheme" content="dark">
+  <link rel="stylesheet" href="/assets/site.css">
+  <link rel="stylesheet" href="/assets/lp.css">
+  <!-- アイコン: Lucide（ISC License。/assets/lucide-LICENSE.txt） -->
+  <!-- マニュアル（docs/design.md §6.2 S8）。目次は全ページ共通。ページを足すときは全ページの目次と前後のリンクを直す -->
+</head>
+<body class="lp">
+  <a class="skip-link" href="#main">本文へ移動</a>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="/">
+        <span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg></span>
+        <span class="brand-name">DIscheduler<span class="brand-badge">Bot</span></span>
+      </a>
+      <nav class="site-nav" aria-label="メインメニュー">
+        <ul>
+          <li class="nav-optional"><a href="/#features">機能</a></li>
+          <li class="nav-optional"><a href="/#how">使い方</a></li>
+          <li class="nav-optional"><a href="/#admin">管理者の方へ</a></li>
+          <li><a href="/manual/" aria-current="page">マニュアル</a></li>
+          <li class="nav-sm-hide"><a href="/security">セキュリティ</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc manual">
+    <div class="container">
+      <nav class="toc manual-toc" id="toc" aria-label="マニュアルの目次">
+        <h2>マニュアル</h2>
+        <ol>
+          <li><a href="/manual/">はじめに</a></li>
+          <li><a href="/manual/install">サーバーに追加する</a></li>
+          <li><a href="/manual/channels">使えるチャンネルを決める</a></li>
+          <li><a href="/manual/create">調整を作る</a></li>
+          <li><a href="/manual/slots">候補日時を入れる</a></li>
+          <li><a href="/manual/choices">回答の選択肢を変える</a></li>
+          <li><a href="/manual/participants">参加者を決める</a></li>
+          <li><a href="/manual/publish">公開する</a></li>
+          <li><a href="/manual/answer">回答する</a></li>
+          <li><a href="/manual/summary" aria-current="page">集計を見て確定する</a></li>
+          <li><a href="/manual/message">募集メッセージの更新</a></li>
+          <li><a href="/manual/manage">調整を管理・削除する</a></li>
+          <li><a href="/manual/troubleshooting">困ったときは</a></li>
+        </ol>
+      </nav>
+
+      <article class="doc-body">
+        <p class="manual-crumb"><a href="/manual/">マニュアル</a><span aria-hidden="true"> › </span>集計を見て確定する</p>
+        <p class="toc-jump"><a href="#toc">目次へ</a></p>
+        <h1>集計を見て確定する</h1>
+        <h2 id="table">集計表の見方</h2>
+        <ul>
+          <li>集計画面には、候補ごとに選択肢ごとの人数と、未回答の人数が並びます。</li>
+          <li>日時の順と、点数の高い順を切り替えられます。</li>
+          <li>［メンバー別に表示］で、誰がどの候補に何を選んだかの表を見られます。参加者全員が見られます。</li>
+        </ul>
+
+        <h2 id="star">最有力候補（★）の決め方</h2>
+        <p>次の順に比べて、最初に差がついた候補に ★ を付けます。</p>
+        <ol>
+          <li>「参加できない」の人数が少ない</li>
+          <li>点数の合計が大きい（既定では ○ が 2 点、△ が 1 点、× が 0 点）</li>
+          <li>「参加できる」の人数が多い</li>
+          <li>日時が早い</li>
+        </ol>
+
+        <h2 id="remind">未回答の人にリマインドする</h2>
+        <p>［未回答者にリマインド］を押すと、まだ回答していない人にメンションしたメッセージをチャンネルに投稿します。同じ調整で 12 時間に 1 回までです。日時を確定したあとは使えません。</p>
+
+        <h2 id="fix">日時を確定する</h2>
+        <ol>
+          <li>集計表で、確定したい候補の［確定］を押します。</li>
+          <li>必要に応じて次を選びます。
+            <ul>
+              <li>「参加者にメンション付きでお知らせする」</li>
+              <li>「Discord イベントとして登録する」（場所はボイスチャンネルか、自由な文字で指定）</li>
+            </ul>
+          </li>
+          <li>確定すると、募集メッセージが「確定」の表示に変わり、確定完了の画面に移ります。</li>
+        </ol>
+        <p class="note">Bot に「イベントの作成」の権限がないなど、Discord イベントを登録できなかったときも、確定そのものは完了します。画面に理由が表示されます。</p>
+
+        <h2 id="refix">確定し直す</h2>
+        <ul>
+          <li>もう一度［確定し直す］を押すと、確定した日時・募集メッセージ・Discord イベントを更新できます。</li>
+          <li>確定し直すときに「Discord イベント」のチェックを外すと、登録済みのイベントは削除されます。</li>
+          <li>確定した候補の日時を作成画面で変えたときは、Discord イベントの日時も合わせて変わります。</li>
+          <li>確定後に回答を変えた人がいると、確定した候補の行に「確定後に変更」として、誰がどう変えたかが表示されます。</li>
+        </ul>
+
+        <nav class="pager" aria-label="前後のページ">
+          <a class="prev" href="/manual/answer"><small>前へ</small><span>回答する</span></a>
+          <a class="next" href="/manual/message"><small>次へ</small><span>募集メッセージの更新</span></a>
+        </nav>
+      </article>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <a class="footer-brand" href="/"><span class="brand-mark brand-mark-sm"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg></span>DIscheduler</a>
+      <ul>
+        <li><a href="/">トップ</a></li>
+        <li><a href="/manual/">マニュアル</a></li>
+        <li><a href="/security">セキュリティ方針</a></li>
+        <li><a href="/security#report">脆弱性の報告</a></li>
+        <!-- donation:start --><li><a href="/#support">運営の支援</a></li><!-- donation:end -->
+        <li><a href="https://github.com/etlit-r/DIscheduler" rel="noopener noreferrer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>GitHub</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>
