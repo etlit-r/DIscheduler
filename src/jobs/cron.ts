@@ -64,6 +64,9 @@ async function cleanup(env: Env, now: number): Promise<void> {
     db.prepare("DELETE FROM link_tokens WHERE expires_at <= ?").bind(now),
     db.prepare("DELETE FROM sessions WHERE expires_at <= ?").bind(now),
     db.prepare("DELETE FROM rate_limits WHERE expires_at <= ?").bind(now),
+    // 主催者の調整一覧（§6.11）のリンクとセッションも、期限が切れたら消す
+    db.prepare("DELETE FROM list_tokens WHERE expires_at <= ?").bind(now),
+    db.prepare("DELETE FROM list_sessions WHERE expires_at <= ?").bind(now),
     // 最近使った時間帯は、最後に使ってから保持期間（6 ヶ月）を過ぎたら消す
     db.prepare("DELETE FROM guild_recent_times WHERE updated_at <= ?").bind(now - RETENTION),
   ]);
@@ -97,6 +100,8 @@ async function cleanup(env: Env, now: number): Promise<void> {
       await deletePolls(db, { sql: "guild_id IN (SELECT value FROM json_each(?))", value: ids }, [
         db.prepare("DELETE FROM guild_settings WHERE guild_id IN (SELECT value FROM json_each(?))").bind(ids),
         db.prepare("DELETE FROM guild_recent_times WHERE guild_id IN (SELECT value FROM json_each(?))").bind(ids),
+        db.prepare("DELETE FROM list_tokens WHERE guild_id IN (SELECT value FROM json_each(?))").bind(ids),
+        db.prepare("DELETE FROM list_sessions WHERE guild_id IN (SELECT value FROM json_each(?))").bind(ids),
       ]);
     }
   } catch (e) {

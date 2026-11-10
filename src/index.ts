@@ -74,6 +74,7 @@ async function appShell(c: { env: Env; req: { url: string } }): Promise<Response
 app.get("/l", (c) => appShell(c));
 app.get("/p/:id", (c) => appShell(c));
 app.get("/p/:id/:page{(edit|answer|done)}", (c) => appShell(c));
+app.get("/g/:guildId/polls", (c) => appShell(c));
 
 app.notFound((c) => c.text("Not Found", 404));
 
