@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>参加者を決める｜マニュアル｜DIscheduler</title>
+  <meta name="description" content="参加者の決め方（チャンネル・ロール・手動）と、参加者以外が回答しようとしたときの扱い。">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta name="color-scheme" content="dark">
+  <link rel="stylesheet" href="/assets/site.css">
+  <link rel="stylesheet" href="/assets/lp.css">
+  <!-- アイコン: Lucide（ISC License。/assets/lucide-LICENSE.txt） -->
+  <!-- マニュアル（docs/design.md §6.2 S8）。目次は全ページ共通。ページを足すときは全ページの目次と前後のリンクを直す -->
+</head>
+<body class="lp">
+  <a class="skip-link" href="#main">本文へ移動</a>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="/">
+        <span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg></span>
+        <span class="brand-name">DIscheduler<span class="brand-badge">Bot</span></span>
+      </a>
+      <nav class="site-nav" aria-label="メインメニュー">
+        <ul>
+          <li class="nav-optional"><a href="/#features">機能</a></li>
+          <li class="nav-optional"><a href="/#how">使い方</a></li>
+          <li class="nav-optional"><a href="/#admin">管理者の方へ</a></li>
+          <li><a href="/manual/" aria-current="page">マニュアル</a></li>
+          <li class="nav-sm-hide"><a href="/security">セキュリティ</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc manual">
+    <div class="container">
+      <nav class="toc manual-toc" id="toc" aria-label="マニュアルの目次">
+        <h2>マニュアル</h2>
+        <ol>
+          <li><a href="/manual/">はじめに</a></li>
+          <li><a href="/manual/install">サーバーに追加する</a></li>
+          <li><a href="/manual/channels">使えるチャンネルを決める</a></li>
+          <li><a href="/manual/create">調整を作る</a></li>
+          <li><a href="/manual/slots">候補日時を入れる</a></li>
+          <li><a href="/manual/choices">回答の選択肢を変える</a></li>
+          <li><a href="/manual/participants" aria-current="page">参加者を決める</a></li>
+          <li><a href="/manual/publish">公開する</a></li>
+          <li><a href="/manual/answer">回答する</a></li>
+          <li><a href="/manual/summary">集計を見て確定する</a></li>
+          <li><a href="/manual/message">募集メッセージの更新</a></li>
+          <li><a href="/manual/manage">調整を管理・削除する</a></li>
+          <li><a href="/manual/troubleshooting">困ったときは</a></li>
+        </ol>
+      </nav>
+
+      <article class="doc-body">
+        <p class="manual-crumb"><a href="/manual/">マニュアル</a><span aria-hidden="true"> › </span>参加者を決める</p>
+        <p class="toc-jump"><a href="#toc">目次へ</a></p>
+        <h1>参加者を決める</h1>
+        <p>参加者は、作成画面の「参加者」で決めます。参加者になった人だけが回答でき、ほかの参加者の回答を見られます。</p>
+
+        <h2 id="mode">決め方</h2>
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr><th scope="col">決め方</th><th scope="col">参加者</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">自動（チャンネル）</th><td>コマンドを実行したチャンネルを見られるメンバー</td></tr>
+              <tr><th scope="row">自動（ロール）</th><td>「ロール」で選んだロールのメンバー</td></tr>
+              <tr><th scope="row">手動で選ぶ</th><td>主催者だけが入った状態で始め、名前で検索して追加します</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul>
+          <li>どの決め方でも、Bot のアカウントは参加者に入りません。</li>
+          <li>決め方やロールを変えると、参加者が設定し直されます（手で追加・削除した内容は元に戻ります）。</li>
+          <li>決め方は、公開したあとは変更できません。参加者の追加・削除は公開後もできます。</li>
+          <li>参加者は 100 人までです。超える場合は、ロールで絞ってください。</li>
+        </ul>
+
+        <h2 id="edit">参加者を追加・削除する</h2>
+        <ul>
+          <li>「メンバーを追加」の欄に名前を入れて［検索］を押し、出てきた人を追加します。</li>
+          <li>参加者の一覧の［削除］で外せます。外した人は、その時点で調整の画面を開けなくなります。</li>
+        </ul>
+
+        <h2 id="join-policy">参加者以外が［回答する］を押したとき</h2>
+        <ul>
+          <li><strong>回答できない</strong>（既定）：「この調整の参加者ではありません」と表示します。</li>
+          <li><strong>チャンネルを見られる人なら、参加者に追加して回答できる</strong>：押した人が、募集メッセージのチャンネルを見られるサーバーのメンバーなら、参加者に追加して回答できるようにします。</li>
+        </ul>
+
+        <h2 id="auto-fail">自動で参加者が入らないとき</h2>
+        <p>Bot の設定（Server Members Intent）が使えない状態だと、自動で参加者を集められません。その場合は「手動で選ぶ」に切り替わり、画面にその旨が表示されます。名前で検索して追加してください。</p>
+
+        <nav class="pager" aria-label="前後のページ">
+          <a class="prev" href="/manual/choices"><small>前へ</small><span>回答の選択肢を変える</span></a>
+          <a class="next" href="/manual/publish"><small>次へ</small><span>公開する</span></a>
+        </nav>
+      </article>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <a class="footer-brand" href="/"><span class="brand-mark brand-mark-sm"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg></span>DIscheduler</a>
+      <ul>
+        <li><a href="/">トップ</a></li>
+        <li><a href="/manual/">マニュアル</a></li>
+        <li><a href="/security">セキュリティ方針</a></li>
+        <li><a href="/security#report">脆弱性の報告</a></li>
+        <!-- donation:start --><li><a href="/#support">運営の支援</a></li><!-- donation:end -->
+        <li><a href="https://github.com/etlit-r/DIscheduler" rel="noopener noreferrer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>GitHub</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>

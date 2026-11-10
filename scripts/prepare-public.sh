@@ -21,7 +21,7 @@ set -euo pipefail
 
 dir="${1:-public}"
 shopt -s nullglob
-files=("$dir"/*.html)
+files=("$dir"/*.html "$dir"/manual/*.html)
 if (( ${#files[@]} == 0 )); then
   echo "::error::$dir に HTML がありません" >&2
   exit 1
