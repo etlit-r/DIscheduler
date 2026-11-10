@@ -691,6 +691,181 @@ S2 の [変更] を押すと、ひな形から選ぶか、自分で編集でき�
 - **ads.txt**：広告枠の販売を許可した事業者の一覧。AdSense の行（`google.com, pub-7698368408631991, DIRECT, f08c47fec0942fa0`）を `public/ads.txt` に置き、`robots.txt` で読み取りを許す。Pages に移したことで、サイトの単位（`<プロジェクト名>.pages.dev`）の直下に置ける。（`workers.dev` で動かしていたときは、サイトの単位 `etlits.workers.dev` の直下に何も置けず、所有確認に失敗した。）
 - **開示**：セキュリティ方針ページに「広告について」（表示する場所、切り離し方、広告会社に届く情報と Cookie、拒否する方法）と、残っているリスク（不適切な広告が出る可能性）を書く。
 
+
+## 7. データ設計（D1）
+
+### 7.1 ER 概要
+
+```mermaid
+erDiagram
+  polls ||--o{ slots : has
+  polls ||--o{ participants : has
+  polls ||--o{ choices : defines
+  participants ||--o{ answers : gives
+  slots ||--o{ answers : receives
+  choices ||--o{ answers : selected
+  polls ||--o{ link_tokens : issues
+  polls ||--o{ sessions : scopes
+```
+
+### 7.2 テーブル定義
+
+```sql
+-- 調整
+CREATE TABLE polls (
+  id              TEXT PRIMARY KEY,          -- ランダム 128bit (base64url)
+  guild_id        TEXT NOT NULL,
+  channel_id      TEXT NOT NULL,
+  message_id      TEXT,                      -- 募集メッセージ
+  organizer_id    TEXT NOT NULL,             -- Discord user ID
+  title           TEXT CHECK (title IS NULL OR length(title) BETWEEN 1 AND 100), -- 下書きでは NULL 可。公開時に必須
+  description     TEXT CHECK (length(description) <= 1000),
+  timezone        TEXT NOT NULL DEFAULT 'Asia/Tokyo', -- IANA 名。主催者のブラウザ TZ で上書き（§6.7）
+  timezone_set    INTEGER NOT NULL DEFAULT 0,       -- 1 = 主催者が設定済み（以後ブラウザ TZ で上書きしない）
+  target_type     TEXT NOT NULL CHECK (target_type IN ('channel','role','manual')), -- members=auto かつ role なし → channel、role あり → role、members=manual → manual
+  target_id       TEXT,
+  join_policy     TEXT NOT NULL DEFAULT 'closed' CHECK (join_policy IN ('closed','open')),
+  status          TEXT NOT NULL DEFAULT 'draft'
+                  CHECK (status IN ('draft','open','closed','fixed','cancelled')),
+  deadline_at     INTEGER,                   -- UNIX 秒 (UTC)。未指定なら公開時に「公開から 7 日後」を入れる
+                                             -- 締切を過ぎたかは画面・API で deadline_at と現在時刻から判定する（status の closed への変更は 1 日 2 回の Cron なので待たない）
+  fixed_slot_id   TEXT,
+  fixed_at        INTEGER,                   -- 確定した時刻。これより後の回答変更を S4 で「確定後に変更」と表示する
+  discord_event_id TEXT,
+  choices_version INTEGER NOT NULL DEFAULT 1, -- 選択肢を変更するたびに +1（§6.9.4）
+  last_synced_at  INTEGER,                   -- 募集メッセージ最終更新（主催者の画面に表示。§6.5）
+  last_reminded_at INTEGER,                  -- リマインドの最終実行（12 時間に 1 回まで）
+  publishing_at   INTEGER,                   -- 公開処理中の印（同時の公開で二重に投稿しないため。§5.5）
+  choices_changed_at INTEGER,                -- 公開後に選択肢を変えた時刻（回答画面で知らせるため。§6.9.4）
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL,
+  purge_after     INTEGER NOT NULL           -- この時刻以降に物理削除
+);
+CREATE INDEX idx_polls_channel ON polls(guild_id, channel_id, status);
+CREATE INDEX idx_polls_purge ON polls(purge_after);
+CREATE INDEX idx_polls_draft ON polls(organizer_id, channel_id, status); -- 未入力の下書きの使い回し（§4.4）
+
+-- 候補日時
+CREATE TABLE slots (
+  id        TEXT PRIMARY KEY,
+  poll_id   TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  start_at  INTEGER NOT NULL,                -- UNIX 秒 (UTC)
+  end_at    INTEGER,                         -- NULL = 終了時刻なし
+  all_day   INTEGER NOT NULL DEFAULT 0,
+  position  INTEGER NOT NULL,
+  UNIQUE (poll_id, start_at, end_at)
+);
+
+-- 回答の選択肢（調整ごとに 2〜5 個。§6.9）
+CREATE TABLE choices (
+  id        TEXT PRIMARY KEY,
+  poll_id   TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  symbol    TEXT NOT NULL CHECK (length(symbol) BETWEEN 1 AND 8),  -- 表示は 1〜2 書記素（アプリ側で検証）
+  label     TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 10),
+  kind      TEXT NOT NULL CHECK (kind IN ('ok','maybe','ng')),
+  score     INTEGER NOT NULL CHECK (score BETWEEN 0 AND 10),
+  color     TEXT NOT NULL CHECK (color IN ('green','teal','yellow','orange','red','gray')),
+  position  INTEGER NOT NULL,
+  UNIQUE (poll_id, label)
+);
+
+-- 参加者
+CREATE TABLE participants (
+  poll_id       TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  user_id       TEXT NOT NULL,
+  display_name  TEXT NOT NULL CHECK (length(display_name) <= 64), -- 表示用キャッシュ
+  comment       TEXT CHECK (length(comment) <= 100),
+  answered_at   INTEGER,                   -- 回答が 1 件でも残っていれば、最後に保存した時刻。なければ NULL
+  choices_ack_version INTEGER,               -- 選択肢の変更を確認した版（§6.9.4）
+  PRIMARY KEY (poll_id, user_id)
+);
+
+-- 回答
+CREATE TABLE answers (
+  poll_id  TEXT NOT NULL,
+  slot_id  TEXT NOT NULL REFERENCES slots(id) ON DELETE CASCADE,
+  user_id  TEXT NOT NULL,
+  choice_id TEXT NOT NULL REFERENCES choices(id),   -- 削除時は移し先へ付け替えてから消す（§6.9.4）
+  prev_choice_id TEXT,                              -- 確定後に変更した場合の、確定時点の選択肢（S4 の表示用。空文字 = 確定時点では未回答）
+  updated_at INTEGER NOT NULL,                      -- 最終変更時刻
+  PRIMARY KEY (slot_id, user_id),
+  FOREIGN KEY (poll_id, user_id) REFERENCES participants(poll_id, user_id) ON DELETE CASCADE
+);
+CREATE INDEX idx_answers_updated ON answers(poll_id, updated_at); -- 未反映の回答の変更の件数（§6.5）
+
+-- 入力リンク用ワンタイムトークン（ハッシュのみ保存）
+CREATE TABLE link_tokens (
+  token_hash  TEXT PRIMARY KEY,              -- SHA-256(token)
+  poll_id     TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  user_id     TEXT NOT NULL,
+  role        TEXT NOT NULL CHECK (role IN ('organizer','participant')),
+  purpose     TEXT NOT NULL CHECK (purpose IN ('edit','answer','view')), -- 交換後に移る画面（§6.8）
+  expires_at  INTEGER NOT NULL,              -- 発行から 10 分
+  used_at     INTEGER
+);
+
+-- Web セッション（ハッシュのみ保存）
+CREATE TABLE sessions (
+  sid_hash    TEXT PRIMARY KEY,              -- SHA-256(session id)
+  poll_id     TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  user_id     TEXT NOT NULL,
+  role        TEXT NOT NULL CHECK (role IN ('organizer','participant')),
+  csrf_token  TEXT NOT NULL,
+  expires_at  INTEGER NOT NULL,              -- 発行から 12 時間（延長なし）
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX idx_sessions_exp ON sessions(expires_at);
+
+-- サーバーごとの既定値（§5.3.1）
+CREATE TABLE guild_settings (
+  guild_id    TEXT PRIMARY KEY,
+  mode        TEXT NOT NULL DEFAULT 'channel' CHECK (mode IN ('channel','role','manual')),
+  role_id     TEXT,                              -- mode = role のときのロール ID
+  updated_by  TEXT NOT NULL,                     -- 最後に変更した管理者
+  updated_at  INTEGER NOT NULL
+);
+
+-- サーバーごとの最近使った時間帯（§6.3.1）。誰が入れたかは保存しない
+CREATE TABLE guild_recent_times (
+  guild_id    TEXT PRIMARY KEY,
+  ranges      TEXT NOT NULL,                     -- JSON 配列 [{"start":"20:00","end":"22:00"}, ...]（新しい順・最大 3 件）
+  updated_at  INTEGER NOT NULL
+);
+
+-- アプリの内部状態（登録済みコマンドの版など。§5.1）
+CREATE TABLE meta (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
+);
+
+-- レート制限カウンタ（固定ウィンドウ）
+CREATE TABLE rate_limits (
+  key         TEXT PRIMARY KEY,              -- 例: "answer:<user_id>:<window>"
+  count       INTEGER NOT NULL,
+  expires_at  INTEGER NOT NULL
+);
+```
+
+### 7.3 保存しないデータ（データ最小化）
+- Discord のアクセストークン・リフレッシュトークン（OAuth を使わないため存在しない）
+- Interaction トークン
+- メールアドレス・IP アドレス（ログにも残さない。レート制限キーにも用いない）
+- メッセージ本文（Message Content Intent を使わない）
+- アバター画像（表示する場合も Discord CDN の URL を都度生成し保存しない → 初版はアバター非表示）
+
+### 7.4 データ保持期間
+| 状態 | 物理削除のタイミング |
+|------|---------------------|
+| `draft`（未公開） | 作成から 3 日後 |
+| `open` / `closed` | 締切から 6 ヶ月（180 日）後 |
+| `fixed` | 確定日時から 6 ヶ月（180 日）後 |
+| `cancelled` | 即時 |
+| link_tokens / sessions / rate_limits | 期限切れ後、日本時間 1 時の Cron で削除 |
+| guild_settings（サーバーの既定値） | Bot がサーバーから外されたとき（日本時間 1 時の Cron で検知して削除） |
+| guild_recent_times（最近使った時間帯） | 最後に使ってから 6 ヶ月（180 日）後、または Bot がサーバーから外されたとき（日本時間 1 時の Cron で削除） |
+
+主催者は `/schedule` の［自分の調整を管理］から即時削除できる。Bot がギルドから削除された場合（Gateway を使わないため削除イベントは受け取れない）は、日次 Cron で `GET /users/@me/guilds` と保存済みギルドを突き合わせ、または API の 403/404 応答を検知して、該当ギルドのデータを削除する。Bot が入っているサーバーの一覧を最後まで読めなかった場合（2000 サーバーを超える、途中でエラーになったなど）は、まだ使っているサーバーのデータを消さないよう、その日は削除しない。
+
 ---
 
 ## 8. API 設計
