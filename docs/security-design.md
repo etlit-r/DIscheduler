@@ -92,7 +92,7 @@ flowchart LR
 | I-5 | Bot トークン等の漏えい | Cloudflare の **Secrets**（ダッシュボードで登録）で管理し、リポジトリ・`wrangler.jsonc`・GitHub・CI ログに含めない。コマンドの登録も Worker 自身が行うため、Bot トークンを Cloudflare の外に出さない。GitHub の Secret scanning / Push protection を有効化。漏えい時の手順は §7 |
 | I-6 | 過剰なデータ収集 | Message Content Intent・OAuth・メール・IP・アバターを扱わない（設計書 §7.3）。保持期間後は物理削除（設計書 §7.4） |
 | I-7 | Referer による URL 漏えい | `Referrer-Policy: no-referrer`。トークンは URL フラグメントに置き、読み取り後 `history.replaceState` で消去 |
-| I-8 | 検索エンジンへの掲載 | `X-Robots-Tag: noindex, nofollow` と `robots.txt` で `/`（LP）と `/security` 以外をクロール拒否 |
+| I-8 | 検索エンジンへの掲載 | `X-Robots-Tag: noindex, nofollow` と `robots.txt` で `/`（LP）・`/security`・`/manual/`・`/ads.txt` 以外をクロール拒否 |
 | I-9 | 閲覧者のタイムゾーン設定からの情報収集 | 表示タイムゾーンの選択値はブラウザの localStorage にのみ保存し、サーバーには送らない・保存しない。調整のタイムゾーン（主催者が設定）のみ保存する |
 
 ### 3.5 サービス拒否（Denial of Service）

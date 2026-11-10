@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>使えるチャンネルを決める｜マニュアル｜DIscheduler</title>
+  <meta name="description" content="サーバー管理者向け。コマンドを使えるチャンネル、使える人、参加者の決め方の既定値の設定方法。">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta name="color-scheme" content="dark">
+  <link rel="stylesheet" href="/assets/site.css">
+  <link rel="stylesheet" href="/assets/lp.css">
+  <!-- アイコン: Lucide（ISC License。/assets/lucide-LICENSE.txt） -->
+  <!-- マニュアル（docs/design.md §6.2 S8）。目次は全ページ共通。ページを足すときは全ページの目次と前後のリンクを直す -->
+</head>
+<body class="lp">
+  <a class="skip-link" href="#main">本文へ移動</a>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="/">
+        <span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg></span>
+        <span class="brand-name">DIscheduler<span class="brand-badge">Bot</span></span>
+      </a>
+      <nav class="site-nav" aria-label="メインメニュー">
+        <ul>
+          <li class="nav-optional"><a href="/#features">機能</a></li>
+          <li class="nav-optional"><a href="/#how">使い方</a></li>
+          <li class="nav-optional"><a href="/#admin">管理者の方へ</a></li>
+          <li><a href="/manual/" aria-current="page">マニュアル</a></li>
+          <li class="nav-sm-hide"><a href="/security">セキュリティ</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc manual">
+    <div class="container">
+      <nav class="toc manual-toc" id="toc" aria-label="マニュアルの目次">
+        <h2>マニュアル</h2>
+        <ol>
+          <li><a href="/manual/">はじめに</a></li>
+          <li><a href="/manual/install">サーバーに追加する</a></li>
+          <li><a href="/manual/channels" aria-current="page">使えるチャンネルを決める</a></li>
+          <li><a href="/manual/create">調整を作る</a></li>
+          <li><a href="/manual/slots">候補日時を入れる</a></li>
+          <li><a href="/manual/choices">回答の選択肢を変える</a></li>
+          <li><a href="/manual/participants">参加者を決める</a></li>
+          <li><a href="/manual/publish">公開する</a></li>
+          <li><a href="/manual/answer">回答する</a></li>
+          <li><a href="/manual/summary">集計を見て確定する</a></li>
+          <li><a href="/manual/message">募集メッセージの更新</a></li>
+          <li><a href="/manual/manage">調整を管理・削除する</a></li>
+          <li><a href="/manual/troubleshooting">困ったときは</a></li>
+        </ol>
+      </nav>
+
+      <article class="doc-body">
+        <p class="manual-crumb"><a href="/manual/">マニュアル</a><span aria-hidden="true"> › </span>使えるチャンネルを決める</p>
+        <p class="toc-jump"><a href="#toc">目次へ</a></p>
+        <h1>使えるチャンネルを決める</h1>
+        <p>このページはサーバー管理者向けです。DIscheduler は、Discord の標準の機能でコマンドを使える場所と人を決めます。Bot 独自の許可リストはありません。</p>
+
+        <h2 id="channel">コマンドを使えるチャンネルを指定する</h2>
+        <ol>
+          <li>Discord の「サーバー設定」→「連携サービス」→「DIscheduler」を開きます。</li>
+          <li>「チャンネル」で「すべてのチャンネル」をオフにし、コマンドを使わせたいチャンネルを追加します。</li>
+          <li>「ロールとメンバー」は変更しません（<code>@everyone</code> のまま）。</li>
+        </ol>
+        <p>この設定は、<code>/schedule</code> と <code>/poll</code> の両方に効きます。許可していないチャンネルでは、コマンドの候補に出てこなくなります。</p>
+
+        <h2 id="who">チャンネルで誰がコマンドを使えるかを決める</h2>
+        <p>指定したチャンネルで誰がコマンドを使えるかは、そのチャンネルの権限で決めます。「チャンネルの編集」→「権限」で、「メッセージを送信」「アプリコマンドを使用」を許可するロールを設定してください。</p>
+        <p class="note">「サーバー管理」権限を持つメンバーは、Discord の仕様上、この設定にかかわらずコマンドを使えます。</p>
+        <p>募集メッセージの［回答する］ボタンは、この設定の影響を受けません。回答できるかどうかは、その調整の参加者かどうかで決まります。</p>
+
+        <h2 id="default">参加者の決め方の既定値を決める</h2>
+        <p>主催者が特に指定しなかったときに、誰を参加者にするかの既定値を、サーバーごとに決められます。</p>
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr><th scope="col">既定値</th><th scope="col">参加者</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">チャンネル（初期値）</th><td>コマンドを実行したチャンネルを見られるメンバー</td></tr>
+              <tr><th scope="row">ロール</th><td>指定したロールのメンバー</td></tr>
+              <tr><th scope="row">手動</th><td>主催者だけが入った状態で始め、主催者が作成画面で追加する</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ol>
+          <li>「サーバー管理」権限を持つ人が、チャンネルで <code>/schedule</code> を実行します。</li>
+          <li>本人にだけ見える応答の［サーバーの既定値］を押します（このボタンは、権限のある人にだけ表示されます）。</li>
+          <li>決め方と、「ロール」の場合はロールを選びます。選ぶとすぐに保存されます。</li>
+        </ol>
+        <p>主催者は、調整ごとに作成画面で決め方を変えられます。最後に変更した人と時刻は、設定の画面に表示されます。</p>
+
+        <h2 id="limits">作成数の上限</h2>
+        <p>乱用や誤操作を防ぐため、調整の作成数には上限があります。</p>
+        <ul>
+          <li>1 人あたり 1 時間に 10 件</li>
+          <li>サーバー全体で 1 日 100 件</li>
+          <li>1 チャンネルの進行中の調整（下書き・募集中）は 20 件まで</li>
+        </ul>
+
+        <nav class="pager" aria-label="前後のページ">
+          <a class="prev" href="/manual/install"><small>前へ</small><span>サーバーに追加する</span></a>
+          <a class="next" href="/manual/create"><small>次へ</small><span>調整を作る</span></a>
+        </nav>
+      </article>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <a class="footer-brand" href="/"><span class="brand-mark brand-mark-sm"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg></span>DIscheduler</a>
+      <ul>
+        <li><a href="/">トップ</a></li>
+        <li><a href="/manual/">マニュアル</a></li>
+        <li><a href="/security">セキュリティ方針</a></li>
+        <li><a href="/security#report">脆弱性の報告</a></li>
+        <!-- donation:start --><li><a href="/#support">運営の支援</a></li><!-- donation:end -->
+        <li><a href="https://github.com/etlit-r/DIscheduler" rel="noopener noreferrer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>GitHub</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>

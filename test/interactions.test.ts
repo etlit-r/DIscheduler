@@ -248,6 +248,7 @@ describe("正式なアドレス（PUBLIC_ORIGIN）への転送（docs/design.md 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { content: string } };
     expect(body.data.content).toContain(`${CANONICAL}/security`);
+    expect(body.data.content).toContain(`${CANONICAL}/manual/`);
     expect(body.data.content).not.toContain(ORIGIN);
   });
 

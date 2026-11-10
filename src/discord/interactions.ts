@@ -322,6 +322,7 @@ export function helpText(origin: string): string {
     "・サーバー管理者は `/schedule` の［サーバーの既定値］で、参加者の決め方（チャンネル・ロール・手動）の既定値を決められます。",
     "",
     `案内: ${origin}/`,
+    `マニュアル: ${origin}/manual/`,
     `セキュリティ方針: ${origin}/security`,
   ].join("\n");
 }
