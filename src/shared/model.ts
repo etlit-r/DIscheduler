@@ -31,7 +31,7 @@ export const KIND_LABEL: Record<ChoiceKind, string> = {
   ng: "参加できない",
 };
 
-export const DEFAULT_SCORE: Record<ChoiceKind, number> = { ok: 2, maybe: 1, ng: 0 };
+export const DEFAULT_SCORE: Record<ChoiceKind, number> = { ok: 4, maybe: 2, ng: 0 };
 export const DEFAULT_COLOR: Record<ChoiceKind, ChoiceColor> = { ok: "green", maybe: "yellow", ng: "red" };
 
 export interface ChoiceInput {
