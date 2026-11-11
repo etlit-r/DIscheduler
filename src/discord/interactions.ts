@@ -88,6 +88,7 @@ export async function handleInteraction(env: Env, ctx: Ctx, i: Interaction, orig
     if (id === "settings" || id === "settings_mode" || id === "settings_role") {
       return handleSettings(env, i, id, guildId, userId);
     }
+    // 以前の［このチャンネルの調整］ボタン（すでに送ったメッセージに残っている分）にも応える
     if (id === "list") {
       background(env, ctx, i, () => handleList(env, i, guildId, channelId));
       return deferred();
@@ -168,7 +169,6 @@ function isAdmin(i: Interaction): boolean {
 
 function menuRow(admin: boolean) {
   const buttons: unknown[] = [
-    { type: 2, style: 2, label: "このチャンネルの調整", custom_id: "list" },
     { type: 2, style: 2, label: "作成した調整を管理", custom_id: "manage" },
     { type: 2, style: 2, label: "使い方", custom_id: "help" },
   ];
