@@ -17,6 +17,9 @@ const singleLine = (max: number) =>
 
 export const SessionBody = v.strictObject({ token: v.pipe(v.string(), v.regex(/^[A-Za-z0-9_-]{43}$/)) });
 
+/** 主催者の調整一覧から調整を開く（docs/design.md §6.11） */
+export const OpenPollBody = v.strictObject({ to: v.picklist(["edit", "summary"]) });
+
 export const PatchPollBody = v.strictObject({
   updatedAt: v.optional(epoch),
   title: v.optional(singleLine(LIMITS.titleMax)),

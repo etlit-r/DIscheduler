@@ -1,6 +1,6 @@
 // S2: 調整の作成・編集（主催者。docs/design.md §6.3, §6.9）
 import { ApiError, loadPoll, request, type PollData } from "../lib/api";
-import { browserTimeZone, choiceMark, dateTimeText, rememberDonation, showError, slotText, statusBanner, syncPanel, timeZoneSelect } from "../ui/common";
+import { browserTimeZone, choiceMark, dateTimeText, rememberDonation, showError, slotText, statusBanner, syncPanel, timeZoneSelect, errorText } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
 import {
   CHOICE_COLORS,
@@ -44,7 +44,7 @@ export async function editPage(pollId: string): Promise<void> {
   try {
     d = await loadPoll(pollId);
   } catch (e) {
-    return showError(e);
+    return showError(e, "edit");
   }
   rememberDonation(d.donationUrl);
   if (d.me.role !== "organizer") return showError(new ApiError(403, "forbidden", "この画面は主催者だけが開けます。"));
@@ -140,7 +140,7 @@ export async function editPage(pollId: string): Promise<void> {
     try {
       await action();
     } catch (e) {
-      message = notice("error", e instanceof Error ? e.message : "エラーが発生しました。");
+      message = notice("error", errorText(e, "edit", "エラーが発生しました。"));
       draw();
     } finally {
       busy = false;

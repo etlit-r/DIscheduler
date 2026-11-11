@@ -202,7 +202,7 @@ sequenceDiagram
 │ 新しい日程調整の下書きを作りました。    │
 │ [ 調整を作成する ]  ← 本人専用リンク    │
 ├───────────────────────────────────────┤
-│ [このチャンネルの調整] [自分の調整を管理] [使い方] │
+│ [このチャンネルの調整] [作成した調整を管理] [使い方] │
 └───────────────────────────────────────┘
 ```
 
@@ -210,7 +210,7 @@ sequenceDiagram
 |--------|------|----------|
 | 調整を作成する | S2 を開く本人専用リンク（10 分有効・1 回限り） | 実行者 |
 | このチャンネルの調整 | このチャンネルの進行中の調整一覧（ephemeral） | 実行者 |
-| 自分の調整を管理 | 自分が主催する調整の一覧と、管理リンクの再発行（ephemeral） | 実行者（主催する調整があるときのみ表示） |
+| 作成した調整を管理 | このサーバーで自分が主催する調整の一覧ページ（S9。§6.11）を開く本人専用リンク（10 分有効・1 回限り。ephemeral） | 実行者（主催する調整がなければ、その旨を表示） |
 | 使い方 | 使い方の説明とセキュリティ方針（`/security`）へのリンク（ephemeral） | 実行者 |
 
 - `/schedule list` のように半角スペースで区切る形（サブコマンド）にすると、Discord の仕様上 `/schedule` だけでは実行できなくなる。`/schedule` だけで作成できることを優先し、サブコマンドは使わない。
@@ -376,6 +376,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 | S5 | エラー（期限切れ・無料枠超過など） | —（各画面の中で表示） | 全員 |
 | S6 | セキュリティ方針 | `/security` | 公開 |
 | S7 | 公開完了・確定完了 | `/p/{pollId}/done` | 主催者 |
+| S9 | 作成した調整の一覧（このサーバーで自分が主催した調整。§6.11） | `/g/{guildId}/polls` | 主催者 |
 | S8 | マニュアル（項目ごとに 1 ページ） | `/manual/`、`/manual/{項目}` | 公開 |
 
 - S0・S6・S8 は静的ページ（`public/index.html`、`public/security.html`、`public/manual/*.html`）として Cloudflare Pages から配信する。JavaScript は使わず、アプリと同じ CSP を `public/_headers` で付与する。
@@ -541,7 +542,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 | URL を直接開く・URL を推測する | 画面と API はすべてセッション必須。調整 ID だけでは何も表示されない（ログイン画面もなく「リンクの有効期限が切れています」と表示するのみ）。調整 ID は 128bit ランダム |
 | 公開・共有用リンク | **作らない**。誰でも見られる閲覧 URL・埋め込み・CSV エクスポート機能は提供しない |
 | 入力リンクの取得 | Discord の署名付き Interaction で、押した本人が参加者であると確認できた場合のみ、本人にしか見えないメッセージ（ephemeral）で発行。10 分・1 回限り |
-| 別の調整のセッションで覗く | セッションは調整 1 件に限定。他の調整の API は 403 |
+| 別の調整のセッションで覗く | セッションは調整 1 件に限定。他の調整の API は 403。主催者の調整一覧（S9）のセッションは、そのサーバーで本人が主催した調整の一覧だけを扱い、調整を開くときは主催者本人と確かめてから調整ごとのセッションを発行する（§6.11） |
 | 参加者から外された人 | 外した時点でその人のセッションを即時削除し、以後リンクも発行しない |
 | 調整が削除された後 | データを物理削除し、セッションも同時に削除 |
 | チャンネルの募集メッセージ | 候補ごとの「参加できる」区分の人数と回答率のみ。個人名と回答の組み合わせは出さない |
@@ -570,10 +571,11 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 
 | 用途 | 発行するきっかけ | 移る画面 |
 |------|------------------|----------|
-| `edit` | `/schedule`・`/poll` の［調整を作成する］、［自分の調整を管理］ | S2 |
+| `edit` | `/schedule`・`/poll` の［調整を作成する］ | S2 |
 | `answer` | 募集メッセージの [回答する] | S3 |
 | `view` | 募集メッセージの [集計を見る] | S4 |
 
+- 主催者の調整一覧（S9）のリンクは別の表（`list_tokens`）で発行し、同じ中継ページ（`/l`）でサーバー単位のセッション（`list_sessions`、Cookie `__Host-l_{guildId}`）に交換して S9 に移る（§6.11）。
 - 1 つのセッションは 1 つの調整だけに有効（§8.1）。Cookie の名前に調整 ID を含め、複数の調整を同じブラウザで同時に開けるようにする（同じブラウザで別の Discord アカウントとして同じ調整を開くと、後から開いた側に置き換わる）。S2・S3・S4・S7 の間は、同じ調整であればセッションのまま行き来できる（参加者のセッションで S2 は開けない）。
 
 ### 6.9 回答の選択肢のカスタマイズ
@@ -691,6 +693,213 @@ S2 の [変更] を押すと、ひな形から選ぶか、自分で編集でき�
 - **ads.txt**：広告枠の販売を許可した事業者の一覧。AdSense の行（`google.com, pub-7698368408631991, DIRECT, f08c47fec0942fa0`）を `public/ads.txt` に置き、`robots.txt` で読み取りを許す。Pages に移したことで、サイトの単位（`<プロジェクト名>.pages.dev`）の直下に置ける。（`workers.dev` で動かしていたときは、サイトの単位 `etlits.workers.dev` の直下に何も置けず、所有確認に失敗した。）
 - **開示**：セキュリティ方針ページに「広告について」（表示する場所、切り離し方、広告会社に届く情報と Cookie、拒否する方法）と、残っているリスク（不適切な広告が出る可能性）を書く。
 
+
+### 6.11 S9: 作成した調整の一覧（主催者）
+主催者が、そのサーバーで自分が主催した調整をまとめて見て、編集・集計・削除できるページ。
+
+- **開き方**：`/schedule`（`/poll`）の応答の［作成した調整を管理］を押すと、一覧ページを開く本人専用リンク（10 分有効・1 回限り）が届く。新しいコマンドは足さない。主催する調整がないときは、その旨を表示する。リンクの発行は、入力リンクと同じ回数制限（1 人 1 時間に 20 回）に数える。
+- **範囲**：ボタンを押したサーバーで、押した人が主催した調整だけ（削除済みを除く。新しく更新した順に最大 200 件）。Bot は OAuth を使わないため、ほかのサーバーの調整はまとめない。
+- **表示**：調整ごとに状態（下書き・募集中・締切後・確定）、タイトル、締切または確定した日時、回答人数（回答済み / 参加者）、最終更新を出す。状態で絞り込める。
+- **操作**：［編集］（S2）、［集計］（S4。下書き以外）、［募集メッセージ］（Discord のメッセージへのリンク）、［削除］（確認ダイアログのあと、S2 の削除と同じく募集メッセージを「削除されました」に変え、Discord イベントも消してからデータを削除する）。
+- **セッション**：
+  - 一覧のリンクは `list_tokens`（ハッシュのみ保存）で発行し、`POST /api/session` でサーバー単位のセッション `list_sessions` に交換する。Cookie は `__Host-l_{guildId}`（`HttpOnly`・`Secure`・`SameSite=Strict`・12 時間・延長なし）。
+  - 一覧のセッションでできるのは、そのサーバーで本人が主催した調整の一覧・削除と、調整を開くことだけ。参加者として回答したり、ほかの人の調整を見たりはできない。
+  - ［編集］［集計］では、`POST /api/guilds/{guildId}/polls/{pollId}/open` で調整のサーバーと主催者が一致することを確かめてから、その調整だけに有効な主催者のセッション（`sessions`）を発行し、S2・S4 に移る。
+  - 書き込み（開く・削除）には、一覧のセッションの CSRF トークンと Origin の一致を必須にする。
+- 期限が切れたリンクとセッションは、毎日 1 時の Cron で削除する。Bot がサーバーから外されたときは、そのサーバーの分も削除する（§7.4）。
+
+
+## 7. データ設計（D1）
+
+### 7.1 ER 概要
+
+```mermaid
+erDiagram
+  polls ||--o{ slots : has
+  polls ||--o{ participants : has
+  polls ||--o{ choices : defines
+  participants ||--o{ answers : gives
+  slots ||--o{ answers : receives
+  choices ||--o{ answers : selected
+  polls ||--o{ link_tokens : issues
+  polls ||--o{ sessions : scopes
+```
+
+### 7.2 テーブル定義
+
+```sql
+-- 調整
+CREATE TABLE polls (
+  id              TEXT PRIMARY KEY,          -- ランダム 128bit (base64url)
+  guild_id        TEXT NOT NULL,
+  channel_id      TEXT NOT NULL,
+  message_id      TEXT,                      -- 募集メッセージ
+  organizer_id    TEXT NOT NULL,             -- Discord user ID
+  title           TEXT CHECK (title IS NULL OR length(title) BETWEEN 1 AND 100), -- 下書きでは NULL 可。公開時に必須
+  description     TEXT CHECK (length(description) <= 1000),
+  timezone        TEXT NOT NULL DEFAULT 'Asia/Tokyo', -- IANA 名。主催者のブラウザ TZ で上書き（§6.7）
+  timezone_set    INTEGER NOT NULL DEFAULT 0,       -- 1 = 主催者が設定済み（以後ブラウザ TZ で上書きしない）
+  target_type     TEXT NOT NULL CHECK (target_type IN ('channel','role','manual')), -- members=auto かつ role なし → channel、role あり → role、members=manual → manual
+  target_id       TEXT,
+  join_policy     TEXT NOT NULL DEFAULT 'closed' CHECK (join_policy IN ('closed','open')),
+  status          TEXT NOT NULL DEFAULT 'draft'
+                  CHECK (status IN ('draft','open','closed','fixed','cancelled')),
+  deadline_at     INTEGER,                   -- UNIX 秒 (UTC)。未指定なら公開時に「公開から 7 日後」を入れる
+                                             -- 締切を過ぎたかは画面・API で deadline_at と現在時刻から判定する（status の closed への変更は 1 日 2 回の Cron なので待たない）
+  fixed_slot_id   TEXT,
+  fixed_at        INTEGER,                   -- 確定した時刻。これより後の回答変更を S4 で「確定後に変更」と表示する
+  discord_event_id TEXT,
+  choices_version INTEGER NOT NULL DEFAULT 1, -- 選択肢を変更するたびに +1（§6.9.4）
+  last_synced_at  INTEGER,                   -- 募集メッセージ最終更新（主催者の画面に表示。§6.5）
+  last_reminded_at INTEGER,                  -- リマインドの最終実行（12 時間に 1 回まで）
+  publishing_at   INTEGER,                   -- 公開処理中の印（同時の公開で二重に投稿しないため。§5.5）
+  choices_changed_at INTEGER,                -- 公開後に選択肢を変えた時刻（回答画面で知らせるため。§6.9.4）
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL,
+  purge_after     INTEGER NOT NULL           -- この時刻以降に物理削除
+);
+CREATE INDEX idx_polls_channel ON polls(guild_id, channel_id, status);
+CREATE INDEX idx_polls_purge ON polls(purge_after);
+CREATE INDEX idx_polls_draft ON polls(organizer_id, channel_id, status); -- 未入力の下書きの使い回し（§4.4）
+
+-- 候補日時
+CREATE TABLE slots (
+  id        TEXT PRIMARY KEY,
+  poll_id   TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  start_at  INTEGER NOT NULL,                -- UNIX 秒 (UTC)
+  end_at    INTEGER,                         -- NULL = 終了時刻なし
+  all_day   INTEGER NOT NULL DEFAULT 0,
+  position  INTEGER NOT NULL,
+  UNIQUE (poll_id, start_at, end_at)
+);
+
+-- 回答の選択肢（調整ごとに 2〜5 個。§6.9）
+CREATE TABLE choices (
+  id        TEXT PRIMARY KEY,
+  poll_id   TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  symbol    TEXT NOT NULL CHECK (length(symbol) BETWEEN 1 AND 8),  -- 表示は 1〜2 書記素（アプリ側で検証）
+  label     TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 10),
+  kind      TEXT NOT NULL CHECK (kind IN ('ok','maybe','ng')),
+  score     INTEGER NOT NULL CHECK (score BETWEEN 0 AND 10),
+  color     TEXT NOT NULL CHECK (color IN ('green','teal','yellow','orange','red','gray')),
+  position  INTEGER NOT NULL,
+  UNIQUE (poll_id, label)
+);
+
+-- 参加者
+CREATE TABLE participants (
+  poll_id       TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  user_id       TEXT NOT NULL,
+  display_name  TEXT NOT NULL CHECK (length(display_name) <= 64), -- 表示用キャッシュ
+  comment       TEXT CHECK (length(comment) <= 100),
+  answered_at   INTEGER,                   -- 回答が 1 件でも残っていれば、最後に保存した時刻。なければ NULL
+  choices_ack_version INTEGER,               -- 選択肢の変更を確認した版（§6.9.4）
+  PRIMARY KEY (poll_id, user_id)
+);
+
+-- 回答
+CREATE TABLE answers (
+  poll_id  TEXT NOT NULL,
+  slot_id  TEXT NOT NULL REFERENCES slots(id) ON DELETE CASCADE,
+  user_id  TEXT NOT NULL,
+  choice_id TEXT NOT NULL REFERENCES choices(id),   -- 削除時は移し先へ付け替えてから消す（§6.9.4）
+  prev_choice_id TEXT,                              -- 確定後に変更した場合の、確定時点の選択肢（S4 の表示用。空文字 = 確定時点では未回答）
+  updated_at INTEGER NOT NULL,                      -- 最終変更時刻
+  PRIMARY KEY (slot_id, user_id),
+  FOREIGN KEY (poll_id, user_id) REFERENCES participants(poll_id, user_id) ON DELETE CASCADE
+);
+CREATE INDEX idx_answers_updated ON answers(poll_id, updated_at); -- 未反映の回答の変更の件数（§6.5）
+
+-- 入力リンク用ワンタイムトークン（ハッシュのみ保存）
+CREATE TABLE link_tokens (
+  token_hash  TEXT PRIMARY KEY,              -- SHA-256(token)
+  poll_id     TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  user_id     TEXT NOT NULL,
+  role        TEXT NOT NULL CHECK (role IN ('organizer','participant')),
+  purpose     TEXT NOT NULL CHECK (purpose IN ('edit','answer','view')), -- 交換後に移る画面（§6.8）
+  expires_at  INTEGER NOT NULL,              -- 発行から 10 分
+  used_at     INTEGER
+);
+
+-- Web セッション（ハッシュのみ保存）
+CREATE TABLE sessions (
+  sid_hash    TEXT PRIMARY KEY,              -- SHA-256(session id)
+  poll_id     TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  user_id     TEXT NOT NULL,
+  role        TEXT NOT NULL CHECK (role IN ('organizer','participant')),
+  csrf_token  TEXT NOT NULL,
+  expires_at  INTEGER NOT NULL,              -- 発行から 12 時間（延長なし）
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX idx_sessions_exp ON sessions(expires_at);
+
+-- サーバーごとの既定値（§5.3.1）
+CREATE TABLE guild_settings (
+  guild_id    TEXT PRIMARY KEY,
+  mode        TEXT NOT NULL DEFAULT 'channel' CHECK (mode IN ('channel','role','manual')),
+  role_id     TEXT,                              -- mode = role のときのロール ID
+  updated_by  TEXT NOT NULL,                     -- 最後に変更した管理者
+  updated_at  INTEGER NOT NULL
+);
+
+-- サーバーごとの最近使った時間帯（§6.3.1）。誰が入れたかは保存しない
+CREATE TABLE guild_recent_times (
+  guild_id    TEXT PRIMARY KEY,
+  ranges      TEXT NOT NULL,                     -- JSON 配列 [{"start":"20:00","end":"22:00"}, ...]（新しい順・最大 3 件）
+  updated_at  INTEGER NOT NULL
+);
+
+-- 主催者の調整一覧（S9。§6.11）用のワンタイムトークンとセッション（サーバー単位）
+CREATE TABLE list_tokens (
+  token_hash  TEXT PRIMARY KEY,
+  guild_id    TEXT NOT NULL,
+  user_id     TEXT NOT NULL,
+  expires_at  INTEGER NOT NULL,
+  used_at     INTEGER
+);
+CREATE TABLE list_sessions (
+  sid_hash    TEXT PRIMARY KEY,
+  guild_id    TEXT NOT NULL,
+  user_id     TEXT NOT NULL,
+  csrf_token  TEXT NOT NULL,
+  expires_at  INTEGER NOT NULL,
+  created_at  INTEGER NOT NULL
+);
+
+-- アプリの内部状態（登録済みコマンドの版など。§5.1）
+CREATE TABLE meta (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
+);
+
+-- レート制限カウンタ（固定ウィンドウ）
+CREATE TABLE rate_limits (
+  key         TEXT PRIMARY KEY,              -- 例: "answer:<user_id>:<window>"
+  count       INTEGER NOT NULL,
+  expires_at  INTEGER NOT NULL
+);
+```
+
+### 7.3 保存しないデータ（データ最小化）
+- Discord のアクセストークン・リフレッシュトークン（OAuth を使わないため存在しない）
+- Interaction トークン
+- メールアドレス・IP アドレス（ログにも残さない。レート制限キーにも用いない）
+- メッセージ本文（Message Content Intent を使わない）
+- アバター画像（表示する場合も Discord CDN の URL を都度生成し保存しない → 初版はアバター非表示）
+
+### 7.4 データ保持期間
+| 状態 | 物理削除のタイミング |
+|------|---------------------|
+| `draft`（未公開） | 作成から 3 日後 |
+| `open` / `closed` | 締切から 6 ヶ月（180 日）後 |
+| `fixed` | 確定日時から 6 ヶ月（180 日）後 |
+| `cancelled` | 即時 |
+| link_tokens / sessions / list_tokens / list_sessions / rate_limits | 期限切れ後、日本時間 1 時の Cron で削除（list_tokens・list_sessions は、Bot がサーバーから外されたときも削除） |
+| guild_settings（サーバーの既定値） | Bot がサーバーから外されたとき（日本時間 1 時の Cron で検知して削除） |
+| guild_recent_times（最近使った時間帯） | 最後に使ってから 6 ヶ月（180 日）後、または Bot がサーバーから外されたとき（日本時間 1 時の Cron で削除） |
+
+主催者は `/schedule` の［作成した調整を管理］から即時削除できる。Bot がギルドから削除された場合（Gateway を使わないため削除イベントは受け取れない）は、日次 Cron で `GET /users/@me/guilds` と保存済みギルドを突き合わせ、または API の 403/404 応答を検知して、該当ギルドのデータを削除する。Bot が入っているサーバーの一覧を最後まで読めなかった場合（2000 サーバーを超える、途中でエラーになったなど）は、まだ使っているサーバーのデータを消さないよう、その日は削除しない。
+
 ---
 
 ## 8. API 設計
@@ -700,7 +909,7 @@ S2 の [変更] を押すと、ひな形から選ぶか、自分で編集でき�
 | メソッド | パス | 認証 | 説明 |
 |----------|------|------|------|
 | POST | `/discord/interactions` | Ed25519 署名 | Discord からの Interaction 受信 |
-| POST | `/api/session` | ワンタイムトークン | トークンをセッションへ交換 |
+| POST | `/api/session` | ワンタイムトークン | トークンをセッションへ交換（主催者の調整一覧のトークンなら、サーバー単位のセッションへ。§6.11） |
 | DELETE | `/api/polls/{id}/session` | セッション + CSRF | ログアウト（その調整のセッションを消す） |
 | GET | `/api/polls/{id}` | セッション | 調整情報・候補・集計・（参加者のみ）回答一覧・（主催者のみ）サーバーの最近使った時間帯（§6.3.1） |
 | PATCH | `/api/polls/{id}` | セッション(主催者) + CSRF | タイトル・説明・締切・参加者の決め方・タイムゾーンの更新 |
@@ -718,10 +927,13 @@ S2 の [変更] を押すと、ひな形から選ぶか、自分で編集でき�
 | POST | `/api/polls/{id}/choices-ack` | セッション(参加者) + CSRF | 「選択肢が変更されました」を確認した（§6.9.4） |
 | POST | `/api/polls/{id}/sync-message` | セッション(主催者) + CSRF | 募集メッセージを今すぐ更新（同じ調整で 1 分に 1 回まで。§6.5） |
 | DELETE | `/api/polls/{id}` | セッション(主催者) + CSRF | 調整削除 |
+| GET | `/api/guilds/{guildId}/polls` | 一覧のセッション | このサーバーで自分が主催した調整の一覧（§6.11） |
+| POST | `/api/guilds/{guildId}/polls/{pollId}/open` | 一覧のセッション + CSRF | 主催者本人と確かめて、その調整の主催者のセッションを発行（`to`: `edit` / `summary`） |
+| DELETE | `/api/guilds/{guildId}/polls/{pollId}` | 一覧のセッション + CSRF | 一覧から調整を削除（S2 の削除と同じ処理） |
 | GET | `/`・`/security` | なし | LP・セキュリティ方針（静的。Worker を通らず配信） |
 | GET | `/*` | なし | 静的アセット |
 
-- セッションは **発行対象の調整 1 件に限定**（`sessions.poll_id`）。他の調整の API はセッションがあっても 403。
+- セッションは **発行対象の調整 1 件に限定**（`sessions.poll_id`）。他の調整の API はセッションがあっても 403。主催者の調整一覧のセッション（`list_sessions`）は、そのサーバーで本人が主催した調整の一覧・削除と、調整を開くことにだけ使える（§6.11）。
 - すべての JSON 入力は Valibot スキーマで検証し、未知フィールドは拒否。
 - 候補・選択肢の一括更新では、同じ ID が 2 回送られたら拒否する（1 つの行を 2 回書き換えて、並び順や「参加できない」の選択肢の有無が崩れないようにするため）。
 - 参加者の一覧は、どの API・画面でも表示名の日本語の並び順（同じ名前ならユーザー ID 順）で返す。
@@ -770,7 +982,8 @@ S2 の [変更] を押すと、ひな形から選ぶか、自分で編集でき�
 | `help` | [使い方]。使い方の説明とセキュリティ方針へのリンクを ephemeral で返す |
 | `list` | ［このチャンネルの調整］。Interaction の `channel_id` の進行中の調整一覧を ephemeral で返す |
 | `settings` / `settings_mode` / `settings_role` | ［サーバーの既定値］と、その中の選択メニュー。押した人の `member.permissions` に「サーバー管理」か管理者の権限があるときだけ表示・保存する（§5.3.1） |
-| `manage` | ［自分の調整を管理］。押下ユーザーが主催する調整の一覧を返し、選んだ調整の管理リンク（`edit`）を発行 |
+| `manage` | ［作成した調整を管理］。押下ユーザーがこのサーバーで主催する調整があれば、一覧ページ（S9）を開く本人専用リンクを発行（§6.11） |
+| `manage_select` | 以前の［作成した調整を管理］の選択メニュー（送信済みのメッセージに残っている分）。選んだ調整の主催者と一致すれば管理リンク（`edit`）を発行 |
 
 - ［調整を作成する］は URL を開くリンクボタンで、Interaction は発生しない（リンクは `/schedule` の応答を作るときに発行済み）。
 
@@ -908,7 +1121,7 @@ DIscheduler/
 | フェーズ | 内容 |
 |----------|------|
 | P1 基盤 | Worker 雛形、署名検証、`/schedule`・`/poll` の登録と［使い方］ボタン、D1 マイグレーション、セキュリティヘッダー、CI |
-| P2 作成 | `/schedule`・`/poll` による作成、［このチャンネルの調整］［自分の調整を管理］ボタン、参加者決定（auto: channel/role、manual）、リンク発行・セッション、S2 画面（選択肢のカスタマイズを含む）、公開投稿、S7 |
+| P2 作成 | `/schedule`・`/poll` による作成、［このチャンネルの調整］［作成した調整を管理］ボタン、参加者決定（auto: channel/role、manual）、リンク発行・セッション、S2 画面（選択肢のカスタマイズを含む）、公開投稿、S7 |
 | P3 回答 | [回答する]・[集計を見る] ボタン、S3（集計つき）/S4 画面、募集メッセージ集計更新（保存時の更新と後追いの更新、1 日 2 回の Cron、主催者の［今すぐ更新］）、レート制限 |
 | P4 確定 | 確定処理、Discord イベント登録、リマインド |
 | P5 運用 | 日次の削除 Cron、無料枠超過の表示（§9.1）と S5・S7 の寄付リンク、脅威モデルレビュー、負荷・CPU 時間計測、README の導入手順（LP・`/security` は公開済み） |

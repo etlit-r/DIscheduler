@@ -258,3 +258,30 @@ describe("正式なアドレス（PUBLIC_ORIGIN）への転送（docs/design.md 
     expect(res.status).not.toBe(404);
   });
 });
+
+describe("［作成した調整を管理］（§6.11）", () => {
+  it("このサーバーで主催している調整があれば、一覧ページのリンクを本人にだけ返す", async () => {
+    const calls = mockDiscord(() => ({}));
+    await seedPoll();
+    const res = await call(
+      await signed({ type: 3, id: "9", application_id: "1", token: "tok", guild_id: GUILD, channel_id: CHANNEL, member: member(ORGANIZER), data: { custom_id: "manage" } }),
+      e(),
+    );
+    expect(res.status).toBe(200);
+    const edit = calls.find((c) => c.method === "PATCH" && c.path.includes("/webhooks/"));
+    const body = edit!.body as { content: string; components: { components: { url: string; label: string }[] }[] };
+    expect(body.content).toContain("一覧");
+    expect(body.components[0]!.components[0]!.label).toBe("作成した調整の一覧を開く");
+    expect(body.components[0]!.components[0]!.url.startsWith(`${ORIGIN}/l#t=`)).toBe(true);
+  });
+
+  it("主催している調整がなければ、そう伝える", async () => {
+    const calls = mockDiscord(() => ({}));
+    await call(
+      await signed({ type: 3, id: "9", application_id: "1", token: "tok", guild_id: GUILD, channel_id: CHANNEL, member: member(OUTSIDER), data: { custom_id: "manage" } }),
+      e(),
+    );
+    const edit = calls.find((c) => c.method === "PATCH" && c.path.includes("/webhooks/"));
+    expect((edit!.body as { content: string }).content).toContain("主催している調整はありません");
+  });
+});
