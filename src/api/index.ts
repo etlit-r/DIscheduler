@@ -108,7 +108,7 @@ api.post("/session", async (c) => {
           : kind === "edit" || kind === "list"
             ? "Discord でもう一度 /schedule を実行し、［作成した調整を管理］を押して、新しいリンクを受け取ってください。"
             : "参加者はチャンネルの募集メッセージの［回答する］または［集計を見る］を、主催者は Discord で /schedule を実行して［作成した調整を管理］を、もう一度押してください。";
-    throw new AppError(401, "link_expired", `リンクの有効期限が切れているか、すでに使われています。Discord で前に受け取ったリンクは、もう使えません。${how}`);
+    throw new AppError(401, "link_expired", `リンクの有効期限が切れているか、すでに使われています。Discord で前に受け取ったリンクは、無効になっています。${how}`);
   }
   const poll = await getPoll(c.env.DB, link.poll_id);
   if (!poll || poll.status === "cancelled") throw new AppError(404, "not_found", "この調整は削除されました。");
@@ -133,7 +133,7 @@ async function loadSession(c: C, next: () => Promise<void>) {
   if (!/^[A-Za-z0-9_-]{22}$/.test(id)) throw new AppError(404, "not_found", "調整が見つかりません。");
   const sid = readCookie(c.req.header("Cookie") ?? null, sessionCookieName(id));
   const session = sid ? await getSession(c.env.DB, id, sid) : null;
-  if (!session) throw new AppError(401, "no_session", "リンクの有効期限が切れています。Discord で前に受け取ったリンクは、もう使えません。");
+  if (!session) throw new AppError(401, "no_session", "リンクの有効期限が切れています。Discord で前に受け取ったリンクは、無効になっています。");
   // GET /:id は、調整と関連データをハンドラで 1 文で読むので、ここでは読まない（同じ行を 2 回読まないため）
   const isDetail = c.req.method === "GET" && /^\/api\/polls\/[A-Za-z0-9_-]{22}\/?$/.test(c.req.path);
   const poll = isDetail ? null : await getPoll(c.env.DB, id);
@@ -852,7 +852,7 @@ guilds.use("/:guildId/*", async (c: LC, next) => {
     throw new AppError(
       401,
       "list_session_expired",
-      "一覧ページの有効期限が切れています。Discord で前に受け取ったリンクは、もう使えません。Discord でもう一度 /schedule を実行し、［作成した調整を管理］を押して、新しいリンクを受け取ってください。",
+      "一覧ページの有効期限が切れています。Discord で前に受け取ったリンクは、無効になっています。Discord でもう一度 /schedule を実行し、［作成した調整を管理］を押して、新しいリンクを受け取ってください。",
     );
   }
   if (c.req.method !== "GET") {
