@@ -665,3 +665,31 @@ describe("主催者の調整一覧（§6.11）", () => {
     expect((await call(jsonReq("POST", "/api/session", { token: tokenFromUrl(url) }))).status).toBe(401);
   });
 });
+
+describe("使えなかったリンクの案内", () => {
+  const msg = async (token: string) => {
+    const res = await call(jsonReq("POST", "/api/session", { token }));
+    expect(res.status).toBe(401);
+    return ((await res.json()) as { error: { code: string; message: string } }).error;
+  };
+  it("リンクの種類に合わせて、押し直すボタンを案内する", async () => {
+    const s = await seedPoll();
+    const answer = tokenFromUrl(await issueLink(db(), ORIGIN, s.pollId, ALICE, "participant", "answer"));
+    const view = tokenFromUrl(await issueLink(db(), ORIGIN, s.pollId, ALICE, "participant", "view"));
+    const edit = tokenFromUrl(await issueLink(db(), ORIGIN, s.pollId, ORGANIZER, "organizer", "edit"));
+    // 1 回使ってから、もう一度使う
+    for (const t of [answer, view, edit]) await call(jsonReq("POST", "/api/session", { token: t }));
+    expect((await msg(answer)).message).toContain("［回答する］を、もう一度押してください");
+    expect((await msg(view)).message).toContain("［集計を見る］を、もう一度押してください");
+    expect((await msg(edit)).message).toContain("/schedule を実行し、［作成した調整を管理］");
+    // 期限切れ
+    const old = tokenFromUrl(await issueLink(db(), ORIGIN, s.pollId, ALICE, "participant", "answer"));
+    await db().prepare("UPDATE link_tokens SET expires_at = 1").run();
+    expect((await msg(old)).message).toContain("［回答する］を、もう一度押してください");
+    // 記録がないリンクは、参加者と主催者の両方に向けて案内する
+    const unknown = await msg("B".repeat(43));
+    expect(unknown.code).toBe("link_expired");
+    expect(unknown.message).toContain("参加者は");
+    expect(unknown.message).toContain("主催者は");
+  });
+});
