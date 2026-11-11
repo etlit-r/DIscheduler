@@ -12,7 +12,7 @@ interface MinePoll {
   status: PollStatus;
   deadlineAt: number | null;
   timezone: string;
-  fixed: { startAt: number; endAt: number | null; allDay: boolean } | null;
+  fixed: { startAt: number; endAt: number | null; allDay: boolean }[];
   participants: number;
   answered: number;
   createdAt: number;
@@ -77,7 +77,7 @@ export async function minePage(guildId: string): Promise<void> {
 
   function item(p: MinePoll): HTMLElement {
     const info: (string | HTMLElement)[] = [];
-    if (p.fixed) info.push(`確定: ${formatSlot(p.fixed, tz)}`);
+    if (p.fixed.length) info.push(`確定: ${p.fixed.map((f) => formatSlot(f, tz)).join("、")}`);
     else if (p.deadlineAt && p.status !== "draft") info.push(`締切: ${dateTimeText(p.deadlineAt, tz)}`);
     if (p.status !== "draft") info.push(`回答 ${p.answered} / ${p.participants} 名`);
     info.push(`更新: ${dateTimeText(p.updatedAt, tz)}`);

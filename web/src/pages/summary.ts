@@ -49,13 +49,13 @@ export async function summaryPage(pollId: string): Promise<void> {
     const canFix = isOrganizer && (d.poll.status === "open" || d.poll.status === "closed" || d.poll.status === "fixed");
 
     // 候補ごとの集計表
-    const head = h("tr", {}, h("th", { scope: "col" }, "候補"), ...d.choices.map((c) => h("th", { scope: "col" }, choiceMark(c))), h("th", { scope: "col" }, "未回答"), canFix ? h("th", { scope: "col" }, h("span", { class: "visually-hidden" }, "操作")) : null);
+    const head = h("tr", {}, h("th", { scope: "col" }, "候補"), ...d.choices.map((c) => h("th", { scope: "col" }, choiceMark(c))), h("th", { scope: "col" }, "未回答"));
     const body = h("tbody");
     for (const s of order) {
       const tt = t.get(s.id)!;
       const st = slotText(s, d.poll.timezone, tz);
-      const isFixed = s.id === d.poll.fixedSlotId;
-      const changed = isFixed && d.poll.fixedAt
+      const isFixed = s.fixedAt !== null;
+      const changed = isFixed
         ? d.answers.filter((a) => a.slotId === s.id && a.prevChoiceId !== null && a.prevChoiceId !== a.choiceId)
         : [];
       body.appendChild(
@@ -78,16 +78,18 @@ export async function summaryPage(pollId: string): Promise<void> {
                     .join("、"),
                 )
               : null,
+            // 確定の操作は日時の下に置く（狭い画面でも横にスクロールせずに押せるように）
+            canFix
+              ? h(
+                  "div",
+                  { class: "fix-actions" },
+                  h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { fixTarget = s.id; draw(); } }, isFixed ? "確定し直す" : "確定"),
+                  isFixed ? unfixButton(d, s, st.main, (m) => void reload(m)) : null,
+                )
+              : null,
           ),
           ...d.choices.map((c) => h("td", { class: "num" }, String(tt.byChoice[c.id] ?? 0))),
           h("td", { class: "num" }, String(d.participants.length - tt.answered)),
-          canFix
-            ? h(
-                "td",
-                {},
-                h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { fixTarget = s.id; draw(); } }, isFixed ? "確定し直す" : "確定"),
-              )
-            : null,
         ),
       );
     }
@@ -181,6 +183,30 @@ export async function summaryPage(pollId: string): Promise<void> {
     return btn;
   }
 
+  // 確定を取り消す（主催者）。Discord イベントも消え、チャンネルにお知らせが投稿される（§4.3）
+  function unfixButton(d: PollData, s: PollData["slots"][number], label: string, done: (m: HTMLElement) => void): HTMLElement {
+    const btn = h(
+      "button",
+      {
+        type: "button",
+        class: "btn btn-secondary btn-small",
+        onClick: async () => {
+          const ev = s.hasEvent ? "登録した Discord イベントも削除されます。" : "";
+          if (!confirm(`${label} の確定を取り消します。${ev}チャンネルに取り消しのお知らせを投稿します。よろしいですか？`)) return;
+          btn.disabled = true;
+          try {
+            const r = await request<{ warnings: string[] }>("DELETE", `/api/polls/${d.poll.id}/fix/${s.id}`);
+            done(notice(r.warnings.length ? "warn" : "ok", `${label} の確定を取り消しました。`, ...r.warnings.map((w) => ` ${w}`)));
+          } catch (e) {
+            done(notice("error", errorText(e, "summary", "確定を取り消せませんでした。")));
+          }
+        },
+      },
+      "確定を取り消す",
+    );
+    return btn;
+  }
+
   draw();
 }
 
@@ -188,7 +214,8 @@ function fixPanel(d: PollData, slotId: string, cancel: () => void): HTMLElement 
   const slot = d.slots.find((s) => s.id === slotId)!;
   const tz = viewerTimeZone();
   const mention = h("input", { type: "checkbox", id: "fix-mention", checked: true });
-  const useEvent = h("input", { type: "checkbox", id: "fix-event", checked: d.poll.hasEvent });
+  const otherFixed = d.slots.filter((s) => s.fixedAt !== null && s.id !== slotId).length;
+  const useEvent = h("input", { type: "checkbox", id: "fix-event", checked: slot.hasEvent });
   const typeVoice = h("input", { type: "radio", name: "ev-type", id: "ev-voice", value: "voice" });
   const typeExternal = h("input", { type: "radio", name: "ev-type", id: "ev-external", value: "external", checked: true });
   const voiceSel = h("select", { id: "ev-channel" }, h("option", { value: "" }, "読み込み中…"));
@@ -242,8 +269,9 @@ function fixPanel(d: PollData, slotId: string, cancel: () => void): HTMLElement 
     h("h2", { class: "card-title" }, "日時を確定する"),
     h("p", {}, h("strong", {}, slotText(slot, d.poll.timezone, tz).main)),
     h("div", { class: "field-inline" }, mention, h("label", { for: "fix-mention" }, "参加者にメンション付きでお知らせする")),
-    h("div", { class: "field-inline" }, useEvent, h("label", { for: "fix-event" }, d.poll.hasEvent ? "Discord イベントを更新する" : "Discord イベントとして登録する")),
-    d.poll.hasEvent ? h("p", { class: "muted small" }, "チェックを外して確定すると、登録済みの Discord イベントは削除されます。") : null,
+    otherFixed ? h("p", { class: "muted small" }, `ほかに確定している日時（${otherFixed} 件）は、そのまま残ります。`) : null,
+    h("div", { class: "field-inline" }, useEvent, h("label", { for: "fix-event" }, slot.hasEvent ? "Discord イベントを更新する" : "Discord イベントとして登録する")),
+    slot.hasEvent ? h("p", { class: "muted small" }, "チェックを外して確定すると、登録済みの Discord イベントは削除されます。") : null,
     h(
       "fieldset",
       { class: "sub-fields" },
