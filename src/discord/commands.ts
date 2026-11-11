@@ -53,7 +53,7 @@ function commandDef(name: string) {
   };
 }
 
-export const COMMANDS = [commandDef("schedule"), commandDef("poll")];
+export const COMMANDS = [commandDef("schedule"), commandDef("di")];
 
 /** この isolate で確認済みの版（同じ isolate では D1 を読み直さない） */
 let confirmedVersion: string | null = null;

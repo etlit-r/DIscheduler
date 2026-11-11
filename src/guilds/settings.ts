@@ -50,7 +50,7 @@ export function buildSettingsMessage(s: GuildSettings, note: string | null) {
     s.mode === "role" && s.roleId ? `${MODE_LABEL.role}（<@&${s.roleId}>）` : MODE_LABEL[s.mode];
   const lines = [
     "**このサーバーの既定値（参加者の決め方）**",
-    "`/schedule`（`/poll`）でオプションを指定しなかったときに使われます。主催者は調整ごとに作成画面で変更できます。",
+    "`/schedule`（`/di`）でオプションを指定しなかったときに使われます。主催者は調整ごとに作成画面で変更できます。",
     "",
     `現在: ${current}`,
   ];

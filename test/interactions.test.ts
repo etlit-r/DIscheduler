@@ -52,8 +52,8 @@ describe("署名検証（security-design S-1）", () => {
   });
 });
 
-describe("/schedule と /poll", () => {
-  for (const name of ["schedule", "poll"]) {
+describe("/schedule と /di", () => {
+  for (const name of ["schedule", "di"]) {
     it(`/${name} だけで下書きを作り、本人にだけ見えるリンクを返す`, async () => {
       const calls = mockDiscord((c) => {
         if (c.path === `/channels/${CHANNEL}`) return { id: CHANNEL, type: 0, permission_overwrites: [] };
