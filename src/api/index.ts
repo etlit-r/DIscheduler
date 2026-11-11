@@ -34,7 +34,7 @@ import {
   type SessionRow,
 } from "../db";
 import { fetchMember, searchMembers } from "../discord/members";
-import { buildAnnounceMessage, buildDeletedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink } from "../discord/messages";
+import { buildAnnounceMessage, buildDeletedMessage, buildFixedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink } from "../discord/messages";
 import { discord, DiscordError, type DiscordChannel, type DiscordRole } from "../discord/rest";
 import { AppError, DAY, floorToMinute, nowSec, randomId, timingSafeEqual } from "../core/lib";
 import { DEFAULT_DEADLINE_DAYS, resetParticipants, RETENTION } from "../polls/create";
@@ -652,12 +652,15 @@ polls.post("/:id/fix", async (c) => {
   const warnings: string[] = [];
   await syncNow(c.env, poll.id).catch(() => warnings.push("募集メッセージを更新できませんでした。"));
 
-  const participants = await getParticipants(db, poll.id);
-  const title = escapeMarkdown(poll.title ?? "日程調整");
   const when = slot.all_day ? `<t:${slot.start_at}:D>（終日）` : `<t:${slot.start_at}:F>`;
-  const announce = body.mention
-    ? buildMentionMessage(`**${title}** の日程が確定しました: ${when}`, participants.map((p) => p.user_id))
-    : { content: `**${title}** の日程が確定しました: ${when}`, allowed_mentions: { parse: [] } };
+  // メンションは公開時のお知らせと同じ（ロールの調整はそのロール、それ以外は @everyone。§5.5）。
+  // 確定し直しを繰り返してロールや @everyone への通知が続かないよう、メンションは 1 つの調整につき 1 時間に 3 回まで
+  let mention = body.mention;
+  if (mention && !(await hitRateLimit(db, `fix-mention:${poll.id}`, 3, 3600, now))) {
+    mention = false;
+    warnings.push("確定のお知らせのメンションは 1 時間に 3 回までのため、今回はメンションせずに投稿しました。");
+  }
+  const announce = buildFixedMessage(poll, when, mention);
   await discord(c.env, "POST", `/channels/${poll.channel_id}/messages`, announce).catch(() => warnings.push("確定のお知らせを投稿できませんでした。"));
 
   if (body.event) {

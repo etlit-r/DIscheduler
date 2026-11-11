@@ -275,6 +275,44 @@ describe("主催者だけの操作", () => {
     expect(poll!.status).toBe("open");
   });
 
+  it("確定のお知らせは、ロールがなければ @everyone をメンションする（参加者を 1 人ずつはメンションしない）", async () => {
+    const calls = mockDiscord();
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: true, event: null }, org))).status).toBe(200);
+    const post = calls.find((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)!.body as { content: string; allowed_mentions: unknown };
+    expect(post.content).toContain("の日程が確定しました");
+    expect(post.content).toContain("@everyone");
+    expect(post.content).not.toContain(`<@${ALICE}>`);
+    expect(post.allowed_mentions).toEqual({ parse: ["everyone"], replied_user: false });
+  });
+
+  it("確定のお知らせは、ロールの調整ではロールだけをメンションし、メンションなしを選べばメンションしない", async () => {
+    const calls = mockDiscord();
+    const s = await seedPoll();
+    await db().prepare("UPDATE polls SET target_type = 'role', target_id = '400000000000000077' WHERE id = ?").bind(s.pollId).run();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: true, event: null }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1], mention: false, event: null }, org));
+    const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).map((c) => c.body as { content: string; allowed_mentions: unknown });
+    expect(posts[0]!.content).toContain("<@&400000000000000077>");
+    expect(posts[0]!.allowed_mentions).toEqual({ parse: [], roles: ["400000000000000077"], replied_user: false });
+    expect(posts[1]!.content).not.toContain("<@&");
+    expect(posts[1]!.allowed_mentions).toEqual({ parse: [] });
+  });
+
+  it("確定のお知らせのメンションは 1 時間に 3 回まで（超えたらメンションなしで投稿する）", async () => {
+    const calls = mockDiscord();
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    for (let i = 0; i < 4; i++) {
+      const res = await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[i % 3], mention: true, event: null }, org));
+      expect(res.status).toBe(200);
+    }
+    const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).map((c) => c.body as { content: string });
+    expect(posts.map((p) => p.content.includes("@everyone"))).toEqual([true, true, true, false]);
+  });
+
   it("手動更新は 1 分に 1 回まで", async () => {
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");

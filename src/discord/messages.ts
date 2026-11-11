@@ -123,6 +123,15 @@ export function buildDayReminderMessage(
   return withPollMention(poll, text, poll.message_id);
 }
 
+/**
+ * 日程確定のお知らせ（§4.3）。mention のときは、公開時のお知らせ（§5.5）と同じく、
+ * 参加者をロールで決めた調整はそのロールを、それ以外は @everyone をメンションする
+ */
+export function buildFixedMessage(poll: Pick<PollRow, "title" | "target_type" | "target_id">, when: string, mention: boolean) {
+  const text = `**${escapeMarkdown(poll.title ?? "日程調整")}** の日程が確定しました: ${when}`;
+  return mention ? withPollMention(poll, text, null) : { content: text, allowed_mentions: { parse: [] as string[] } };
+}
+
 /** 参加者をロールで決めた調整はそのロールを、それ以外は @everyone を、本文の最後の行でメンションする（security-design E-3） */
 function withPollMention(poll: Pick<PollRow, "target_type" | "target_id">, text: string, replyTo: string | null) {
   const reply = replyTo ? { message_reference: { message_id: replyTo, fail_if_not_exists: false } } : {};
