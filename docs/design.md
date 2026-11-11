@@ -325,7 +325,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 ### 5.5 募集メッセージの更新
 - **公開時のお知らせ**: 公開して募集メッセージを投稿したら、続けて募集メッセージへの返信として「<タイトル> の募集を始めました。募集メッセージの［回答する］から入力できます。」を投稿し、メンションで通知する。
   - 参加者をロールで決めた調整（`target_type = 'role'`）は、そのロールをメンションする（`allowed_mentions.roles` はそのロールだけ）。ロールの設定で「このロールに対して@mentionを許可する」がオフのときは、Bot に「@everyone、@here、全てのロールにメンション」の権限がないと通知されない。
-  - それ以外（チャンネルのメンバー・手動）は、主催者が S2 で「公開したときに @everyone でお知らせする」にチェックを入れたときだけ `@everyone` をメンションする（`POST /api/polls/:id/publish` の `mentionEveryone`。保存はしない）。チェックがなければお知らせは投稿しない。`@everyone` の通知には、Bot に同じ権限が要る。
+  - ロールのない調整（チャンネルのメンバー・手動）は、`@everyone` をメンションする（`allowed_mentions.parse` は `everyone` だけ）。Bot に同じ権限がないサーバーでは、`@everyone` の文字だけが出て通知されない。招待リンクではこの権限を求めず、通知するかはサーバー管理者が Bot の権限で決める。
   - 参加者を 1 人ずつメンションすることはしない（人数が多いとメッセージが長くなるため）。
   - 投稿し直し（［チャンネルに投稿し直す］［もう一度投稿する］）では知らせない。お知らせの投稿に失敗しても、公開は済ませる。
 - Interaction トークンは 15 分で失効するため、募集メッセージは **Bot トークンで投稿し**、`channel_id` と `message_id` を保存して `PATCH /channels/{id}/messages/{id}` で更新する。
@@ -928,7 +928,7 @@ CREATE TABLE rate_limits (
 | GET | `/api/polls/{id}/roles` | セッション(主催者) | ロールの一覧（参加者をロールで決めるとき） |
 | GET | `/api/polls/{id}/voice-channels` | セッション(主催者) | ボイスチャンネルの一覧（Discord イベントの場所） |
 | PUT | `/api/polls/{id}/participants` | セッション(主催者) + CSRF | 参加者の追加・削除 |
-| POST | `/api/polls/{id}/publish` | セッション(主催者) + CSRF | 公開し募集メッセージ投稿。本文 `{ mentionEveryone?: boolean }`（§5.5） |
+| POST | `/api/polls/{id}/publish` | セッション(主催者) + CSRF | 公開し募集メッセージ投稿 |
 | PUT | `/api/polls/{id}/answers/me` | セッション(参加者) + CSRF | 自分の回答を保存（状態が `open`・`closed`・`fixed` のとき。§4.2） |
 | POST | `/api/polls/{id}/fix` | セッション(主催者) + CSRF | 確定（イベント登録オプション） |
 | POST | `/api/polls/{id}/remind` | セッション(主催者) + CSRF | 未回答者リマインド |

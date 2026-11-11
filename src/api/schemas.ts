@@ -100,9 +100,6 @@ export const AnswersBody = v.strictObject({
   ),
 });
 
-/** 公開。mentionEveryone は、ロールのない調整で @everyone に知らせるか（主催者がチェックしたときだけ true。§5.5） */
-export const PublishBody = v.strictObject({ mentionEveryone: v.optional(v.boolean()) });
-
 export const FixBody = v.strictObject({
   slotId: id,
   mention: v.boolean(),

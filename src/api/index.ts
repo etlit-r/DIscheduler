@@ -43,7 +43,7 @@ import { isValidTimeZone, nextCronAt } from "../shared/time";
 import { isValidDonationUrl } from "../shared/text";
 import { getRecentTimes, mergeRanges, rangesFromSlots, saveRecentTimesStatement } from "../guilds/recent-times";
 import { syncAfterAnswer, syncNow } from "../polls/sync";
-import { AnswersBody, ChoicesBody, FixBody, OpenPollBody, ParticipantsBody, PatchPollBody, PublishBody, SessionBody, SlotsBody } from "./schemas";
+import { AnswersBody, ChoicesBody, FixBody, OpenPollBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
 
 type Vars = { session: SessionRow; poll: PollRow };
 type C = Context<{ Bindings: Env; Variables: Vars }>;
@@ -527,7 +527,6 @@ async function postPollMessage(
 
 polls.post("/:id/publish", async (c) => {
   requireOrganizer(c);
-  const body = await readJson(c, PublishBody);
   const { poll } = c.var;
   const db = c.env.DB;
   const now = nowSec();
@@ -554,12 +553,11 @@ polls.post("/:id/publish", async (c) => {
         .run();
     },
   });
-  // 募集を始めたことを、ロールか @everyone（主催者が許可したときだけ）へのメンションで知らせる（§5.5）。
+  // 募集を始めたことを、ロール（ロールがなければ @everyone）へのメンションで知らせる（§5.5）。
   // 投稿し直しのときは知らせない。失敗しても公開そのものは済んでいるので、エラーにはしない
   if (posted) {
     const { messageId, data } = posted as { messageId: string; data: PollWithData };
-    const msg = buildAnnounceMessage(data.poll, body.mentionEveryone === true, messageId);
-    if (msg) await discord(c.env, "POST", `/channels/${data.poll.channel_id}/messages`, msg).catch(() => undefined);
+    await discord(c.env, "POST", `/channels/${data.poll.channel_id}/messages`, buildAnnounceMessage(data.poll, messageId)).catch(() => undefined);
   }
   return c.json({ ok: true, redirect: `/p/${poll.id}/done?kind=published` });
 });
