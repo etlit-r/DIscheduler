@@ -39,22 +39,156 @@ export function allTimeZones(): string[] {
   return list.includes("UTC") ? list : [...list, "UTC"];
 }
 
-export function timeZoneSelect(current: string, onChange: (tz: string) => void, id = "tz"): HTMLSelectElement {
-  const sel = h("select", { id, onChange: () => onChange(sel.value) });
-  for (const tz of allTimeZones()) sel.appendChild(h("option", { value: tz, selected: tz === current }, tz));
-  return sel;
+type TzEntry = { id: string; name: string; offset: string; haystack: string };
+let tzEntries: TzEntry[] | null = null;
+
+/** タイムゾーンの一覧に、日本語の名前と UTC からの差を添える（検索に使う。最初に開いたときに 1 回だけ作る） */
+function timeZoneEntries(): TzEntry[] {
+  if (tzEntries) return tzEntries;
+  const now = new Date();
+  const part = (tz: string, style: Intl.DateTimeFormatOptions["timeZoneName"]): string => {
+    try {
+      return new Intl.DateTimeFormat("ja-JP", { timeZone: tz, timeZoneName: style }).formatToParts(now).find((p) => p.type === "timeZoneName")?.value ?? "";
+    } catch {
+      return "";
+    }
+  };
+  tzEntries = allTimeZones().map((id) => {
+    const name = part(id, "longGeneric") || part(id, "long");
+    const gmt = part(id, "shortOffset"); // 例: GMT+9、GMT-3:30、GMT
+    const offset = gmt.replace(/^GMT/, "UTC") || "UTC";
+    const haystack = normalizeTzQuery([id, id.replace(/_/g, " "), name, offset, gmt, offset.replace(/^UTC/, "")].join(" "));
+    return { id, name, offset, haystack };
+  });
+  return tzEntries;
+}
+
+function normalizeTzQuery(s: string): string {
+  return s.normalize("NFKC").toLowerCase().replace(/[_\s]+/g, " ");
+}
+
+/** 入力した文字列（空白区切りのすべての語を含むもの）に合うタイムゾーン */
+export function filterTimeZones(query: string): TzEntry[] {
+  const words = normalizeTzQuery(query).split(" ").filter(Boolean);
+  const all = timeZoneEntries();
+  if (!words.length) return all;
+  return all.filter((e) => words.every((w) => e.haystack.includes(w)));
+}
+
+/**
+ * タイムゾーンの選択欄。文字を入れると一覧を絞り込める（例: Tokyo、日本、+9）。
+ * 一覧はボタンではなく listbox（WAI-ARIA の combobox）で、矢印キーと Enter でも選べる。
+ * 一覧にあるタイムゾーンしか選べない（決めずに離れると、元の値に戻す）
+ */
+export function timeZoneSelect(current: string, onChange: (tz: string) => void, id = "tz", align: "left" | "right" = "left"): HTMLElement {
+  let value = current;
+  let matches: TzEntry[] = [];
+  let active = -1;
+  const listId = `${id}-list`;
+  const input = h("input", {
+    type: "text",
+    id,
+    value,
+    autocomplete: "off",
+    role: "combobox",
+    placeholder: "検索（例: Tokyo、日本、+9）",
+    aria: { autocomplete: "list", expanded: "false", controls: listId },
+  });
+  input.spellcheck = false;
+  const list = h("ul", { id: listId, class: `tz-list tz-list-${align}`, role: "listbox", hidden: true, aria: { label: "タイムゾーンの候補" } });
+
+  const open = (query: string) => {
+    matches = filterTimeZones(query);
+    active = matches.findIndex((e) => e.id === value);
+    if (active < 0 && matches.length) active = 0;
+    list.replaceChildren(
+      ...matches.map((e, i) => {
+        const li = h(
+          "li",
+          { id: `${listId}-${i}`, role: "option", class: "tz-option", aria: { selected: String(e.id === value) } },
+          h("span", { class: "tz-id" }, e.id),
+          h("span", { class: "tz-meta" }, [e.name, e.offset].filter(Boolean).join("・")),
+        );
+        // 入力欄からフォーカスが外れる前に選べるよう、mousedown で決める
+        li.addEventListener("mousedown", (ev) => {
+          ev.preventDefault();
+          pick(e.id);
+        });
+        return li;
+      }),
+    );
+    if (!matches.length) list.appendChild(h("li", { class: "tz-empty" }, "見つかりませんでした"));
+    list.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+    highlight();
+  };
+  const close = () => {
+    list.hidden = true;
+    input.setAttribute("aria-expanded", "false");
+    input.removeAttribute("aria-activedescendant");
+  };
+  const highlight = () => {
+    list.querySelectorAll(".tz-option.is-active").forEach((el) => el.classList.remove("is-active"));
+    const el = active >= 0 ? document.getElementById(`${listId}-${active}`) : null;
+    if (el) {
+      el.classList.add("is-active");
+      el.scrollIntoView({ block: "nearest" });
+      input.setAttribute("aria-activedescendant", el.id);
+    } else input.removeAttribute("aria-activedescendant");
+  };
+  const pick = (tz: string) => {
+    close();
+    input.value = tz;
+    if (tz === value) return;
+    value = tz;
+    onChange(tz);
+  };
+
+  input.addEventListener("focus", () => {
+    input.select();
+    open("");
+  });
+  input.addEventListener("click", () => {
+    if (list.hidden) open("");
+  });
+  input.addEventListener("input", () => open(input.value));
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      if (list.hidden) return open(input.value);
+      if (!matches.length) return;
+      active = ev.key === "ArrowDown" ? Math.min(active + 1, matches.length - 1) : Math.max(active - 1, 0);
+      highlight();
+    } else if (ev.key === "Enter") {
+      if (list.hidden) return;
+      ev.preventDefault();
+      const e = matches[active];
+      if (e) pick(e.id);
+    } else if (ev.key === "Escape") {
+      if (list.hidden) return;
+      ev.preventDefault();
+      close();
+      input.value = value;
+    }
+  });
+  input.addEventListener("blur", () => {
+    close();
+    input.value = value;
+  });
+
+  return h("div", { class: "tz-picker" }, input, list);
 }
 
 /** ヘッダー右上の表示タイムゾーン切り替え（S3・S4） */
 export function mountViewerTzSwitch(onChange: () => void): void {
   const tools = document.getElementById("header-tools");
   if (!tools) return;
-  const sel = timeZoneSelect(viewerTimeZone(), (tz) => {
+  const picker = timeZoneSelect(viewerTimeZone(), (tz) => {
     setViewerTimeZone(tz);
     onChange();
-  }, "viewer-tz");
-  sel.classList.add("tz-switch");
-  render(tools, h("label", { class: "visually-hidden", for: "viewer-tz" }, "表示するタイムゾーン"), sel);
+  }, "viewer-tz", "right");
+  picker.classList.add("tz-switch");
+  render(tools, h("label", { class: "visually-hidden", for: "viewer-tz" }, "表示するタイムゾーン"), picker);
 }
 
 /** 候補日時の表示。閲覧者のタイムゾーンが調整と違えば両方を出す（§6.7） */
