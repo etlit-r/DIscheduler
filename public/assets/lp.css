@@ -381,3 +381,10 @@ table.perm tbody td:nth-child(2) { white-space: nowrap; }
 .pager a:hover { border-color: rgb(88 101 242 / 60%); color: var(--text-strong); }
 .pager small { font-size: 0.75rem; color: var(--text-muted); }
 .pager .next { margin-left: auto; text-align: right; }
+
+/* 回答の完了画面（answered.html） */
+.answered .container { display: block; max-width: 640px; }
+.answered .doc-body { margin: 0 auto; text-align: center; }
+.answered-actions { margin: 24px 0 8px; }
+
+.answered .btn[hidden] { display: none; }
