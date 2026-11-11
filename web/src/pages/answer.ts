@@ -184,6 +184,8 @@ export async function answerPage(pollId: string): Promise<void> {
       h(
         "section",
         { class: "page" },
+        // まだ誰も回答を保存していないときは、最初の回答者だと分かるようにする（§6.4）
+        editable && d.answers.length === 0 ? notice("info", "あなたが最初の入力者です。") : null,
         h("h1", {}, d.poll.title ?? "日程調整"),
         h(
           "p",

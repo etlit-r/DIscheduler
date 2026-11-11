@@ -110,7 +110,24 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 input[type="time"]::-webkit-calendar-picker-indicator:hover { border-color: var(--accent); background-color: color-mix(in srgb, var(--accent) 18%, var(--surface-2)); }
 input[type="time"]::-webkit-calendar-picker-indicator:active { transform: translateY(2px); border-bottom-width: 1px; box-shadow: none; }
 input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-color: var(--accent); }
-.tz-switch { min-height: 36px; padding: 4px 8px; font-size: 0.85rem; max-width: 160px; }
+/* タイムゾーンの選択欄（文字を入れて絞り込む。common.ts の timeZoneSelect） */
+.tz-picker { position: relative; }
+.tz-picker input { width: 100%; }
+.tz-list {
+  position: absolute; top: calc(100% + 4px); z-index: 20; margin: 0; padding: 4px; list-style: none;
+  width: min(360px, calc(100vw - 32px)); max-height: 300px; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+}
+.tz-list[hidden] { display: none; }
+.tz-list-left { left: 0; }
+.tz-list-right { right: 0; }
+.tz-option { display: grid; gap: 2px; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+.tz-option:hover, .tz-option.is-active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.tz-option[aria-selected="true"] .tz-id { font-weight: 700; }
+.tz-meta { font-size: 0.8rem; color: var(--text-muted); }
+.tz-empty { padding: 8px 10px; color: var(--text-muted); }
+.tz-switch { width: 180px; }
+.tz-switch input { min-height: 36px; padding: 4px 8px; font-size: 0.85rem; }
 
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-danger { background: var(--c-red); color: #fff; }
