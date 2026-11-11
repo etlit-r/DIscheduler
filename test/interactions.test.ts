@@ -259,7 +259,7 @@ describe("正式なアドレス（PUBLIC_ORIGIN）への転送（docs/design.md 
   });
 });
 
-describe("［自分の調整を管理］（§6.11）", () => {
+describe("［作成した調整を管理］（§6.11）", () => {
   it("このサーバーで主催している調整があれば、一覧ページのリンクを本人にだけ返す", async () => {
     const calls = mockDiscord(() => ({}));
     await seedPoll();
@@ -271,7 +271,7 @@ describe("［自分の調整を管理］（§6.11）", () => {
     const edit = calls.find((c) => c.method === "PATCH" && c.path.includes("/webhooks/"));
     const body = edit!.body as { content: string; components: { components: { url: string; label: string }[] }[] };
     expect(body.content).toContain("一覧");
-    expect(body.components[0]!.components[0]!.label).toBe("自分の調整の一覧を開く");
+    expect(body.components[0]!.components[0]!.label).toBe("作成した調整の一覧を開く");
     expect(body.components[0]!.components[0]!.url.startsWith(`${ORIGIN}/l#t=`)).toBe(true);
   });
 
