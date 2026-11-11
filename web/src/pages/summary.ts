@@ -241,7 +241,7 @@ function fixPanel(d: PollData, slotId: string, cancel: () => void): HTMLElement 
     { class: "card fix-panel", aria: { label: "日時の確定" } },
     h("h2", { class: "card-title" }, "日時を確定する"),
     h("p", {}, h("strong", {}, slotText(slot, d.poll.timezone, tz).main)),
-    h("div", { class: "field-inline" }, mention, h("label", { for: "fix-mention" }, "参加者にメンション付きでお知らせする")),
+    h("div", { class: "field-inline" }, mention, h("label", { for: "fix-mention" }, d.poll.targetType === "role" ? "参加者のロールにメンションしてお知らせする" : "@everyone にメンションしてお知らせする")),
     h("div", { class: "field-inline" }, useEvent, h("label", { for: "fix-event" }, d.poll.hasEvent ? "Discord イベントを更新する" : "Discord イベントとして登録する")),
     d.poll.hasEvent ? h("p", { class: "muted small" }, "チェックを外して確定すると、登録済みの Discord イベントは削除されます。") : null,
     h(

@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/core/env";
 import { issueLink } from "../src/auth";
-import { ALICE, BOB, call, getReq, jsonReq, login, mockDiscord, ORGANIZER, ORIGIN, OUTSIDER, seedPoll, tokenFromUrl } from "./helpers";
+import { ALICE, BOB, call, CHANNEL, getReq, jsonReq, login, mockDiscord, ORGANIZER, ORIGIN, OUTSIDER, seedPoll, tokenFromUrl } from "./helpers";
 
 const db = () => (env as unknown as Env).DB;
 
@@ -235,6 +235,122 @@ describe("主催者だけの操作", () => {
     expect(poll!.deadline_at).toBeGreaterThan(Date.now() / 1000 + 6 * 86400);
   });
 
+  it("ロールのない調整は、公開すると募集メッセージへの返信で @everyone をメンションする", async () => {
+    const calls = mockDiscord((c) => (c.method === "POST" ? { id: "600000000000000001" } : {}));
+    const s = await seedPoll({ status: "draft", messageId: null, deadlineAt: null });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, {}, org))).status).toBe(200);
+    const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`);
+    expect(posts.length).toBe(2);
+    const announce = posts[1]!.body as { content: string; allowed_mentions: unknown; message_reference: unknown };
+    expect(announce.content).toContain("の募集を始めました。");
+    expect(announce.content).toContain("@everyone");
+    expect(announce.content).not.toContain(`<@${ALICE}>`);
+    expect(announce.allowed_mentions).toEqual({ parse: ["everyone"], replied_user: false });
+    expect(announce.message_reference).toEqual({ message_id: "600000000000000001", fail_if_not_exists: false });
+  });
+
+  it("ロールが対象の調整は、公開するとそのロールをメンションする", async () => {
+    const calls = mockDiscord((c) => (c.method === "POST" ? { id: "600000000000000001" } : {}));
+    const s = await seedPoll({ status: "draft", messageId: null, deadlineAt: null });
+    await db().prepare("UPDATE polls SET target_type = 'role', target_id = '400000000000000077' WHERE id = ?").bind(s.pollId).run();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, {}, org))).status).toBe(200);
+    const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`);
+    expect(posts.length).toBe(2);
+    const announce = posts[1]!.body as { content: string; allowed_mentions: unknown };
+    expect(announce.content).toContain("<@&400000000000000077>");
+    expect(announce.content).not.toContain("@everyone");
+    expect(announce.content).not.toContain(`<@${ALICE}>`);
+    expect(announce.allowed_mentions).toEqual({ parse: [], roles: ["400000000000000077"], replied_user: false });
+  });
+
+  it("お知らせの投稿に失敗しても、公開は済ませる", async () => {
+    let n = 0;
+    mockDiscord((c) => (c.method === "POST" ? (n++ === 0 ? { id: "600000000000000001" } : new Response("{}", { status: 403 })) : {}));
+    const s = await seedPoll({ status: "draft", messageId: null, deadlineAt: null });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, {}, org))).status).toBe(200);
+    const poll = await db().prepare("SELECT status FROM polls WHERE id = ?").bind(s.pollId).first<{ status: string }>();
+    expect(poll!.status).toBe("open");
+  });
+
+  it("確定のお知らせは、ロールがなければ @everyone をメンションする（参加者を 1 人ずつはメンションしない）", async () => {
+    const calls = mockDiscord();
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: true, event: null }, org))).status).toBe(200);
+    const post = calls.find((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)!.body as { content: string; allowed_mentions: unknown };
+    expect(post.content).toContain("の日程が確定しました");
+    expect(post.content).toContain("@everyone");
+    expect(post.content).not.toContain(`<@${ALICE}>`);
+    expect(post.allowed_mentions).toEqual({ parse: ["everyone"], replied_user: false });
+  });
+
+  it("確定のお知らせは、ロールの調整ではロールだけをメンションし、メンションなしを選べばメンションしない", async () => {
+    const calls = mockDiscord();
+    const s = await seedPoll();
+    await db().prepare("UPDATE polls SET target_type = 'role', target_id = '400000000000000077' WHERE id = ?").bind(s.pollId).run();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: true, event: null }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1], mention: false, event: null }, org));
+    const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).map((c) => c.body as { content: string; allowed_mentions: unknown });
+    expect(posts[0]!.content).toContain("<@&400000000000000077>");
+    expect(posts[0]!.allowed_mentions).toEqual({ parse: [], roles: ["400000000000000077"], replied_user: false });
+    expect(posts[1]!.content).not.toContain("<@&");
+    expect(posts[1]!.allowed_mentions).toEqual({ parse: [] });
+  });
+
+  it("確定のお知らせのメンションは 1 時間に 3 回まで（超えたらメンションなしで投稿する）", async () => {
+    const calls = mockDiscord();
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    for (let i = 0; i < 4; i++) {
+      const res = await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[i % 3], mention: true, event: null }, org));
+      expect(res.status).toBe(200);
+    }
+    const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).map((c) => c.body as { content: string });
+    expect(posts.map((p) => p.content.includes("@everyone"))).toEqual([true, true, true, false]);
+  });
+
+  it("予定のリマインドの回が過ぎてから確定したときは、確定のお知らせに開始までの時間を添え、あとで重ねて送らない", async () => {
+    const calls = mockDiscord();
+    const s = await seedPoll();
+    // 30 分後に始まる予定（知らせる回は、開始の 1 時間以上前なので必ず過ぎている）
+    const start = Math.floor(Date.now() / 1000) + 1800;
+    await db().prepare("UPDATE slots SET start_at = ?, end_at = ? WHERE id = ?").bind(start, start + 3600, s.slotIds[0]).run();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: true, event: null }, org));
+    const post = calls.find((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)!.body as { content: string };
+    expect(post.content).toContain(`<t:${start}:R>に始まります。`);
+    const row = await db().prepare("SELECT day_reminded_slot_at FROM polls WHERE id = ?").bind(s.pollId).first<{ day_reminded_slot_at: number }>();
+    expect(row!.day_reminded_slot_at).toBe(start);
+  });
+
+  it("予定のリマインドの回がまだ先なら、確定のお知らせには開始までの時間を添えない", async () => {
+    const calls = mockDiscord();
+    const s = await seedPoll();
+    const start = Math.floor(Date.now() / 1000) + 30 * 86400;
+    await db().prepare("UPDATE slots SET start_at = ?, end_at = ? WHERE id = ?").bind(start, start + 3600, s.slotIds[0]).run();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: true, event: null }, org));
+    const post = calls.find((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)!.body as { content: string };
+    expect(post.content).not.toContain(":R>");
+    const row = await db().prepare("SELECT day_reminded_slot_at FROM polls WHERE id = ?").bind(s.pollId).first<{ day_reminded_slot_at: number | null }>();
+    expect(row!.day_reminded_slot_at).toBeNull();
+  });
+
+  it("確定のお知らせの投稿に失敗したときは、メンションの回数に数えない", async () => {
+    let fail = 3;
+    const calls = mockDiscord((c) => (c.method === "POST" && c.path === `/channels/${CHANNEL}/messages` && fail-- > 0 ? new Response("{}", { status: 500 }) : {}));
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    for (let i = 0; i < 4; i++) await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: true, event: null }, org));
+    const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).map((c) => c.body as { content: string });
+    // 失敗した 3 回のあとの 4 回目も、メンションつきで送る
+    expect(posts.at(-1)!.content).toContain("@everyone");
+  });
+
   it("手動更新は 1 分に 1 回まで", async () => {
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
@@ -261,7 +377,8 @@ describe("主催者だけの操作", () => {
       call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, {}, org)),
     ]);
     expect([a.status, b.status].sort()).toEqual([200, 409]);
-    expect(calls.filter((c) => c.method === "POST" && c.path.endsWith("/messages")).length).toBe(1);
+    // 募集のお知らせ（メンション）は数えず、募集メッセージ（埋め込みつき）だけを数える
+    expect(calls.filter((c) => c.method === "POST" && c.path.endsWith("/messages") && (c.body as { embeds?: unknown }).embeds).length).toBe(1);
   });
 
   it("投稿に失敗したら、もう一度公開できる", async () => {
@@ -478,6 +595,18 @@ describe("7 回目のレビューの修正", () => {
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
     await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: false, event: null }, org));
     expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/remind`, {}, org))).status).toBe(409);
+  });
+
+  it("リマインドには募集メッセージと同じ［回答する］ボタンを付ける", async () => {
+    const calls = mockDiscord();
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/remind`, {}, org))).status).toBe(200);
+    const post = calls.find((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)!;
+    expect(JSON.stringify(post.body)).toContain("募集メッセージの［回答する］から入力できます。");
+    expect((post.body as { components: unknown }).components).toEqual([
+      { type: 1, components: [{ type: 2, style: 1, label: "回答する", custom_id: `answer:${s.pollId}` }] },
+    ]);
   });
 
   it("選択肢の変更のお知らせは、ひとことだけ保存しても消えず、確認したら消える", async () => {

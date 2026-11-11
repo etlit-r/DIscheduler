@@ -26,6 +26,7 @@ import {
   getPoll,
   getSlots,
   hitRateLimit,
+  rateLimitAllows,
   insertChoiceStatements,
   insertParticipantsStatement,
   readPollWithData,
@@ -34,7 +35,8 @@ import {
   type SessionRow,
 } from "../db";
 import { fetchMember, searchMembers } from "../discord/members";
-import { buildDeletedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink } from "../discord/messages";
+import { reminderRunAt } from "../jobs/day-reminder";
+import { buildAnnounceMessage, buildDeletedMessage, buildFixedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink } from "../discord/messages";
 import { discord, DiscordError, type DiscordChannel, type DiscordRole } from "../discord/rest";
 import { AppError, DAY, floorToMinute, nowSec, randomId, timingSafeEqual } from "../core/lib";
 import { DEFAULT_DEADLINE_DAYS, resetParticipants, RETENTION } from "../polls/create";
@@ -488,14 +490,14 @@ polls.put("/:id/participants", async (c) => {
 /**
  * 募集メッセージを投稿する（公開・投稿し直しの共通処理。§5.5）。
  * 同時に押されても 1 件だけ投稿するよう、投稿の前に publishing_at で権利を取る（60 秒より古い取りかけは取り直せる）。
- * 投稿に成功したら afterPost（DB の更新）を呼ぶ。失敗しても権利は必ず手放す
+ * 投稿に成功したら afterPost（DB の更新）を呼び、投稿したメッセージの ID と投稿に使ったデータを返す。失敗しても権利は必ず手放す
  */
 async function postPollMessage(
   env: Env,
   pollId: string,
   now: number,
   opts: { draftOnly: boolean; prepare: (data: PollWithData) => PollWithData; afterPost: (messageId: string, data: PollWithData) => Promise<void> },
-): Promise<void> {
+): Promise<{ messageId: string; data: PollWithData }> {
   const db = env.DB;
   const claimed = await db
     .prepare(
@@ -520,6 +522,7 @@ async function postPollMessage(
       throw e;
     }
     await opts.afterPost(messageId, data);
+    return { messageId, data };
   } finally {
     await db.prepare("UPDATE polls SET publishing_at = NULL WHERE id = ? AND publishing_at = ?").bind(pollId, now).run();
   }
@@ -533,7 +536,7 @@ polls.post("/:id/publish", async (c) => {
   if (poll.status !== "draft") throw new AppError(409, "published", "この調整はすでに公開されています。");
   if (!poll.title) throw new AppError(400, "no_title", "タイトルを入力してください。");
   const deadlineAt = poll.deadline_at && poll.deadline_at > now ? poll.deadline_at : floorToMinute(now + DEFAULT_DEADLINE_DAYS * DAY);
-  await postPollMessage(c.env, poll.id, now, {
+  const { messageId, data: posted } = await postPollMessage(c.env, poll.id, now, {
     draftOnly: true,
     prepare: (data) => {
       if (data.slots.length === 0) throw new AppError(400, "no_slots", "候補日時を 1 件以上入れてください。");
@@ -551,6 +554,9 @@ polls.post("/:id/publish", async (c) => {
         .run();
     },
   });
+  // 募集を始めたことを、ロール（ロールがなければ @everyone）へのメンションで知らせる（§5.5）。
+  // 投稿し直しのときは知らせない。失敗しても公開そのものは済んでいるので、エラーにはしない
+  await discord(c.env, "POST", `/channels/${posted.poll.channel_id}/messages`, buildAnnounceMessage(posted.poll, messageId)).catch(() => undefined);
   return c.json({ ok: true, redirect: `/p/${poll.id}/done?kind=published` });
 });
 
@@ -644,13 +650,26 @@ polls.post("/:id/fix", async (c) => {
   const warnings: string[] = [];
   await syncNow(c.env, poll.id).catch(() => warnings.push("募集メッセージを更新できませんでした。"));
 
-  const participants = await getParticipants(db, poll.id);
-  const title = escapeMarkdown(poll.title ?? "日程調整");
   const when = slot.all_day ? `<t:${slot.start_at}:D>（終日）` : `<t:${slot.start_at}:F>`;
-  const announce = body.mention
-    ? buildMentionMessage(`**${title}** の日程が確定しました: ${when}`, participants.map((p) => p.user_id))
-    : { content: `**${title}** の日程が確定しました: ${when}`, allowed_mentions: { parse: [] } };
-  await discord(c.env, "POST", `/channels/${poll.channel_id}/messages`, announce).catch(() => warnings.push("確定のお知らせを投稿できませんでした。"));
+  // メンションは公開時のお知らせと同じ（ロールの調整はそのロール、それ以外は @everyone。§5.5）。
+  // 確定し直しを繰り返してロールや @everyone への通知が続かないよう、メンションは 1 つの調整につき 1 時間に 3 回まで（投稿できたときだけ数える）
+  const MENTION_KEY = `fix-mention:${poll.id}`;
+  let mention = body.mention;
+  if (mention && !(await rateLimitAllows(db, MENTION_KEY, 3, 3600, now))) {
+    mention = false;
+    warnings.push("確定のお知らせのメンションは 1 時間に 3 回までのため、今回はメンションせずに投稿しました。");
+  }
+  // 予定のリマインド（§5.7）を送る回がもう過ぎていて、予定がまだ先なら、確定のお知らせがリマインドを兼ねる。
+  // 開始までの時間を添え、あとの回で同じ日時に重ねて送らないよう記録する
+  const lateForReminder = reminderRunAt(slot, poll.timezone) <= now && slot.start_at > now;
+  if (lateForReminder) await db.prepare("UPDATE polls SET day_reminded_slot_at = ? WHERE id = ?").bind(slot.start_at, poll.id).run();
+  const announce = buildFixedMessage(poll, when, mention, lateForReminder ? `\n<t:${slot.start_at}:R>に始まります。` : "");
+  try {
+    await discord(c.env, "POST", `/channels/${poll.channel_id}/messages`, announce);
+    if (mention) await hitRateLimit(db, MENTION_KEY, 3, 3600, now);
+  } catch {
+    warnings.push("確定のお知らせを投稿できませんでした。");
+  }
 
   if (body.event) {
     const err = await upsertEvent(c.env, poll, slot, body.event);
@@ -753,7 +772,11 @@ polls.post("/:id/remind", async (c) => {
     c.env,
     "POST",
     `/channels/${poll.channel_id}/messages`,
-    buildMentionMessage(`**${escapeMarkdown(poll.title ?? "日程調整")}** の回答をお願いします${deadline}。募集メッセージの［回答する］から入力できます。${link}`, rows.results.map((x) => x.user_id)),
+    {
+      ...buildMentionMessage(`**${escapeMarkdown(poll.title ?? "日程調整")}** の回答をお願いします${deadline}。募集メッセージの［回答する］から入力できます。${link}`, rows.results.map((x) => x.user_id)),
+      // 募集メッセージと同じ［回答する］。押したときの確認（参加者か・チャンネルが同じか）も同じ処理で行う
+      components: [{ type: 1, components: [{ type: 2, style: 1, label: "回答する", custom_id: `answer:${poll.id}` }] }],
+    },
   );
   return c.json({ ok: true, count: rows.results.length });
 });

@@ -31,7 +31,7 @@ export const KIND_LABEL: Record<ChoiceKind, string> = {
   ng: "参加できない",
 };
 
-export const DEFAULT_SCORE: Record<ChoiceKind, number> = { ok: 2, maybe: 1, ng: 0 };
+export const DEFAULT_SCORE: Record<ChoiceKind, number> = { ok: 4, maybe: 2, ng: 0 };
 export const DEFAULT_COLOR: Record<ChoiceKind, ChoiceColor> = { ok: "green", maybe: "yellow", ng: "red" };
 
 export interface ChoiceInput {
@@ -54,8 +54,8 @@ export const CHOICE_TEMPLATES: readonly ChoiceTemplate[] = [
     id: "standard",
     name: "標準",
     choices: [
-      { symbol: "○", label: "参加", kind: "ok", score: 2, color: "green" },
-      { symbol: "△", label: "未定", kind: "maybe", score: 1, color: "yellow" },
+      { symbol: "○", label: "参加", kind: "ok", score: 4, color: "green" },
+      { symbol: "△", label: "未定", kind: "maybe", score: 2, color: "yellow" },
       { symbol: "×", label: "不可", kind: "ng", score: 0, color: "red" },
     ],
   },
@@ -63,7 +63,7 @@ export const CHOICE_TEMPLATES: readonly ChoiceTemplate[] = [
     id: "binary",
     name: "2 択",
     choices: [
-      { symbol: "○", label: "参加", kind: "ok", score: 1, color: "green" },
+      { symbol: "○", label: "参加", kind: "ok", score: 4, color: "green" },
       { symbol: "×", label: "不可", kind: "ng", score: 0, color: "red" },
     ],
   },
@@ -71,9 +71,9 @@ export const CHOICE_TEMPLATES: readonly ChoiceTemplate[] = [
     id: "four",
     name: "4 段階",
     choices: [
-      { symbol: "◎", label: "ぜひ参加", kind: "ok", score: 3, color: "green" },
-      { symbol: "○", label: "参加できる", kind: "ok", score: 2, color: "teal" },
-      { symbol: "△", label: "未定", kind: "maybe", score: 1, color: "yellow" },
+      { symbol: "◎", label: "ぜひ参加", kind: "ok", score: 5, color: "green" },
+      { symbol: "○", label: "参加できる", kind: "ok", score: 4, color: "teal" },
+      { symbol: "△", label: "未定", kind: "maybe", score: 2, color: "yellow" },
       { symbol: "×", label: "不可", kind: "ng", score: 0, color: "red" },
     ],
   },
@@ -81,9 +81,9 @@ export const CHOICE_TEMPLATES: readonly ChoiceTemplate[] = [
     id: "time",
     name: "時間の条件つき",
     choices: [
-      { symbol: "○", label: "参加", kind: "ok", score: 3, color: "green" },
-      { symbol: "遅", label: "遅れて参加", kind: "maybe", score: 2, color: "teal" },
-      { symbol: "早", label: "途中で抜ける", kind: "maybe", score: 2, color: "orange" },
+      { symbol: "○", label: "参加", kind: "ok", score: 4, color: "green" },
+      { symbol: "遅", label: "遅刻", kind: "maybe", score: 2, color: "teal" },
+      { symbol: "早", label: "早退", kind: "maybe", score: 2, color: "orange" },
       { symbol: "×", label: "不可", kind: "ng", score: 0, color: "red" },
     ],
   },
