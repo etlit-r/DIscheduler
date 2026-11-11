@@ -3,5 +3,3 @@ public/app/
 node_modules/
 .wrangler/
 .dev.vars
-# 公開しない設計書（非公開機能など）
-docs/private/
