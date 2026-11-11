@@ -21,10 +21,10 @@ const jst = (local: string) => Math.floor(Date.parse(`${local}:00+09:00`) / 1000
 /** 確定済みの調整を作り、確定した候補の開始時刻を startAt にする */
 async function fixedPoll(startAt: number, opts: { allDay?: boolean; role?: string; messageId?: string | null; timezone?: string } = {}) {
   const s = await seedPoll({ status: "fixed", messageId: opts.messageId });
-  await db().prepare("UPDATE slots SET start_at = ?, end_at = ?, all_day = ? WHERE id = ?").bind(startAt, opts.allDay ? null : startAt + 7200, opts.allDay ? 1 : 0, s.slotIds[0]).run();
+  await db().prepare("UPDATE slots SET start_at = ?, end_at = ?, all_day = ?, fixed_at = 1 WHERE id = ?").bind(startAt, opts.allDay ? null : startAt + 7200, opts.allDay ? 1 : 0, s.slotIds[0]).run();
   await db()
-    .prepare("UPDATE polls SET fixed_slot_id = ?, fixed_at = 1, target_type = ?, target_id = ?, timezone = ? WHERE id = ?")
-    .bind(s.slotIds[0], opts.role ? "role" : "channel", opts.role ?? null, opts.timezone ?? "Asia/Tokyo", s.pollId)
+    .prepare("UPDATE polls SET target_type = ?, target_id = ?, timezone = ? WHERE id = ?")
+    .bind(opts.role ? "role" : "channel", opts.role ?? null, opts.timezone ?? "Asia/Tokyo", s.pollId)
     .run();
   return s;
 }
@@ -117,7 +117,7 @@ describe("予定のリマインド（§5.7）", () => {
     expect(m.message_reference).toBeUndefined();
   });
 
-  it("同じ確定日時には 2 回送らない。確定し直して日時が変わったら送る", async () => {
+  it("同じ確定日時には 2 回送らない。確定した候補の日時が変わったら送る", async () => {
     const calls = mockDiscord();
     const s = await fixedPoll(jst("2026-11-06T21:00"));
     await runCron(testEnv(), AT_17);
@@ -126,6 +126,14 @@ describe("予定のリマインド（§5.7）", () => {
     await db().prepare("UPDATE slots SET start_at = ? WHERE id = ?").bind(jst("2026-11-06T22:00"), s.slotIds[0]).run();
     await runCron(testEnv(), AT_17 + 120_000);
     expect(reminders(calls).length).toBe(2);
+  });
+
+  it("確定した候補が複数ある調整は、候補ごとに送る", async () => {
+    const calls = mockDiscord();
+    const s = await fixedPoll(jst("2026-11-06T21:00"));
+    await db().prepare("UPDATE slots SET start_at = ?, end_at = ?, fixed_at = 1 WHERE id = ?").bind(jst("2026-11-07T09:00"), jst("2026-11-07T10:00"), s.slotIds[1]).run();
+    await runCron(testEnv(), AT_17);
+    expect(startsOf(calls).sort()).toEqual([String(jst("2026-11-06T21:00")), String(jst("2026-11-07T09:00"))].sort());
   });
 
   it(`1 回の実行では ${DAY_REMINDER_MAX_PER_RUN} 件まで送り、残りは次の分の回で送る`, async () => {

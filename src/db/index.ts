@@ -18,6 +18,7 @@ export interface PollRow {
   join_policy: "closed" | "open";
   status: PollStatus;
   deadline_at: number | null;
+  /** 使わない（0009 で slots.fixed_at・slots.discord_event_id に移した。古い Worker のために列だけ残している） */
   fixed_slot_id: string | null;
   fixed_at: number | null;
   discord_event_id: string | null;
@@ -25,6 +26,7 @@ export interface PollRow {
   last_synced_at: number | null;
   last_reminded_at: number | null;
   publishing_at: number | null;
+  /** 使わない（0009 で slots.day_reminded_at に移した） */
   day_reminded_slot_at: number | null;
   choices_changed_at: number | null;
   created_at: number;
@@ -39,6 +41,14 @@ export interface SlotRow {
   end_at: number | null;
   all_day: number;
   position: number;
+  /** 確定した時刻。NULL = 確定していない（1 つの調整で複数の候補を確定できる。§4.3） */
+  fixed_at: number | null;
+  /** この候補で登録した Discord イベント */
+  discord_event_id: string | null;
+  /** 前回の［確定をお知らせする］で確定日として知らせたか（1 = 知らせた）。次のお知らせで、取り消した日時を知らせるために使う */
+  announced_fixed: number;
+  /** 予定のリマインド（§5.7）を送った日時の開始時刻。同じ日時に 2 回送らないため（確定日時を変えたら、改めて送る） */
+  day_reminded_at: number | null;
 }
 
 export interface ChoiceRow {
@@ -151,7 +161,7 @@ export function pollWithDataStatement(db: D1Database, pollId: string): D1Prepare
   return db
     .prepare(
       `SELECT p.*,
-        (SELECT json_group_array(json_object('id', id, 'poll_id', poll_id, 'start_at', start_at, 'end_at', end_at, 'all_day', all_day, 'position', position))
+        (SELECT json_group_array(json_object('id', id, 'poll_id', poll_id, 'start_at', start_at, 'end_at', end_at, 'all_day', all_day, 'position', position, 'fixed_at', fixed_at, 'discord_event_id', discord_event_id, 'announced_fixed', announced_fixed, 'day_reminded_at', day_reminded_at))
            FROM slots WHERE poll_id = p.id) AS j_slots,
         (SELECT json_group_array(json_object('id', id, 'poll_id', poll_id, 'symbol', symbol, 'label', label, 'kind', kind, 'score', score, 'color', color, 'position', position))
            FROM choices WHERE poll_id = p.id) AS j_choices,
@@ -232,6 +242,14 @@ export async function hitRateLimit(db: D1Database, key: string, limit: number, w
     .bind(k, windowStart + windowSec)
     .first<{ count: number }>();
   return (row?.count ?? 1) <= limit;
+}
+
+/** hitRateLimit と同じ数え方で 1 回数える文（batch に入れるため。結果は見ない） */
+export function hitRateLimitStatement(db: D1Database, key: string, windowSec: number, now: number): D1PreparedStatement {
+  const windowStart = Math.floor(now / windowSec) * windowSec;
+  return db
+    .prepare("INSERT INTO rate_limits (key, count, expires_at) VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET count = count + 1")
+    .bind(`${key}:${windowStart}`, windowStart + windowSec);
 }
 
 /** レート制限の残りがあるかだけを確かめる（数えない）。成功したときだけ hitRateLimit で数えたいときに使う */

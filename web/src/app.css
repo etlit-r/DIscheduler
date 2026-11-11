@@ -242,3 +242,8 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
   .site-header .container { flex-wrap: wrap; }
   .kv { grid-template-columns: 1fr; }
 }
+
+/* 集計表の確定の操作（確定・確定し直す・確定を取り消す） */
+.fix-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.fix-actions .btn { white-space: nowrap; }
+.tally-table tbody th { min-width: 8em; }

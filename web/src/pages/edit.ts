@@ -325,11 +325,11 @@ export async function editPage(pollId: string): Promise<void> {
     const preset = (label: string, s: string, e: string) =>
       h("button", { type: "button", class: "btn btn-small btn-raised", onClick: () => { startTime = s; endTime = e; allDay = false; draw(); } }, label);
     const list = h("ul", { class: "slot-list" });
+    const fixedIds = new Set(d.slots.filter((x) => x.fixedAt !== null).map((x) => x.id));
     for (const s of slots) {
       const hasAnswers = s.id !== null && d.answers.some((a) => a.slotId === s.id);
-      // 確定した候補（保存済みで id が一致するもの）は削除できないので、× を出さない。
-      // 未保存の候補（id が null）を、未確定の調整（fixedSlotId が null）の確定候補と取り違えないよう id があるときだけ比べる
-      const isFixed = s.id !== null && s.id === d.poll.fixedSlotId;
+      // 確定した候補（保存済みで id が一致するもの）は削除できないので、× を出さない
+      const isFixed = s.id !== null && fixedIds.has(s.id);
       list.appendChild(
         h(
           "li",

@@ -153,7 +153,7 @@ describe("回答（§4.2）", () => {
       call(jsonReq("PUT", `/api/polls/${s.pollId}/answers/me`, { choicesVersion: 1, answers: [{ slotId: s.slotIds[0], choiceId: s.choiceIds[choiceIdx] }], comment: null }, alice));
     expect((await put(0)).status).toBe(200); // 締切後
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    const fix = await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: false, event: null }, org));
+    const fix = await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org));
     expect(fix.status).toBe(200);
     expect((await put(2)).status).toBe(200); // 確定後に ○ → ×
     const row = await db().prepare("SELECT choice_id, prev_choice_id FROM answers WHERE poll_id = ? AND user_id = ?").bind(s.pollId, ALICE).first<{ choice_id: string; prev_choice_id: string }>();
@@ -176,7 +176,7 @@ describe("主催者だけの操作", () => {
     const s = await seedPoll();
     const alice = await login(s.pollId, ALICE, "participant");
     expect((await call(jsonReq("PATCH", `/api/polls/${s.pollId}`, { title: "乗っ取り" }, alice))).status).toBe(403);
-    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: false, event: null }, alice))).status).toBe(403);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, alice))).status).toBe(403);
     expect((await call(jsonReq("DELETE", `/api/polls/${s.pollId}`, {}, alice))).status).toBe(403);
     expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/remind`, {}, alice))).status).toBe(403);
     expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/sync-message`, {}, alice))).status).toBe(403);
@@ -275,13 +275,23 @@ describe("主催者だけの操作", () => {
     expect(poll!.status).toBe("open");
   });
 
+  it("確定してもチャンネルにはお知らせしない（［確定をお知らせする］でまとめて投稿する）", async () => {
+    const calls = mockDiscord();
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org))).status).toBe(200);
+    expect(calls.some((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)).toBe(false);
+  });
+
   it("確定のお知らせは、ロールがなければ @everyone をメンションする（参加者を 1 人ずつはメンションしない）", async () => {
     const calls = mockDiscord();
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: true, event: null }, org))).status).toBe(200);
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org));
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: true }, org))).status).toBe(200);
     const post = calls.find((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)!.body as { content: string; allowed_mentions: unknown };
-    expect(post.content).toContain("の日程が確定しました");
+    expect(post.content).toContain("の日程のお知らせ");
+    expect(post.content).toContain("確定した日時:");
     expect(post.content).toContain("@everyone");
     expect(post.content).not.toContain(`<@${ALICE}>`);
     expect(post.allowed_mentions).toEqual({ parse: ["everyone"], replied_user: false });
@@ -292,8 +302,9 @@ describe("主催者だけの操作", () => {
     const s = await seedPoll();
     await db().prepare("UPDATE polls SET target_type = 'role', target_id = '400000000000000077' WHERE id = ?").bind(s.pollId).run();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: true, event: null }, org));
-    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1], mention: false, event: null }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: true }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false }, org));
     const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).map((c) => c.body as { content: string; allowed_mentions: unknown });
     expect(posts[0]!.content).toContain("<@&400000000000000077>");
     expect(posts[0]!.allowed_mentions).toEqual({ parse: [], roles: ["400000000000000077"], replied_user: false });
@@ -301,51 +312,91 @@ describe("主催者だけの操作", () => {
     expect(posts[1]!.allowed_mentions).toEqual({ parse: [] });
   });
 
+  it("確定日と、前回のお知らせのあとに取り消した日時をまとめて知らせる。知らせた取り消しは次から載せない", async () => {
+    const calls = mockDiscord();
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const slots = await db().prepare("SELECT id, start_at FROM slots WHERE poll_id = ?").bind(s.pollId).all<{ id: string; start_at: number }>();
+    const startOf = new Map(slots.results.map((r) => [r.id, r.start_at]));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1], event: null }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false }, org));
+    await call(jsonReq("DELETE", `/api/polls/${s.pollId}/fix/${s.slotIds[0]}`, undefined, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[2], event: null }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false }, org));
+    const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).map((c) => (c.body as { content: string }).content);
+    expect(posts).toHaveLength(3);
+    const [, second, third] = posts as [string, string, string];
+    const [fixedPart, cancelPart] = second.split("確定を取り消した日時:");
+    expect(fixedPart).toContain(`<t:${startOf.get(s.slotIds[1]!)}:F>`);
+    expect(fixedPart).toContain(`<t:${startOf.get(s.slotIds[2]!)}:F>`);
+    expect(fixedPart).not.toContain(`<t:${startOf.get(s.slotIds[0]!)}:F>`);
+    expect(cancelPart).toContain(`<t:${startOf.get(s.slotIds[0]!)}:F>`);
+    expect(third).not.toContain("確定を取り消した日時");
+  });
+
+  it("お知らせする確定日も取り消しもなければ 409。参加者はお知らせできない", async () => {
+    mockDiscord();
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false }, org))).status).toBe(409);
+    const alice = await login(s.pollId, ALICE, "participant");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false }, alice))).status).toBe(403);
+  });
+
   it("確定のお知らせのメンションは 1 時間に 3 回まで（超えたらメンションなしで投稿する）", async () => {
     const calls = mockDiscord();
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org));
     for (let i = 0; i < 4; i++) {
-      const res = await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[i % 3], mention: true, event: null }, org));
+      const res = await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: true }, org));
       expect(res.status).toBe(200);
     }
     const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).map((c) => c.body as { content: string });
     expect(posts.map((p) => p.content.includes("@everyone"))).toEqual([true, true, true, false]);
   });
 
-  it("予定のリマインドの回が過ぎてから確定したときは、確定のお知らせに開始までの時間を添え、あとで重ねて送らない", async () => {
+  it("予定のリマインドの回が過ぎてから確定した日時は、お知らせに開始までの時間を添え、あとで重ねて送らない", async () => {
     const calls = mockDiscord();
     const s = await seedPoll();
     // 30 分後に始まる予定（知らせる回は、開始の 1 時間以上前なので必ず過ぎている）
     const start = Math.floor(Date.now() / 1000) + 1800;
     await db().prepare("UPDATE slots SET start_at = ?, end_at = ? WHERE id = ?").bind(start, start + 3600, s.slotIds[0]).run();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: true, event: null }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: true }, org));
     const post = calls.find((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)!.body as { content: string };
-    expect(post.content).toContain(`<t:${start}:R>に始まります。`);
-    const row = await db().prepare("SELECT day_reminded_slot_at FROM polls WHERE id = ?").bind(s.pollId).first<{ day_reminded_slot_at: number }>();
-    expect(row!.day_reminded_slot_at).toBe(start);
+    expect(post.content).toContain(`<t:${start}:R>に始まります`);
+    const row = await db().prepare("SELECT day_reminded_at FROM slots WHERE id = ?").bind(s.slotIds[0]).first<{ day_reminded_at: number }>();
+    expect(row!.day_reminded_at).toBe(start);
   });
 
-  it("予定のリマインドの回がまだ先なら、確定のお知らせには開始までの時間を添えない", async () => {
+  it("予定のリマインドの回がまだ先なら、お知らせには開始までの時間を添えない", async () => {
     const calls = mockDiscord();
     const s = await seedPoll();
     const start = Math.floor(Date.now() / 1000) + 30 * 86400;
     await db().prepare("UPDATE slots SET start_at = ?, end_at = ? WHERE id = ?").bind(start, start + 3600, s.slotIds[0]).run();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: true, event: null }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: true }, org));
     const post = calls.find((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)!.body as { content: string };
     expect(post.content).not.toContain(":R>");
-    const row = await db().prepare("SELECT day_reminded_slot_at FROM polls WHERE id = ?").bind(s.pollId).first<{ day_reminded_slot_at: number | null }>();
-    expect(row!.day_reminded_slot_at).toBeNull();
+    const row = await db().prepare("SELECT day_reminded_at FROM slots WHERE id = ?").bind(s.slotIds[0]).first<{ day_reminded_at: number | null }>();
+    expect(row!.day_reminded_at).toBeNull();
   });
 
-  it("確定のお知らせの投稿に失敗したときは、メンションの回数に数えない", async () => {
+  it("確定のお知らせの投稿に失敗したときは、エラーにし、メンションの回数にもお知らせ済みにも数えない", async () => {
     let fail = 3;
     const calls = mockDiscord((c) => (c.method === "POST" && c.path === `/channels/${CHANNEL}/messages` && fail-- > 0 ? new Response("{}", { status: 500 }) : {}));
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    for (let i = 0; i < 4; i++) await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: true, event: null }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org));
+    for (let i = 0; i < 3; i++) expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: true }, org))).status).toBe(502);
+    const row = await db().prepare("SELECT announced_fixed FROM slots WHERE id = ?").bind(s.slotIds[0]).first<{ announced_fixed: number }>();
+    expect(row!.announced_fixed).toBe(0);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: true }, org))).status).toBe(200);
     const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).map((c) => c.body as { content: string });
     // 失敗した 3 回のあとの 4 回目も、メンションつきで送る
     expect(posts.at(-1)!.content).toContain("@everyone");
@@ -391,16 +442,91 @@ describe("主催者だけの操作", () => {
     expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, {}, org))).status).toBe(200);
   });
 
-  it("イベントを外して確定し直すと、登録済みの Discord イベントを削除する", async () => {
-    const calls = mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: "700000000000000009" } : {}));
+  it("確定済みの候補をもう一度確定しようとすると 409", async () => {
+    mockDiscord();
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: false, event: { type: "external", channelId: null, location: "Discord" } }, org));
-    const res = await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1], mention: false, event: null }, org));
-    expect(res.status).toBe(200);
-    expect(calls.some((c) => c.method === "DELETE" && c.path.endsWith("/scheduled-events/700000000000000009"))).toBe(true);
-    const row = await db().prepare("SELECT discord_event_id FROM polls WHERE id = ?").bind(s.pollId).first<{ discord_event_id: string | null }>();
-    expect(row!.discord_event_id).toBeNull();
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org))).status).toBe(200);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org))).status).toBe(409);
+  });
+});
+
+describe("複数の候補の確定と取り消し", () => {
+  it("複数の候補を確定でき、それぞれに Discord イベントを登録する", async () => {
+    let n = 0;
+    mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: `70000000000000001${n++}` } : {}));
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const ev = { type: "external", channelId: null, location: "Discord" };
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: ev }, org))).status).toBe(200);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1], event: ev }, org))).status).toBe(200);
+    const data = (await (await call(jsonReq("GET", `/api/polls/${s.pollId}`, undefined, org))).json()) as { poll: { status: string }; slots: { id: string; fixedAt: number | null; hasEvent: boolean }[] };
+    expect(data.poll.status).toBe("fixed");
+    const fixed = data.slots.filter((x) => x.fixedAt !== null);
+    expect(fixed.map((x) => x.id).sort()).toEqual([s.slotIds[0], s.slotIds[1]].sort());
+    expect(fixed.every((x) => x.hasEvent)).toBe(true);
+  });
+
+  it("主催者は確定を取り消せる。イベントを消し（お知らせはしない）、確定した候補がなくなれば募集中に戻る", async () => {
+    const calls = mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: "700000000000000020" } : {}));
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: { type: "external", channelId: null, location: "Discord" } }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1], event: null }, org));
+
+    expect((await call(jsonReq("DELETE", `/api/polls/${s.pollId}/fix/${s.slotIds[0]}`, undefined, org))).status).toBe(200);
+    expect(calls.some((c) => c.method === "DELETE" && c.path.endsWith("/scheduled-events/700000000000000020"))).toBe(true);
+    expect(calls.some((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)).toBe(false);
+    let poll = await db().prepare("SELECT status FROM polls WHERE id = ?").bind(s.pollId).first<{ status: string }>();
+    expect(poll!.status).toBe("fixed");
+
+    expect((await call(jsonReq("DELETE", `/api/polls/${s.pollId}/fix/${s.slotIds[1]}`, undefined, org))).status).toBe(200);
+    poll = await db().prepare("SELECT status FROM polls WHERE id = ?").bind(s.pollId).first<{ status: string }>();
+    expect(poll!.status).toBe("open");
+    const left = await db().prepare("SELECT COUNT(*) AS n FROM slots WHERE poll_id = ? AND (fixed_at IS NOT NULL OR discord_event_id IS NOT NULL)").bind(s.pollId).first<{ n: number }>();
+    expect(left!.n).toBe(0);
+
+    // 確定していない候補の取り消しは断る
+    expect((await call(jsonReq("DELETE", `/api/polls/${s.pollId}/fix/${s.slotIds[0]}`, undefined, org))).status).toBe(409);
+  });
+
+  it("データの削除時刻は、いちばん遅い確定日時から 6 か月後。確定がなくなれば締切から 6 か月後に戻る", async () => {
+    mockDiscord();
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const rows = await db().prepare("SELECT id, start_at FROM slots WHERE poll_id = ?").bind(s.pollId).all<{ id: string; start_at: number }>();
+    const startOf = new Map(rows.results.map((r) => [r.id, r.start_at]));
+    const purge = async () => (await db().prepare("SELECT purge_after, deadline_at FROM polls WHERE id = ?").bind(s.pollId).first<{ purge_after: number; deadline_at: number }>())!;
+    const RET = 180 * 86400;
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[2], event: null }, org));
+    expect((await purge()).purge_after).toBe(Math.max(startOf.get(s.slotIds[0]!)!, startOf.get(s.slotIds[2]!)!) + RET);
+    await call(jsonReq("DELETE", `/api/polls/${s.pollId}/fix/${s.slotIds[0]}`, undefined, org));
+    await call(jsonReq("DELETE", `/api/polls/${s.pollId}/fix/${s.slotIds[2]}`, undefined, org));
+    const p = await purge();
+    expect(p.purge_after).toBe(p.deadline_at + RET);
+  });
+
+  it("参加者は確定を取り消せない", async () => {
+    mockDiscord();
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org));
+    const alice = await login(s.pollId, ALICE, "participant");
+    expect((await call(jsonReq("DELETE", `/api/polls/${s.pollId}/fix/${s.slotIds[0]}`, undefined, alice))).status).toBe(403);
+  });
+
+  it("調整を削除すると、確定した候補ごとの Discord イベントをすべて削除する", async () => {
+    let n = 0;
+    const calls = mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: `70000000000000003${n++}` } : {}));
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const ev = { type: "external", channelId: null, location: "Discord" };
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: ev }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1], event: ev }, org));
+    expect((await call(jsonReq("DELETE", `/api/polls/${s.pollId}`, undefined, org))).status).toBe(200);
+    const deleted = calls.filter((c) => c.method === "DELETE" && c.path.includes("/scheduled-events/")).map((c) => c.path.split("/").pop());
+    expect(deleted.sort()).toEqual(["700000000000000030", "700000000000000031"]);
   });
 });
 
@@ -410,7 +536,7 @@ describe("確定後の回答の記録", () => {
     const alice = await login(s.pollId, ALICE, "participant");
     await call(jsonReq("PUT", `/api/polls/${s.pollId}/answers/me`, { choicesVersion: 1, answers: [{ slotId: s.slotIds[0], choiceId: s.choiceIds[0] }], comment: null }, alice));
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1], mention: false, event: null }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1], event: null }, org));
     const res = await call(jsonReq("PUT", `/api/polls/${s.pollId}/answers/me`, { choicesVersion: 1, answers: [{ slotId: s.slotIds[1], choiceId: s.choiceIds[0] }], comment: null }, alice));
     expect(res.status).toBe(200);
     const rows = await db().prepare("SELECT slot_id, prev_choice_id FROM answers WHERE poll_id = ? AND user_id = ? ORDER BY slot_id").bind(s.pollId, ALICE).all<{ slot_id: string; prev_choice_id: string | null }>();
@@ -447,7 +573,7 @@ describe("2 回目のレビューの修正", () => {
     const calls = mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: "700000000000000010" } : {}));
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: false, event: { type: "external", channelId: null, location: "Discord" } }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: { type: "external", channelId: null, location: "Discord" } }, org));
     const slots = await db().prepare("SELECT id, start_at, end_at FROM slots WHERE poll_id = ? ORDER BY position").bind(s.pollId).all<{ id: string; start_at: number; end_at: number }>();
     const body = { slots: slots.results.map((x, i) => ({ id: x.id, startAt: i === 0 ? x.start_at + 3600 : x.start_at, endAt: i === 0 ? x.end_at + 3600 : x.end_at, allDay: false })) };
     const res = await call(jsonReq("PUT", `/api/polls/${s.pollId}/slots`, body, org));
@@ -462,7 +588,7 @@ describe("2 回目のレビューの修正", () => {
     const alice = await login(s.pollId, ALICE, "participant");
     await call(jsonReq("PUT", `/api/polls/${s.pollId}/answers/me`, { choicesVersion: 1, answers: [{ slotId: s.slotIds[0], choiceId: s.choiceIds[0] }], comment: null }, alice));
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: false, event: null }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org));
     await call(jsonReq("PUT", `/api/polls/${s.pollId}/answers/me`, { choicesVersion: 1, answers: [], comment: "遅れます" }, alice));
     const p = await db().prepare("SELECT answered_at, comment FROM participants WHERE poll_id = ? AND user_id = ?").bind(s.pollId, ALICE).first<{ answered_at: number | null; comment: string }>();
     expect(p!.answered_at).not.toBeNull();
@@ -513,7 +639,7 @@ describe("3 回目のレビューの修正", () => {
     const calls = mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: "700000000000000011" } : {}));
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: false, event: { type: "external", channelId: null, location: "Discord" } }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: { type: "external", channelId: null, location: "Discord" } }, org));
     expect((await call(jsonReq("DELETE", `/api/polls/${s.pollId}`, {}, org))).status).toBe(200);
     expect(calls.some((c) => c.method === "DELETE" && c.path.endsWith("/scheduled-events/700000000000000011"))).toBe(true);
   });
@@ -593,7 +719,7 @@ describe("7 回目のレビューの修正", () => {
   it("確定後はリマインドできない", async () => {
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: false, event: null }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org));
     expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/remind`, {}, org))).status).toBe(409);
   });
 

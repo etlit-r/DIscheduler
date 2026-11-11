@@ -16,19 +16,17 @@ export interface PollData {
     targetType: "channel" | "role" | "manual";
     targetId: string | null;
     joinPolicy: "closed" | "open";
-    fixedSlotId: string | null;
-    fixedAt: number | null;
     choicesVersion: number;
     updatedAt: number;
     messageUrl: string | null;
     lastSyncedAt: number | null;
     pendingChanges: number | null;
     nextAutoSyncAt: number | null;
-    hasEvent: boolean;
     choicesChangedAt: number | null;
   };
   me: { userId: string; role: Role; isParticipant: boolean; displayName: string | null; comment: string | null; answeredAt: number | null; needsChoicesAck: boolean };
-  slots: { id: string; startAt: number; endAt: number | null; allDay: boolean }[];
+  /** fixedAt: 確定した時刻（未確定なら null。複数の候補を確定できる）。hasEvent: この候補で Discord イベントを登録済みか。announced: 前回の［確定をお知らせする］で確定日として知らせたか */
+  slots: { id: string; startAt: number; endAt: number | null; allDay: boolean; fixedAt: number | null; hasEvent: boolean; announced: boolean }[];
   choices: { id: string; symbol: string; label: string; kind: ChoiceKind; score: number; color: ChoiceColor }[];
   participants: { userId: string; displayName: string; comment: string | null; answeredAt: number | null }[];
   answers: { slotId: string; userId: string; choiceId: string; prevChoiceId: string | null; updatedAt: number }[];

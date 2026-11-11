@@ -3,7 +3,7 @@
 // - 10 時の回: 当日の 11:00〜17:59:59 に始まる予定
 // - 17 時の回: 当日の 18:00〜23:59:59 と、翌日の 0:00〜10:59:59 に始まる予定、翌日の終日の予定
 // Cron は各時刻の 0〜4 分に 1 分おきに 5 回動き、1 回で DAY_REMINDER_MAX_PER_RUN 件まで送る（残りは次の分の回）。
-// 回が過ぎてから確定した予定は、確定のお知らせにリマインドの一文を添える（reminderRunAt。§5.7）。
+// 回が過ぎてから確定した予定は、［確定をお知らせする］のお知らせにリマインドの一文を添える（reminderRunAt。§5.7）。
 import type { Env } from "../core/env";
 import type { PollRow } from "../db";
 import { buildDayReminderMessage } from "../discord/messages";
@@ -80,23 +80,23 @@ export function reminderRunAt(slot: { start_at: number; all_day: number }, timez
   return dayStart + 17 * HOUR;
 }
 
-type Target = Pick<PollRow, "id" | "guild_id" | "channel_id" | "message_id" | "title" | "target_type" | "target_id" | "timezone"> & { start_at: number; all_day: number };
+type Target = Pick<PollRow, "id" | "guild_id" | "channel_id" | "message_id" | "title" | "target_type" | "target_id" | "timezone"> & { slot_id: string; start_at: number; all_day: number };
 
 export async function runDayReminder(env: Env, scheduledTime: number): Promise<void> {
   const w = reminderWindow(scheduledTime);
   if (!w) return;
   const db = env.DB;
-  // 確定した候補が範囲の中で始まり、その日時についてまだ送っていない調整。
+  // 確定した候補が範囲の中で始まり、その日時についてまだ送っていないもの（確定した候補が複数ある調整は、候補ごとに送る）。
   // 終日の予定は広めに読み、調整のタイムゾーンでの日付で絞り込む
   const allDayFrom = w.allDayDate ? Date.parse(`${w.allDayDate}T00:00:00+09:00`) / 1000 - ALL_DAY_BEFORE : 0;
   const allDayTo = w.allDayDate ? allDayFrom + ALL_DAY_BEFORE + ALL_DAY_AFTER + 1 : 0;
   const rows = await db
     .prepare(
-      "SELECT p.id, p.guild_id, p.channel_id, p.message_id, p.title, p.target_type, p.target_id, p.timezone, s.start_at, s.all_day " +
-        "FROM polls p JOIN slots s ON s.id = p.fixed_slot_id " +
-        "WHERE p.status = 'fixed' " +
+      "SELECT s.id AS slot_id, p.id, p.guild_id, p.channel_id, p.message_id, p.title, p.target_type, p.target_id, p.timezone, s.start_at, s.all_day " +
+        "FROM slots s JOIN polls p ON p.id = s.poll_id " +
+        "WHERE p.status = 'fixed' AND s.fixed_at IS NOT NULL " +
         "AND ((s.all_day = 0 AND s.start_at >= ? AND s.start_at < ?) OR (s.all_day = 1 AND s.start_at >= ? AND s.start_at < ?)) " +
-        "AND (p.day_reminded_slot_at IS NULL OR p.day_reminded_slot_at != s.start_at) " +
+        "AND (s.day_reminded_at IS NULL OR s.day_reminded_at != s.start_at) " +
         "ORDER BY s.start_at, p.id LIMIT ?",
     )
     .bind(w.timed.from, w.timed.to, allDayFrom, allDayTo, DAY_REMINDER_MAX_PER_RUN + 1)
@@ -110,8 +110,8 @@ export async function runDayReminder(env: Env, scheduledTime: number): Promise<v
   for (const t of targets) {
     // 送る前に権利を取る。Cron が重なっても、同じ確定日時には 1 回だけ送る。送信に失敗しても戻さない
     const claimed = await db
-      .prepare("UPDATE polls SET day_reminded_slot_at = ? WHERE id = ? AND (day_reminded_slot_at IS NULL OR day_reminded_slot_at != ?)")
-      .bind(t.start_at, t.id, t.start_at)
+      .prepare("UPDATE slots SET day_reminded_at = ? WHERE id = ? AND (day_reminded_at IS NULL OR day_reminded_at != ?)")
+      .bind(t.start_at, t.slot_id, t.start_at)
       .run();
     if (claimed.meta.changes !== 1) continue;
     try {
