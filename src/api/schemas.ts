@@ -35,6 +35,9 @@ export const PatchPollBody = v.strictObject({
   deadlineAt: v.optional(epoch),
   timezone: v.optional(v.pipe(v.string(), v.maxLength(64))),
   timezoneAuto: v.optional(v.boolean()),
+  // 予定のリマインド（§5.7）: 当日（0）か前日（1）の何時（0〜23）に送るか
+  remindDayOffset: v.optional(v.picklist([0, 1])),
+  remindHour: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(23))),
   members: v.optional(v.picklist(["auto", "manual"])),
   roleId: v.optional(v.nullable(snowflake)),
   joinPolicy: v.optional(v.picklist(["closed", "open"])),
@@ -102,7 +105,6 @@ export const AnswersBody = v.strictObject({
 
 export const FixBody = v.strictObject({
   slotId: id,
-  mention: v.boolean(),
   event: v.nullable(
     v.strictObject({
       type: v.picklist(["voice", "external"]),
@@ -110,4 +112,9 @@ export const FixBody = v.strictObject({
       location: v.nullable(singleLine(100)),
     }),
   ),
+});
+
+/** 確定のお知らせ（確定日と取り消しをまとめて投稿する。§4.3） */
+export const AnnounceBody = v.strictObject({
+  mention: v.boolean(),
 });

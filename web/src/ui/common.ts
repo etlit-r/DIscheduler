@@ -1,6 +1,7 @@
 // 画面共通の部品
 import { ApiError, request, type PollData } from "../lib/api";
 import { h, notice, render } from "../lib/dom";
+import { donationNote } from "../../../src/shared/text";
 import { DEFAULT_TIMEZONE, formatDateTime, formatSlot, isValidTimeZone, zoneAbbr, type SlotTime } from "../../../src/shared/time";
 
 const TZ_KEY = "dis.viewerTz";
@@ -263,6 +264,18 @@ export function showError(err: unknown, kind: PageKind = "link"): void {
   );
 }
 
+/** 完了の画面に置く寄付リンクの 1 行と、支援サービスの説明（§6.10）。寄付リンクがなければ null */
+export function donationLine(url: string | null): HTMLElement | null {
+  if (!url) return null;
+  const note = donationNote(url);
+  return h(
+    "div",
+    { class: "donation-line" },
+    h("p", {}, "DIscheduler は無料で運営しています。役に立ったら ", h("a", { href: url, rel: "noopener noreferrer" }, "運営を支援する"), "（任意です。支援の有無で機能は変わりません）"),
+    note ? h("p", { class: "muted small" }, note) : null,
+  );
+}
+
 let donationFromError: string | null = null;
 export function rememberDonation(url: string | null): void {
   donationFromError = url;
@@ -350,11 +363,10 @@ export function syncPanel(d: PollData, reload: () => void): HTMLElement | null {
 
 export function statusBanner(d: PollData): HTMLElement | null {
   const tz = viewerTimeZone();
-  if (d.poll.status === "fixed" && d.poll.fixedSlotId) {
-    const s = d.slots.find((x) => x.id === d.poll.fixedSlotId);
-    if (!s) return null;
-    const t = slotText(s, d.poll.timezone, tz);
-    return notice("ok", h("strong", {}, `${t.main} に確定しています。`), " 予定が変わった場合は回答を変更してください。");
+  const fixed = d.slots.filter((x) => x.fixedAt !== null);
+  if (d.poll.status === "fixed" && fixed.length) {
+    const when = fixed.map((s) => slotText(s, d.poll.timezone, tz).main).join("、");
+    return notice("ok", h("strong", {}, `${when} に確定しています。`), " 予定が変わった場合は回答を変更してください。");
   }
   if (d.poll.status === "closed") return notice("info", "締切を過ぎています。回答の入力・変更はできます。");
   if (d.poll.status === "draft") return notice("info", "この調整はまだ公開されていません。");
