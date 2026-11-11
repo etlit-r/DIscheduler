@@ -1,4 +1,5 @@
 // Cron（1 日 2 回: UTC 4 時・16 時 = 日本時間 13 時・1 時。docs/design.md §3.2, §5.5, §7.4）
+// UTC 1:00〜1:04・8:00〜8:04（日本時間 10:00〜10:04・17:00〜17:04）の回は、予定のリマインド（§5.7）だけを行う
 import type { Env } from "../core/env";
 import { deletePolls } from "../db";
 import { syncCommands } from "../discord/commands";
@@ -6,6 +7,7 @@ import { discord } from "../discord/rest";
 import { nowSec } from "../core/lib";
 import { RETENTION } from "../polls/create";
 import { syncNow } from "../polls/sync";
+import { runDayReminder } from "./day-reminder";
 
 /**
  * D1 は無料プランだと、1 回の実行（invocation）で問い合わせられる回数が 50 回まで。
@@ -13,8 +15,8 @@ import { syncNow } from "../polls/sync";
  * - 募集メッセージの更新 1 件: 3 文（最終更新時刻の読み込み・更新権利の取得・調整と関連データの読み込み）、失敗時 +2
  * - 共通: 締切の処理 1、更新対象の検索 1、コマンドの確認 1〜2
  * - 削除（日本時間 1 時の回だけ）: 期限切れのトークンなど 3、期限切れの調整 7、
- *   外されたサーバーの検索 1、外されたサーバーの削除 8（サーバーの数によらず）
- * 13 時の回: 2 + 8 × 5（失敗しても）+ 2 = 44 文まで。1 時の回: 2 + 4 × 5 + 19 + 2 = 43 文まで。
+ *   サーバー数の通知の確認 1〜2、外されたサーバーの検索 1、外されたサーバーの削除 8（サーバーの数によらず）
+ * 13 時の回: 2 + 8 × 5（失敗しても）+ 2 = 44 文まで。1 時の回: 2 + 4 × 5 + 21 + 2 = 45 文まで。
  * 残った分は、次の Cron・回答の保存・主催者の［今すぐ更新］で反映される。
  */
 const MAX_SYNC_PER_RUN = 8;
@@ -22,10 +24,14 @@ const MAX_SYNC_PER_RUN = 8;
 const MAX_SYNC_ON_CLEANUP_RUN = 4;
 /** Bot が入っているサーバーの一覧を読むページ数の上限（200 件 × 10 = 2000 サーバー） */
 const MAX_GUILD_PAGES = 10;
+/** Bot が入っているサーバーの数がこれを超えたら、運営者に通知する（§14） */
+export const GUILD_ALERT_THRESHOLD = 75;
 
 export async function runCron(env: Env, scheduledTime: number): Promise<void> {
-  const now = nowSec();
   const hourUtc = new Date(scheduledTime).getUTCHours();
+  // 日本時間 10 時台・17 時台の回は、予定のリマインドだけ（送る数に 1 回あたりの上限を使うため、ほかの処理はしない）
+  if (hourUtc === 1 || hourUtc === 8) return runDayReminder(env, scheduledTime);
+  const now = nowSec();
   const isCleanupRun = hourUtc === 16; // 日本時間 1 時
   const maxSync = isCleanupRun ? MAX_SYNC_ON_CLEANUP_RUN : MAX_SYNC_PER_RUN;
 
@@ -58,6 +64,54 @@ export async function runCron(env: Env, scheduledTime: number): Promise<void> {
   await syncCommands(env, { force: true }).catch((e) => console.error(JSON.stringify({ event: "commands_sync_failed", error: String(e) })));
 }
 
+/**
+ * サーバーの数が GUILD_ALERT_THRESHOLD を超えたら、ALERT_WEBHOOK_URL に 1 回だけ通知する。
+ * 通知したことは meta に残し、数が目安以下に戻ったら消す（また超えたら、もう一度通知する）
+ */
+async function alertGuildCount(env: Env, count: number): Promise<void> {
+  // 通知の失敗（D1・Discord のエラー）で、外されたサーバーのデータの削除が止まらないよう、ここで受け止める
+  try {
+    const db = env.DB;
+    const KEY = "guild_alert_sent";
+    if (count <= GUILD_ALERT_THRESHOLD) {
+      await db.prepare("DELETE FROM meta WHERE key = ?").bind(KEY).run();
+      return;
+    }
+    const sent = await db.prepare("SELECT value FROM meta WHERE key = ?").bind(KEY).first<{ value: string }>();
+    if (sent) return;
+    const hook = parseWebhookUrl(env.ALERT_WEBHOOK_URL);
+    if (!hook) {
+      console.error(JSON.stringify({ event: "guild_alert_skipped", reason: env.ALERT_WEBHOOK_URL ? "bad_webhook_url" : "no_webhook_url", count }));
+      return;
+    }
+    await discord(env, "POST", `/webhooks/${hook.id}/${hook.token}`, {
+      content: `DIscheduler の Bot が入っているサーバーが ${count} になりました（通知の目安: ${GUILD_ALERT_THRESHOLD}）。`,
+      allowed_mentions: { parse: [] },
+    }, { auth: "none" });
+    await db.prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(KEY, String(count)).run();
+  } catch (e) {
+    console.error(JSON.stringify({ event: "guild_alert_failed", error: e instanceof Error ? e.message : "unknown" }));
+  }
+}
+
+/**
+ * Discord の Webhook の URL から ID とトークンを取り出す。discord.com・discordapp.com と、
+ * PTB・Canary の版のアドレス、API の版（/api/v10/…）、末尾の「/」やクエリ（?wait=true など）を受け付ける
+ */
+export function parseWebhookUrl(raw: string | undefined): { id: string; token: string } | null {
+  if (!raw) return null;
+  let u: URL;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  const hosts = ["discord.com", "ptb.discord.com", "canary.discord.com", "discordapp.com", "ptb.discordapp.com", "canary.discordapp.com"];
+  if (u.protocol !== "https:" || !hosts.includes(u.hostname)) return null;
+  const m = /^\/api(?:\/v\d+)?\/webhooks\/(\d{17,20})\/([A-Za-z0-9_-]{20,100})\/?$/.exec(u.pathname);
+  return m ? { id: m[1]!, token: m[2]! } : null;
+}
+
 async function cleanup(env: Env, now: number): Promise<void> {
   const db = env.DB;
   await db.batch([
@@ -87,6 +141,9 @@ async function cleanup(env: Env, now: number): Promise<void> {
       }
       after = batch[batch.length - 1]!.id;
     }
+    // サーバーの数を毎日ログに残し、上限の目安を超えたら運営者に通知する（一覧を読み切れなくても、数は少なくともこれだけある）
+    console.log(JSON.stringify({ event: "guild_count", count: guilds.size, complete }));
+    await alertGuildCount(env, guilds.size);
     // 一覧を最後まで読めなかったときは、まだ使っているサーバーのデータを消さないよう削除しない
     if (!complete) {
       console.error(JSON.stringify({ event: "guild_check_skipped", reason: "guild_list_incomplete", read: guilds.size }));

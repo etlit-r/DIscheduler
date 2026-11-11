@@ -25,6 +25,7 @@ export interface PollRow {
   last_synced_at: number | null;
   last_reminded_at: number | null;
   publishing_at: number | null;
+  day_reminded_slot_at: number | null;
   choices_changed_at: number | null;
   created_at: number;
   updated_at: number;
@@ -231,6 +232,13 @@ export async function hitRateLimit(db: D1Database, key: string, limit: number, w
     .bind(k, windowStart + windowSec)
     .first<{ count: number }>();
   return (row?.count ?? 1) <= limit;
+}
+
+/** レート制限の残りがあるかだけを確かめる（数えない）。成功したときだけ hitRateLimit で数えたいときに使う */
+export async function rateLimitAllows(db: D1Database, key: string, limit: number, windowSec: number, now: number): Promise<boolean> {
+  const windowStart = Math.floor(now / windowSec) * windowSec;
+  const row = await db.prepare("SELECT count FROM rate_limits WHERE key = ?").bind(`${key}:${windowStart}`).first<{ count: number }>();
+  return (row?.count ?? 0) < limit;
 }
 
 /** 残り時間（秒）を知るために、レート制限のウィンドウの終わりを返す */
