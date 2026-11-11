@@ -1079,6 +1079,7 @@ DIscheduler/
 │   │   └── cron.ts           #   1 日 2 回の Cron
 │   ├── db/                   # D1 クエリ（プリペアドステートメントのみ）・レート制限
 │   └── shared/               # Worker と Web 画面で共有（集計・タイムゾーン・文字列の検証）
+├── branding/                 # Discord のアプリアイコン・Bot のアバター（app-icon.svg と、そこから作った 1024×1024 の app-icon.png）
 ├── ads/                      # 広告の枠だけを配信する別の Worker（discheduler-ads。§6.10.1）
 │   ├── wrangler.jsonc
 │   └── public/               # frame.html（広告の枠）と _headers
@@ -1193,6 +1194,7 @@ flowchart LR
 **Discord**（初回のデプロイと Bot トークンの登録のあと）
 1. Developer Portal の「General Information」で、Interactions Endpoint URL に `https://<プロジェクト名>.pages.dev/discord/interactions` を入れて保存する。保存時の PING を受けた Pages が `/schedule`・`/poll` を自動で登録する。
 2. 「Bot」で Server Members Intent をオンにする（参加者の自動設定に必要）。
+3. 「General Information」の「App Icon」と、「Bot」の「Icon」に `branding/app-icon.png`（1024×1024。ファビコンと同じデザイン）を設定する。コマンドの入力欄の横や Bot のアバターに表示される。Discord は円形に切り抜くので、元の `branding/app-icon.svg` は背景を正方形いっぱいにし、カレンダーを中央に小さめに置いている。
 
 **GitHub**（リポジトリの Settings → Environments → `production`）
 
