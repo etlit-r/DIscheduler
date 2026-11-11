@@ -1,5 +1,5 @@
 // Cron（1 日 2 回: UTC 4 時・16 時 = 日本時間 13 時・1 時。docs/design.md §3.2, §5.5, §7.4）
-// UTC 10:00〜10:04（日本時間 19:00〜19:04）の回は、当日のリマインド（§5.7）だけを行う
+// UTC 1:00〜1:04・8:00〜8:04（日本時間 10:00〜10:04・17:00〜17:04）の回は、予定のリマインド（§5.7）だけを行う
 import type { Env } from "../core/env";
 import { deletePolls } from "../db";
 import { syncCommands } from "../discord/commands";
@@ -29,8 +29,8 @@ export const GUILD_ALERT_THRESHOLD = 75;
 
 export async function runCron(env: Env, scheduledTime: number): Promise<void> {
   const hourUtc = new Date(scheduledTime).getUTCHours();
-  // 日本時間 19 時台の回は、当日のリマインドだけ（送る数に 1 回あたりの上限を使うため、ほかの処理はしない）
-  if (hourUtc === 10) return runDayReminder(env, scheduledTime);
+  // 日本時間 10 時台・17 時台の回は、予定のリマインドだけ（送る数に 1 回あたりの上限を使うため、ほかの処理はしない）
+  if (hourUtc === 1 || hourUtc === 8) return runDayReminder(env, scheduledTime);
   const now = nowSec();
   const isCleanupRun = hourUtc === 16; // 日本時間 1 時
   const maxSync = isCleanupRun ? MAX_SYNC_ON_CLEANUP_RUN : MAX_SYNC_PER_RUN;

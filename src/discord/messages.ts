@@ -109,12 +109,17 @@ export function buildAnnounceMessage(poll: Pick<PollRow, "title" | "target_type"
 }
 
 /**
- * 当日のリマインド（§5.7）。メンションは公開時のお知らせと同じ。
+ * 予定のリマインド（§5.7）。当日の予定は「今日」、翌日の予定は「明日」と書く。メンションは公開時のお知らせと同じ。
  * 募集メッセージがあれば、その返信にしてリンクも添える
  */
-export function buildDayReminderMessage(poll: Pick<PollRow, "title" | "target_type" | "target_id" | "guild_id" | "channel_id" | "message_id">, startAt: number) {
+export function buildDayReminderMessage(
+  poll: Pick<PollRow, "title" | "target_type" | "target_id" | "guild_id" | "channel_id" | "message_id">,
+  when: { startAt: number; allDay: boolean; isTomorrow: boolean },
+) {
   const link = poll.message_id ? `\n${messageLink(poll.guild_id, poll.channel_id, poll.message_id)}` : "";
-  const text = `**${escapeMarkdown(poll.title ?? "日程調整")}** は今日 <t:${startAt}:t> からです。${link}`;
+  const day = when.isTomorrow ? "明日" : "今日";
+  const time = when.allDay ? `${day}です（終日）。` : `${day} <t:${when.startAt}:t> からです。`;
+  const text = `**${escapeMarkdown(poll.title ?? "日程調整")}** は${time}${link}`;
   return withPollMention(poll, text, poll.message_id);
 }
 
