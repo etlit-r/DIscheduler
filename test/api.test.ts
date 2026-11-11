@@ -235,6 +235,57 @@ describe("主催者だけの操作", () => {
     expect(poll!.deadline_at).toBeGreaterThan(Date.now() / 1000 + 6 * 86400);
   });
 
+  it("ロールのない調整は、チェックしなければ公開してもメンションしない", async () => {
+    const calls = mockDiscord((c) => (c.method === "POST" ? { id: "600000000000000001" } : {}));
+    const s = await seedPoll({ status: "draft", messageId: null, deadlineAt: null });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, {}, org))).status).toBe(200);
+    const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`);
+    expect(posts.length).toBe(1);
+    expect(JSON.stringify(posts[0]!.body)).not.toContain(`<@${ALICE}>`);
+  });
+
+  it("ロールのない調整は、主催者がチェックしたときだけ @everyone でお知らせする", async () => {
+    const calls = mockDiscord((c) => (c.method === "POST" ? { id: "600000000000000001" } : {}));
+    const s = await seedPoll({ status: "draft", messageId: null, deadlineAt: null });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, { mentionEveryone: true }, org))).status).toBe(200);
+    const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`);
+    expect(posts.length).toBe(2);
+    const announce = posts[1]!.body as { content: string; allowed_mentions: unknown; message_reference: unknown };
+    expect(announce.content).toContain("の募集を始めました。");
+    expect(announce.content).toContain("@everyone");
+    expect(announce.content).not.toContain(`<@${ALICE}>`);
+    expect(announce.allowed_mentions).toEqual({ parse: ["everyone"], replied_user: false });
+    expect(announce.message_reference).toEqual({ message_id: "600000000000000001", fail_if_not_exists: false });
+  });
+
+  it("ロールが対象の調整は、公開するとそのロールをメンションする", async () => {
+    const calls = mockDiscord((c) => (c.method === "POST" ? { id: "600000000000000001" } : {}));
+    const s = await seedPoll({ status: "draft", messageId: null, deadlineAt: null });
+    await db().prepare("UPDATE polls SET target_type = 'role', target_id = '400000000000000077' WHERE id = ?").bind(s.pollId).run();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    // ロールの調整では、@everyone の指定があってもロールだけをメンションする
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, { mentionEveryone: true }, org))).status).toBe(200);
+    const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`);
+    expect(posts.length).toBe(2);
+    const announce = posts[1]!.body as { content: string; allowed_mentions: unknown };
+    expect(announce.content).toContain("<@&400000000000000077>");
+    expect(announce.content).not.toContain("@everyone");
+    expect(announce.content).not.toContain(`<@${ALICE}>`);
+    expect(announce.allowed_mentions).toEqual({ parse: [], roles: ["400000000000000077"], replied_user: false });
+  });
+
+  it("お知らせの投稿に失敗しても、公開は済ませる", async () => {
+    let n = 0;
+    mockDiscord((c) => (c.method === "POST" ? (n++ === 0 ? { id: "600000000000000001" } : new Response("{}", { status: 403 })) : {}));
+    const s = await seedPoll({ status: "draft", messageId: null, deadlineAt: null });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, { mentionEveryone: true }, org))).status).toBe(200);
+    const poll = await db().prepare("SELECT status FROM polls WHERE id = ?").bind(s.pollId).first<{ status: string }>();
+    expect(poll!.status).toBe("open");
+  });
+
   it("手動更新は 1 分に 1 回まで", async () => {
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
@@ -261,7 +312,8 @@ describe("主催者だけの操作", () => {
       call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, {}, org)),
     ]);
     expect([a.status, b.status].sort()).toEqual([200, 409]);
-    expect(calls.filter((c) => c.method === "POST" && c.path.endsWith("/messages")).length).toBe(1);
+    // 募集のお知らせ（メンション）は数えず、募集メッセージ（埋め込みつき）だけを数える
+    expect(calls.filter((c) => c.method === "POST" && c.path.endsWith("/messages") && (c.body as { embeds?: unknown }).embeds).length).toBe(1);
   });
 
   it("投稿に失敗したら、もう一度公開できる", async () => {

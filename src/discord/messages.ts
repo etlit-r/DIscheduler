@@ -98,6 +98,20 @@ export function buildMentionMessage(text: string, userIds: string[]) {
   };
 }
 
+/**
+ * 募集を始めたお知らせ（§5.5）。募集メッセージへの返信として、募集メッセージとは別に投稿する。
+ * 参加者をロールで決めた調整はそのロールを、それ以外は主催者が許可したときだけ @everyone をメンションする（security-design E-3）。
+ * どちらでもなければ投稿しない（null）
+ */
+export function buildAnnounceMessage(poll: Pick<PollRow, "title" | "target_type" | "target_id">, mentionEveryone: boolean, pollMessageId: string) {
+  const text = `**${escapeMarkdown(poll.title ?? "日程調整")}** の募集を始めました。募集メッセージの［回答する］から入力できます。`;
+  const reply = { message_reference: { message_id: pollMessageId, fail_if_not_exists: false } };
+  const roleId = poll.target_type === "role" && poll.target_id && /^\d{17,20}$/.test(poll.target_id) ? poll.target_id : null;
+  if (roleId) return { content: `${text}\n<@&${roleId}>`, allowed_mentions: { parse: [] as string[], roles: [roleId], replied_user: false }, ...reply };
+  if (mentionEveryone) return { content: `${text}\n@everyone`, allowed_mentions: { parse: ["everyone"], replied_user: false }, ...reply };
+  return null;
+}
+
 export function messageLink(guildId: string, channelId: string, messageId: string): string {
   return `https://discord.com/channels/${guildId}/${channelId}/${messageId}`;
 }

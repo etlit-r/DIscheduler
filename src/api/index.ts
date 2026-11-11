@@ -34,7 +34,7 @@ import {
   type SessionRow,
 } from "../db";
 import { fetchMember, searchMembers } from "../discord/members";
-import { buildDeletedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink } from "../discord/messages";
+import { buildAnnounceMessage, buildDeletedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink } from "../discord/messages";
 import { discord, DiscordError, type DiscordChannel, type DiscordRole } from "../discord/rest";
 import { AppError, DAY, floorToMinute, nowSec, randomId, timingSafeEqual } from "../core/lib";
 import { DEFAULT_DEADLINE_DAYS, resetParticipants, RETENTION } from "../polls/create";
@@ -43,7 +43,7 @@ import { isValidTimeZone, nextCronAt } from "../shared/time";
 import { isValidDonationUrl } from "../shared/text";
 import { getRecentTimes, mergeRanges, rangesFromSlots, saveRecentTimesStatement } from "../guilds/recent-times";
 import { syncAfterAnswer, syncNow } from "../polls/sync";
-import { AnswersBody, ChoicesBody, FixBody, OpenPollBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
+import { AnswersBody, ChoicesBody, FixBody, OpenPollBody, ParticipantsBody, PatchPollBody, PublishBody, SessionBody, SlotsBody } from "./schemas";
 
 type Vars = { session: SessionRow; poll: PollRow };
 type C = Context<{ Bindings: Env; Variables: Vars }>;
@@ -527,12 +527,14 @@ async function postPollMessage(
 
 polls.post("/:id/publish", async (c) => {
   requireOrganizer(c);
+  const body = await readJson(c, PublishBody);
   const { poll } = c.var;
   const db = c.env.DB;
   const now = nowSec();
   if (poll.status !== "draft") throw new AppError(409, "published", "この調整はすでに公開されています。");
   if (!poll.title) throw new AppError(400, "no_title", "タイトルを入力してください。");
   const deadlineAt = poll.deadline_at && poll.deadline_at > now ? poll.deadline_at : floorToMinute(now + DEFAULT_DEADLINE_DAYS * DAY);
+  let posted: { messageId: string; data: PollWithData } | null = null;
   await postPollMessage(c.env, poll.id, now, {
     draftOnly: true,
     prepare: (data) => {
@@ -540,7 +542,8 @@ polls.post("/:id/publish", async (c) => {
       if (data.participants.length === 0) throw new AppError(400, "no_participants", "参加者を 1 人以上入れてください。");
       return { ...data, poll: { ...data.poll, status: "open", deadline_at: deadlineAt }, answers: [] };
     },
-    afterPost: async (messageId) => {
+    afterPost: async (messageId, data) => {
+      posted = { messageId, data };
       await db
         .prepare(
           // publishing_at は postPollMessage の finally で外す
@@ -551,6 +554,13 @@ polls.post("/:id/publish", async (c) => {
         .run();
     },
   });
+  // 募集を始めたことを、ロールか @everyone（主催者が許可したときだけ）へのメンションで知らせる（§5.5）。
+  // 投稿し直しのときは知らせない。失敗しても公開そのものは済んでいるので、エラーにはしない
+  if (posted) {
+    const { messageId, data } = posted as { messageId: string; data: PollWithData };
+    const msg = buildAnnounceMessage(data.poll, body.mentionEveryone === true, messageId);
+    if (msg) await discord(c.env, "POST", `/channels/${data.poll.channel_id}/messages`, msg).catch(() => undefined);
+  }
   return c.json({ ok: true, redirect: `/p/${poll.id}/done?kind=published` });
 });
 
