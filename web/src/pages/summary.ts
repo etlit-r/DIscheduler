@@ -114,7 +114,6 @@ export async function summaryPage(pollId: string): Promise<void> {
       "details",
       { class: "card" },
       h("summary", {}, "メンバー別に表示"),
-      h("p", { class: "muted small" }, "参加者全員が、全員の回答とひとことを見られます。"),
       h("div", { class: "table-wrap matrix" }, h("table", { class: "data" }, h("thead", {}, matrixHead), matrixBody)),
     );
 
