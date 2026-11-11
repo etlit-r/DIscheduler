@@ -23,6 +23,9 @@ export interface PollData {
     pendingChanges: number | null;
     nextAutoSyncAt: number | null;
     choicesChangedAt: number | null;
+    /** 予定のリマインドを当日（0）か前日（1）の何時（remindHour。調整のタイムゾーン）に送るか（§5.7） */
+    remindDayOffset: number;
+    remindHour: number;
   };
   me: { userId: string; role: Role; isParticipant: boolean; displayName: string | null; comment: string | null; answeredAt: number | null; needsChoicesAck: boolean };
   /** fixedAt: 確定した時刻（未確定なら null。複数の候補を確定できる）。hasEvent: この候補で Discord イベントを登録済みか。announced: 前回の［確定をお知らせする］で確定日として知らせたか */

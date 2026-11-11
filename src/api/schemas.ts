@@ -35,6 +35,9 @@ export const PatchPollBody = v.strictObject({
   deadlineAt: v.optional(epoch),
   timezone: v.optional(v.pipe(v.string(), v.maxLength(64))),
   timezoneAuto: v.optional(v.boolean()),
+  // 予定のリマインド（§5.7）: 当日（0）か前日（1）の何時（0〜23）に送るか
+  remindDayOffset: v.optional(v.picklist([0, 1])),
+  remindHour: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(23))),
   members: v.optional(v.picklist(["auto", "manual"])),
   roleId: v.optional(v.nullable(snowflake)),
   joinPolicy: v.optional(v.picklist(["closed", "open"])),

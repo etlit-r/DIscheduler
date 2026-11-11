@@ -64,6 +64,8 @@ export async function editPage(pollId: string): Promise<void> {
   let tz = d.poll.timezone;
   let tzChanged = false;
   let joinPolicy = d.poll.joinPolicy;
+  let remindDayOffset = d.poll.remindDayOffset;
+  let remindHour = d.poll.remindHour;
   let deadlineLocal = d.poll.deadlineAt ? toLocalInput(d.poll.deadlineAt, tz) : "";
   let slots: SlotDraft[] = d.slots.map((s) => ({ ...s }));
   let slotsChanged = false;
@@ -92,6 +94,28 @@ export async function editPage(pollId: string): Promise<void> {
   const choicesLocked = d.poll.status === "closed" || d.poll.status === "fixed";
   const answerCount = (choiceId: string) => d.answers.filter((a) => a.choiceId === choiceId).length;
 
+  /** 予定のリマインドの日時（§5.7）。確定した日時ごとに、その日か前日の決めた時刻にチャンネルへ知らせる */
+  function reminderSection(): HTMLElement {
+    const daySel = h(
+      "select",
+      { id: "remind-day", onChange: () => (remindDayOffset = Number(daySel.value)) },
+      h("option", { value: "0", selected: remindDayOffset === 0 }, "予定の当日"),
+      h("option", { value: "1", selected: remindDayOffset === 1 }, "予定の前日"),
+    );
+    const hourSel = h("select", { id: "remind-hour", aria: { label: "リマインドする時刻" }, onChange: () => (remindHour = Number(hourSel.value)) });
+    for (let i = 0; i < 24; i++) hourSel.appendChild(h("option", { value: String(i), selected: remindHour === i }, `${i}:00`));
+    return h(
+      "section",
+      { class: "card" },
+      h("div", { class: "field" }, h("label", { for: "remind-day" }, `予定のリマインド（${tz}）`), h("div", { class: "field-inline" }, daySel, hourSel)),
+      h(
+        "p",
+        { class: "muted small" },
+        "日時を確定すると、確定した日時ごとに、ここで決めた日時にチャンネルへリマインドを投稿します。予定が始まったあとになる日時には投稿しません（例: 当日 17:00 にすると、17:00 より前に始まる予定には投稿しません）。",
+      ),
+    );
+  }
+
   async function reloadAll(msg?: HTMLElement) {
     d = await loadPoll(pollId);
     slots = d.slots.map((s) => ({ ...s }));
@@ -106,7 +130,7 @@ export async function editPage(pollId: string): Promise<void> {
   async function save(): Promise<string[]> {
     // 公開後はタイトルを空にできない（募集メッセージの見出しになるため）
     if (!isDraft && !title.trim()) throw new Error("タイトルを入力してください。公開後はタイトルを空にできません。");
-    const patch: Record<string, unknown> = { description: description.trim() ? description : null, joinPolicy };
+    const patch: Record<string, unknown> = { description: description.trim() ? description : null, joinPolicy, remindDayOffset, remindHour };
     if (title.trim()) patch.title = title.trim();
     if (tzChanged) patch.timezone = tz;
     // 締切は変えたときだけ送る（過ぎた締切をそのまま送ると、保存全体が止まってしまうため）
@@ -719,6 +743,7 @@ export async function editPage(pollId: string): Promise<void> {
           h("div", { class: "field" }, h("label", { for: "deadline" }, `締切（${tz}）`), deadlineIn),
           h("p", { class: "muted small" }, isDraft ? "締切は目安です。未入力なら公開から 7 日後になります。締切を過ぎても回答の入力・変更はできます。" : "締切は目安です。締切を過ぎても回答の入力・変更はできます。"),
         ),
+        reminderSection(),
         h(
           "div",
           { class: "row row-end sticky-actions" },

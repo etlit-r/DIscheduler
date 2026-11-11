@@ -2,7 +2,7 @@
 import { loadPoll, request, type PollData } from "../lib/api";
 import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, STATUS_LABEL, statusBanner, syncPanel, viewerTimeZone, errorText } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
-import { bestSlotId, compareSlots, tally, UNANSWERED } from "../../../src/shared/model";
+import { bestSlotId, compareSlots, reminderAt, tally, UNANSWERED } from "../../../src/shared/model";
 
 export async function summaryPage(pollId: string): Promise<void> {
   let data: PollData;
@@ -68,6 +68,7 @@ export async function summaryPage(pollId: string): Promise<void> {
             isFixed ? h("span", { class: "badge badge-fixed" }, "確定") : s.id === best ? h("span", { class: "star", aria: { label: "最有力候補" } }, "★ ") : null,
             st.main,
             st.sub ? h("span", { class: "slot-sub" }, st.sub) : null,
+            isFixed ? h("span", { class: "slot-sub" }, reminderLabel(d, s, tz)) : null,
             changed.length
               ? h(
                   "span",
@@ -210,6 +211,14 @@ export async function summaryPage(pollId: string): Promise<void> {
   }
 
   draw();
+}
+
+/** 確定した日時のリマインドの予定（§5.7） */
+function reminderLabel(d: PollData, s: PollData["slots"][number], tz: string): string {
+  const at = reminderAt(s, d.poll.timezone, d.poll.remindDayOffset, d.poll.remindHour);
+  if (at !== null) return `リマインド: ${dateTimeText(at, tz)}`;
+  // 既定（当日の 17 時）だと朝や昼の予定には送られないので、主催者には変え方を添える
+  return d.me.role === "organizer" ? "リマインド: なし（予定が始まったあとになるため。作成画面で「予定の前日」などに変えられます）" : "リマインド: なし";
 }
 
 function fixPanel(d: PollData, slotId: string, cancel: () => void, done: (m: HTMLElement) => void): HTMLElement {

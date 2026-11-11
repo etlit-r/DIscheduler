@@ -37,12 +37,11 @@ import {
   type SessionRow,
 } from "../db";
 import { fetchMember, searchMembers } from "../discord/members";
-import { reminderRunAt } from "../jobs/day-reminder";
 import { buildAnnounceMessage, buildDeletedMessage, buildFixedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink } from "../discord/messages";
 import { discord, DiscordError, type DiscordChannel, type DiscordRole } from "../discord/rest";
 import { AppError, DAY, floorToMinute, nowSec, randomId, timingSafeEqual } from "../core/lib";
 import { DEFAULT_DEADLINE_DAYS, resetParticipants, RETENTION } from "../polls/create";
-import { canAnswer, effectiveStatus, LIMITS, UNANSWERED } from "../shared/model";
+import { canAnswer, effectiveStatus, LIMITS, reminderAt, UNANSWERED } from "../shared/model";
 import { isValidTimeZone, nextCronAt } from "../shared/time";
 import { isValidDonationUrl } from "../shared/text";
 import { getRecentTimes, mergeRanges, rangesFromSlots, saveRecentTimesStatement } from "../guilds/recent-times";
@@ -199,6 +198,8 @@ polls.get("/:id", async (c) => {
       pendingChanges: pending,
       nextAutoSyncAt: isOrganizer ? nextCronAt(now) : null,
       choicesChangedAt: poll.choices_changed_at,
+      remindDayOffset: poll.remind_day_offset,
+      remindHour: poll.remind_hour,
     },
     me: {
       userId: session.user_id,
@@ -263,6 +264,14 @@ polls.patch("/:id", async (c) => {
       sets.push("timezone = ?", "timezone_set = ?");
       binds.push(body.timezone, body.timezoneAuto ? 0 : 1);
     }
+  }
+  if (body.remindDayOffset !== undefined) {
+    sets.push("remind_day_offset = ?");
+    binds.push(body.remindDayOffset);
+  }
+  if (body.remindHour !== undefined) {
+    sets.push("remind_hour = ?");
+    binds.push(body.remindHour);
   }
   if (body.joinPolicy !== undefined) {
     sets.push("join_policy = ?");
@@ -749,7 +758,11 @@ polls.post("/:id/announce", async (c) => {
   }
   // 予定のリマインド（§5.7）を送る回がもう過ぎていて、予定がまだ先なら、このお知らせがリマインドを兼ねる。
   // 開始までの時間を添え、あとの回で同じ日時に重ねて送らないよう記録する
-  const late = fixed.filter((s) => s.start_at > now && s.day_reminded_at !== s.start_at && reminderRunAt(s, poll.timezone) <= now);
+  const late = fixed.filter((s) => {
+    if (s.start_at <= now || s.day_reminded_at === s.start_at) return false;
+    const at = reminderAt({ startAt: s.start_at, allDay: s.all_day === 1 }, poll.timezone, poll.remind_day_offset, poll.remind_hour);
+    return at !== null && at <= now;
+  });
   const lateIds = new Set(late.map((s) => s.id));
   const message = buildFixedMessage(
     poll,
