@@ -146,3 +146,16 @@ export async function getListSession(db: D1Database, guildId: string, sid: strin
 export function listSessionCookie(guildId: string, sid: string): string {
   return `${listCookieName(guildId)}=${sid}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${SESSION_TTL}`;
 }
+
+/**
+ * 使えなかったリンクの種類を調べる（期限切れ・使用済みのときに、新しいリンクの受け取り方を案内するため）。
+ * 期限切れの記録は毎日 1 時の Cron で消えるので、見つからないこともある
+ */
+export async function lookupLinkKind(db: D1Database, token: string): Promise<"answer" | "view" | "edit" | "list" | null> {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
+  const hash = await sha256Hex(token);
+  const link = await db.prepare("SELECT purpose FROM link_tokens WHERE token_hash = ?").bind(hash).first<{ purpose: "answer" | "view" | "edit" }>();
+  if (link) return link.purpose;
+  const list = await db.prepare("SELECT 1 AS ok FROM list_tokens WHERE token_hash = ?").bind(hash).first<{ ok: number }>();
+  return list ? "list" : null;
+}

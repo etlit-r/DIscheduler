@@ -1,6 +1,6 @@
 // S4: 集計・確定（docs/design.md §6.5）
 import { loadPoll, request, type PollData } from "../lib/api";
-import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, STATUS_LABEL, statusBanner, syncPanel, viewerTimeZone } from "../ui/common";
+import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, STATUS_LABEL, statusBanner, syncPanel, viewerTimeZone, errorText } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
 import { bestSlotId, compareSlots, tally, UNANSWERED } from "../../../src/shared/model";
 
@@ -9,7 +9,7 @@ export async function summaryPage(pollId: string): Promise<void> {
   try {
     data = await loadPoll(pollId);
   } catch (e) {
-    return showError(e);
+    return showError(e, "summary");
   }
   rememberDonation(data.donationUrl);
   let sortByScore = false;
@@ -22,7 +22,7 @@ export async function summaryPage(pollId: string): Promise<void> {
       message = msg ?? null;
       draw();
     } catch (e) {
-      showError(e);
+      showError(e, "summary");
     }
   };
   mountViewerTzSwitch(() => draw());
@@ -173,7 +173,7 @@ export async function summaryPage(pollId: string): Promise<void> {
             const r = await request<{ count: number }>("POST", `/api/polls/${d.poll.id}/remind`, {});
             done(notice("ok", `${r.count} 名にリマインドしました。`));
           } catch (e) {
-            done(notice("error", e instanceof Error ? e.message : "リマインドできませんでした。"));
+            done(notice("error", errorText(e, "summary", "リマインドできませんでした。")));
           }
         },
       },
@@ -230,7 +230,7 @@ function fixPanel(d: PollData, slotId: string, cancel: () => void): HTMLElement 
           }
           window.location.assign(r.redirect);
         } catch (e) {
-          status.textContent = e instanceof Error ? e.message : "確定できませんでした。";
+          status.textContent = errorText(e, "summary", "確定できませんでした。");
           submit.disabled = false;
         }
       },

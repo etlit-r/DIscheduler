@@ -9,7 +9,7 @@ export async function linkPage(): Promise<void> {
   history.replaceState(null, "", "/l");
   if (!m) {
     // エラー表示（showError）は ApiError だけを受け付けるので、ApiError で渡す
-    showError(new ApiError(401, "bad_link", "リンクが正しくないか、一部が欠けています。Discord のボタンからもう一度リンクを開いてください。"));
+    showError(new ApiError(401, "bad_link", "リンクが正しくないか、一部が欠けています。"));
     return;
   }
   try {

@@ -11,6 +11,7 @@ import {
   getListSession,
   getSession,
   listCookieName,
+  lookupLinkKind,
   listSessionCookie,
   readCookie,
   sessionCookie,
@@ -96,7 +97,19 @@ api.post("/session", async (c) => {
       return c.json({ redirect: `/g/${list.guild_id}/polls` });
     }
   }
-  if (!link) throw new AppError(401, "link_expired", "リンクの有効期限が切れているか、すでに使われています。Discord からもう一度リンクを開いてください。");
+  if (!link) {
+    // リンクの種類に合わせて、新しいリンクの受け取り方を案内する（Discord に残っている前のリンクを開き直さないように）
+    const kind = await lookupLinkKind(c.env.DB, body.token);
+    const how =
+      kind === "answer"
+        ? "チャンネルの募集メッセージの［回答する］を、もう一度押してください。"
+        : kind === "view"
+          ? "チャンネルの募集メッセージの［集計を見る］を、もう一度押してください。"
+          : kind === "edit" || kind === "list"
+            ? "Discord でもう一度 /schedule を実行し、［作成した調整を管理］を押して、新しいリンクを受け取ってください。"
+            : "参加者はチャンネルの募集メッセージの［回答する］または［集計を見る］を、主催者は Discord で /schedule を実行して［作成した調整を管理］を、もう一度押してください。";
+    throw new AppError(401, "link_expired", `リンクの有効期限が切れているか、すでに使われています。前に届いたリンクはもう使えません。${how}`);
+  }
   const poll = await getPoll(c.env.DB, link.poll_id);
   if (!poll || poll.status === "cancelled") throw new AppError(404, "not_found", "この調整は削除されました。");
   if (link.role === "participant" && !(await getParticipant(c.env.DB, poll.id, link.user_id))) {
@@ -120,7 +133,7 @@ async function loadSession(c: C, next: () => Promise<void>) {
   if (!/^[A-Za-z0-9_-]{22}$/.test(id)) throw new AppError(404, "not_found", "調整が見つかりません。");
   const sid = readCookie(c.req.header("Cookie") ?? null, sessionCookieName(id));
   const session = sid ? await getSession(c.env.DB, id, sid) : null;
-  if (!session) throw new AppError(401, "no_session", "リンクの有効期限が切れています。Discord からもう一度リンクを開いてください。");
+  if (!session) throw new AppError(401, "no_session", "リンクの有効期限が切れています。前に届いたリンクはもう使えません。");
   // GET /:id は、調整と関連データをハンドラで 1 文で読むので、ここでは読まない（同じ行を 2 回読まないため）
   const isDetail = c.req.method === "GET" && /^\/api\/polls\/[A-Za-z0-9_-]{22}\/?$/.test(c.req.path);
   const poll = isDetail ? null : await getPoll(c.env.DB, id);
