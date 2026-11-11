@@ -729,7 +729,7 @@ export async function editPage(pollId: string): Promise<void> {
                   h("h1", {}, "調整を削除しました"),
                   h("p", {}, "データはすべて削除されました。"),
                   ...(r.warnings ?? []).map((w) => notice("warn", w)),
-                  h("p", {}, h("a", { href: "/" }, "DIscheduler の案内へ")),
+                  h("p", {}, h("a", { href: "/manual/" }, "DIscheduler のマニュアルへ")),
                 ),
               );
             }),
