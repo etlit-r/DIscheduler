@@ -77,7 +77,7 @@ export async function handleInteraction(env: Env, ctx: Ctx, i: Interaction, orig
 
   ctx.waitUntil(syncCommands(env).catch(() => undefined));
 
-  if (i.type === 2 && (i.data?.name === "schedule" || i.data?.name === "poll")) {
+  if (i.type === 2 && (i.data?.name === "schedule" || i.data?.name === "di")) {
     background(env, ctx, i, () => handleCreate(env, i, origin, guildId, channelId, userId));
     return deferred();
   }
@@ -88,6 +88,7 @@ export async function handleInteraction(env: Env, ctx: Ctx, i: Interaction, orig
     if (id === "settings" || id === "settings_mode" || id === "settings_role") {
       return handleSettings(env, i, id, guildId, userId);
     }
+    // 以前の［このチャンネルの調整］ボタン（すでに送ったメッセージに残っている分）にも応える
     if (id === "list") {
       background(env, ctx, i, () => handleList(env, i, guildId, channelId));
       return deferred();
@@ -168,12 +169,11 @@ function isAdmin(i: Interaction): boolean {
 
 function menuRow(admin: boolean) {
   const buttons: unknown[] = [
-    { type: 2, style: 2, label: "このチャンネルの調整", custom_id: "list" },
     { type: 2, style: 2, label: "作成した調整を管理", custom_id: "manage" },
     { type: 2, style: 2, label: "使い方", custom_id: "help" },
   ];
   // サーバー管理の権限がある人にだけ、既定値の設定を出す（§5.3.1）
-  if (admin) buttons.push({ type: 2, style: 2, label: "サーバーの既定値", custom_id: "settings" });
+  if (admin) buttons.push({ type: 2, style: 2, label: "サーバー既定値の設定", custom_id: "settings" });
   return [{ type: 1, components: buttons }];
 }
 
@@ -304,7 +304,7 @@ async function handleManage(env: Env, i: Interaction, origin: string, guildId: s
 export function helpText(origin: string): string {
   return [
     "**DIscheduler の使い方**",
-    "1. チャンネルで `/schedule`（または `/poll`）と入力して実行します。",
+    "1. チャンネルで `/schedule`（または `/di`）と入力して実行します。",
     "2. 届いたリンクから、タイトルと候補日時を入力して公開します。",
     "3. 参加者は募集メッセージの［回答する］から、候補ごとに選択肢を選んで保存します。",
     "4. 主催者は集計画面で日時を確定します。Discord のイベントとしても登録できます。",
@@ -312,7 +312,7 @@ export function helpText(origin: string): string {
     "・入力リンクは本人専用で、10 分有効・1 回限りです。他の人に渡さないでください。",
     "・回答はその調整の参加者同士で共有され、参加者以外には見えません。",
     "・サーバー管理者は「サーバー設定 → 連携サービス → DIscheduler」で、コマンドを使えるチャンネルを指定できます。",
-    "・サーバー管理者は `/schedule` の［サーバーの既定値］で、参加者の決め方（チャンネル・ロール・手動）の既定値を決められます。",
+    "・サーバー管理者は `/schedule` の［サーバー既定値の設定］で、参加者の決め方（チャンネル・ロール・手動）の既定値を決められます。",
     "",
     `案内: ${origin}/`,
     `マニュアル: ${origin}/manual/`,
