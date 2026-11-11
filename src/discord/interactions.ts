@@ -43,8 +43,10 @@ function linkButton(label: string, url: string) {
   return { type: 2, style: 5, label, url };
 }
 
-async function editOriginal(env: Env, i: Interaction, content: string, components: unknown[] = []): Promise<void> {
-  await discord(env, "PATCH", `/webhooks/${i.application_id}/${i.token}/messages/@original`, { content, components, allowed_mentions: NO_MENTIONS }, { auth: "none" });
+/** mentionUser を渡したときは、その人へのメンションだけを有効にする（本人にだけ見える応答で、本人を強調するため） */
+async function editOriginal(env: Env, i: Interaction, content: string, components: unknown[] = [], mentionUser?: string): Promise<void> {
+  const allowed_mentions = mentionUser ? { parse: [] as string[], users: [mentionUser] } : NO_MENTIONS;
+  await discord(env, "PATCH", `/webhooks/${i.application_id}/${i.token}/messages/@original`, { content, components, allowed_mentions }, { auth: "none" });
 }
 
 /** 応答後の処理。失敗しても利用者に理由を伝える */
@@ -156,6 +158,10 @@ async function handleCreate(env: Env, i: Interaction, origin: string, guildId: s
     result.reused ? "作成途中の日程調整の下書きがあります。" : "新しい日程調整の下書きを作りました。",
     "［調整を作成する］から、タイトルや候補日時を入力して公開してください（リンクは 10 分有効・1 回限り。他の人に渡さないでください）。",
   ];
+  // 参加者をロールで決めていなければ、ロールの指定をすすめる（公開時と予定のリマインドの通知が、ロールにだけ届くため。§5.5、§5.7）
+  if (result.targetType !== "role") {
+    lines.push("", "💡 参加者はロールで決めるのがおすすめです。公開したときと予定のリマインドで、そのロールのメンバーにだけ通知が届きます（ロールがないと @everyone で通知します）。作成画面の「参加者」か、`/schedule` の `role` で選べます。");
+  }
   if (result.notice) lines.push("", `⚠️ ${result.notice}`);
   await editOriginal(env, i, lines.join("\n"), [
     { type: 1, components: [linkButton("調整を作成する", url)] },
@@ -254,8 +260,10 @@ async function handlePollButton(
   await editOriginal(
     env,
     i,
-    `「${escapeMarkdown(poll.title ?? "日程調整")}」のあなた専用のリンクです（10 分有効・1 回限り）。他の人に渡さないでください。${note ? `\n${note}` : ""}`,
+    // 応答に気づきやすくするため、押した本人をメンションする（本人にだけ見える応答なので、ほかの人には見えない）
+    `<@${userId}> 「${escapeMarkdown(poll.title ?? "日程調整")}」のあなた専用のリンクです（10 分有効・1 回限り）。他の人に渡さないでください。${note ? `\n${note}` : ""}`,
     [{ type: 1, components: [linkButton(label, url)] }],
+    userId,
   );
 }
 

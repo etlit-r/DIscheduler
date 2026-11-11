@@ -2,6 +2,7 @@
 // 個人ごとの回答は載せず、候補ごとの「参加できる」区分の人数と回答率だけを出す。
 import type { ChoiceRow, ParticipantRow, PollRow, SlotRow, AnswerRow } from "../db";
 import { bestSlotId, effectiveStatus, tally } from "../shared/model";
+import { formatDate } from "../shared/time";
 
 /** Discord の Markdown として解釈される記号をエスケープする */
 export function escapeMarkdown(s: string): string {
@@ -97,6 +98,57 @@ export function buildMentionMessage(text: string, userIds: string[]) {
     content: `${text}\n${ids.map((id) => `<@${id}>`).join(" ")}`.slice(0, 2000),
     allowed_mentions: { parse: [] as string[], users: ids },
   };
+}
+
+/**
+ * 募集を始めたお知らせ（§5.5）。募集メッセージへの返信として、募集メッセージとは別に投稿する。
+ * 参加者をロールで決めた調整はそのロールを、それ以外は @everyone をメンションする（security-design E-3）。
+ * Bot に「@everyone、@here、全てのロールにメンション」の権限がないサーバーでは、@everyone は文字だけが出て通知されない
+ */
+export function buildAnnounceMessage(poll: Pick<PollRow, "title" | "target_type" | "target_id">, pollMessageId: string) {
+  const text = `**${escapeMarkdown(poll.title ?? "日程調整")}** の募集を始めました。募集メッセージの［回答する］から入力できます。`;
+  return withPollMention(poll, text, pollMessageId);
+}
+
+/**
+ * 予定のリマインド（§5.7）。日付で書く。時刻のある予定は Discord のタイムスタンプ記法（見る人のタイムゾーンで日付と時刻を表示）、
+ * 終日の予定は調整のタイムゾーンでの日付（例: 11/7(土)）。メンションは公開時のお知らせと同じ。
+ * 募集メッセージがあれば、その返信にしてリンクも添える
+ */
+export function buildDayReminderMessage(
+  poll: Pick<PollRow, "title" | "target_type" | "target_id" | "guild_id" | "channel_id" | "message_id">,
+  when: { startAt: number; allDay: boolean; timezone: string },
+) {
+  const link = poll.message_id ? `\n${messageLink(poll.guild_id, poll.channel_id, poll.message_id)}` : "";
+  const time = when.allDay ? `${formatDate(when.startAt, when.timezone)} です（終日）。` : `<t:${when.startAt}:f> からです。`;
+  const text = `**${escapeMarkdown(poll.title ?? "日程調整")}** は ${time}${link}`;
+  return withPollMention(poll, text, poll.message_id);
+}
+
+/**
+ * 確定のお知らせ（§4.3）。いま確定している日時と、前回のお知らせのあとに取り消した日時をまとめて書く。
+ * mention のときは、公開時のお知らせ（§5.5）と同じく、参加者をロールで決めた調整はそのロールを、それ以外は @everyone をメンションする
+ */
+export function buildFixedMessage(
+  poll: Pick<PollRow, "title" | "target_type" | "target_id">,
+  fixed: readonly { when: string; note: string | null }[],
+  cancelled: readonly string[],
+  mention: boolean,
+) {
+  const lines = [`**${escapeMarkdown(poll.title ?? "日程調整")}** の日程のお知らせ`];
+  if (fixed.length) lines.push("確定した日時:", ...fixed.map((f) => `・${f.when}${f.note ? `（${f.note}）` : ""}`));
+  else lines.push("確定している日時はありません。");
+  if (cancelled.length) lines.push("確定を取り消した日時:", ...cancelled.map((w) => `・~~${w}~~`));
+  const text = lines.join("\n");
+  return mention ? withPollMention(poll, text, null) : { content: text, allowed_mentions: { parse: [] as string[] } };
+}
+
+/** 参加者をロールで決めた調整はそのロールを、それ以外は @everyone を、本文の最後の行でメンションする（security-design E-3） */
+function withPollMention(poll: Pick<PollRow, "target_type" | "target_id">, text: string, replyTo: string | null) {
+  const reply = replyTo ? { message_reference: { message_id: replyTo, fail_if_not_exists: false } } : {};
+  const roleId = poll.target_type === "role" && poll.target_id && /^\d{17,20}$/.test(poll.target_id) ? poll.target_id : null;
+  if (roleId) return { content: `${text}\n<@&${roleId}>`, allowed_mentions: { parse: [] as string[], roles: [roleId], replied_user: false }, ...reply };
+  return { content: `${text}\n@everyone`, allowed_mentions: { parse: ["everyone"], replied_user: false }, ...reply };
 }
 
 export function messageLink(guildId: string, channelId: string, messageId: string): string {

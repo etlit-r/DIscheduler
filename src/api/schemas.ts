@@ -102,7 +102,6 @@ export const AnswersBody = v.strictObject({
 
 export const FixBody = v.strictObject({
   slotId: id,
-  mention: v.boolean(),
   event: v.nullable(
     v.strictObject({
       type: v.picklist(["voice", "external"]),
@@ -110,4 +109,9 @@ export const FixBody = v.strictObject({
       location: v.nullable(singleLine(100)),
     }),
   ),
+});
+
+/** 確定のお知らせ（確定日と取り消しをまとめて投稿する。§4.3） */
+export const AnnounceBody = v.strictObject({
+  mention: v.boolean(),
 });
