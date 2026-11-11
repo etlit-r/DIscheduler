@@ -77,7 +77,7 @@ export async function handleInteraction(env: Env, ctx: Ctx, i: Interaction, orig
 
   ctx.waitUntil(syncCommands(env).catch(() => undefined));
 
-  if (i.type === 2 && (i.data?.name === "schedule" || i.data?.name === "poll")) {
+  if (i.type === 2 && (i.data?.name === "schedule" || i.data?.name === "di")) {
     background(env, ctx, i, () => handleCreate(env, i, origin, guildId, channelId, userId));
     return deferred();
   }
@@ -304,7 +304,7 @@ async function handleManage(env: Env, i: Interaction, origin: string, guildId: s
 export function helpText(origin: string): string {
   return [
     "**DIscheduler の使い方**",
-    "1. チャンネルで `/schedule`（または `/poll`）と入力して実行します。",
+    "1. チャンネルで `/schedule`（または `/di`）と入力して実行します。",
     "2. 届いたリンクから、タイトルと候補日時を入力して公開します。",
     "3. 参加者は募集メッセージの［回答する］から、候補ごとに選択肢を選んで保存します。",
     "4. 主催者は集計画面で日時を確定します。Discord のイベントとしても登録できます。",
