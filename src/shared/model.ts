@@ -1,6 +1,7 @@
 // Worker と Web 画面で共有する型・定数・集計ロジック
 // （docs/design.md §6.9 回答の選択肢、§6.9.3 集計と最有力候補）
 
+import { epochToZoned, zonedToEpoch } from "./time";
 export type ChoiceKind = "ok" | "maybe" | "ng";
 export type ChoiceColor = "green" | "teal" | "yellow" | "orange" | "red" | "gray";
 export type PollStatus = "draft" | "open" | "closed" | "fixed" | "cancelled";
@@ -173,4 +174,19 @@ export function effectiveStatus(status: PollStatus, deadlineAt: number | null, n
 /** 回答を入力・変更できる状態か（§4.2） */
 export function canAnswer(status: PollStatus): boolean {
   return status === "open" || status === "closed" || status === "fixed";
+}
+
+/** 予定のリマインドの既定（当日の 17 時。§5.7） */
+export const DEFAULT_REMIND = { dayOffset: 0, hour: 17 } as const;
+
+/**
+ * 確定した日時のリマインドを送る時刻（UNIX 秒。§5.7）。
+ * 予定の日付（調整のタイムゾーン）の dayOffset 日前の hour 時。予定が始まってから（終日の予定はその日が終わってから）になるなら null（送らない）
+ */
+export function reminderAt(slot: { startAt: number; allDay: boolean }, tz: string, dayOffset: number, hour: number): number | null {
+  const p = epochToZoned(slot.startAt, tz);
+  const d = new Date(Date.UTC(p.year, p.month - 1, p.day - dayOffset));
+  const at = zonedToEpoch(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), hour, 0, tz);
+  const limit = slot.allDay ? slot.startAt + 24 * 3600 : slot.startAt;
+  return at < limit ? at : null;
 }

@@ -1,5 +1,5 @@
 // Cron（1 日 2 回: UTC 4 時・16 時 = 日本時間 13 時・1 時。docs/design.md §3.2, §5.5, §7.4）
-// UTC 1:00〜1:04・8:00〜8:04（日本時間 10:00〜10:04・17:00〜17:04）の回は、予定のリマインド（§5.7）だけを行う
+// 毎時 0〜4 分の Cron（REMINDER_CRON）は、予定のリマインド（§5.7）だけを行う
 import type { Env } from "../core/env";
 import { deletePolls } from "../db";
 import { syncCommands } from "../discord/commands";
@@ -7,7 +7,7 @@ import { discord } from "../discord/rest";
 import { nowSec } from "../core/lib";
 import { RETENTION } from "../polls/create";
 import { syncNow } from "../polls/sync";
-import { runDayReminder } from "./day-reminder";
+import { REMINDER_CRON, runDayReminder } from "./day-reminder";
 
 /**
  * D1 は無料プランだと、1 回の実行（invocation）で問い合わせられる回数が 50 回まで。
@@ -27,10 +27,10 @@ const MAX_GUILD_PAGES = 10;
 /** Bot が入っているサーバーの数がこれを超えたら、運営者に通知する（§14） */
 export const GUILD_ALERT_THRESHOLD = 75;
 
-export async function runCron(env: Env, scheduledTime: number): Promise<void> {
+export async function runCron(env: Env, scheduledTime: number, cron = ""): Promise<void> {
+  // 予定のリマインドの Cron は、リマインドだけ（送る数に 1 回あたりの上限を使うため、ほかの処理はしない）
+  if (cron === REMINDER_CRON) return runDayReminder(env, scheduledTime);
   const hourUtc = new Date(scheduledTime).getUTCHours();
-  // 日本時間 10 時台・17 時台の回は、予定のリマインドだけ（送る数に 1 回あたりの上限を使うため、ほかの処理はしない）
-  if (hourUtc === 1 || hourUtc === 8) return runDayReminder(env, scheduledTime);
   const now = nowSec();
   const isCleanupRun = hourUtc === 16; // 日本時間 1 時
   const maxSync = isCleanupRun ? MAX_SYNC_ON_CLEANUP_RUN : MAX_SYNC_PER_RUN;
