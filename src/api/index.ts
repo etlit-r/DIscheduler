@@ -834,7 +834,14 @@ guilds.use("/:guildId/*", async (c: LC, next) => {
   if (!/^\d{17,20}$/.test(guildId)) throw new AppError(404, "not_found", "見つかりません。");
   const sid = readCookie(c.req.header("Cookie") ?? null, listCookieName(guildId));
   const list = sid ? await getListSession(c.env.DB, guildId, sid) : null;
-  if (!list) throw new AppError(401, "no_session", "リンクの有効期限が切れています。Discord の［自分の調整を管理］からもう一度開いてください。");
+  // 前に届いたリンクは使えないので、Discord に残っているリンクを開き直さないよう、作り直す手順を伝える
+  if (!list) {
+    throw new AppError(
+      401,
+      "list_session_expired",
+      "一覧ページの有効期限が切れています。前に届いたリンクはもう使えません。Discord でもう一度 /schedule を実行し、［自分の調整を管理］を押して、新しいリンクを受け取ってください。",
+    );
+  }
   if (c.req.method !== "GET") {
     const token = c.req.header("X-CSRF-Token") ?? "";
     if (!timingSafeEqual(token, list.csrf_token)) throw new AppError(403, "bad_csrf", "不正なリクエストです。画面を再読み込みしてください。");

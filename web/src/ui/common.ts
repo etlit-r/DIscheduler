@@ -92,7 +92,10 @@ export function showError(err: unknown): void {
       { class: "card error-card" },
       h("h1", {}, freeTier ? "本日の無料枠を超えました" : e.status === 401 || e.status === 404 ? "ページを開けません" : "エラーが発生しました"),
       h("p", {}, e.message),
-      e.status === 401 ? h("p", { class: "muted" }, "Discord の募集メッセージの［回答する］［集計を見る］、または /schedule の［自分の調整を管理］から、もう一度リンクを開いてください。") : null,
+      // 一覧ページ（主催者）の期限切れは、サーバーのメッセージで作り直す手順を伝えるので、参加者向けの案内は出さない
+      e.status === 401 && e.code !== "list_session_expired"
+        ? h("p", { class: "muted" }, "Discord の募集メッセージの［回答する］［集計を見る］から、もう一度リンクを開いてください。")
+        : null,
       freeTier && donationFromError ? h("p", {}, "運営を支援していただけると、有料プランへの切り替えを検討できます: ", h("a", { href: donationFromError, rel: "noopener noreferrer" }, "運営を支援する")) : null,
       h("p", {}, h("a", { href: "/" }, "DIscheduler の案内へ")),
     ),
