@@ -129,7 +129,11 @@ describe("募集メッセージのボタン", () => {
       await signed({ type: 3, id: "9", application_id: "1", token: "tok", guild_id: GUILD, channel_id: CHANNEL, member: member(ALICE), data: { custom_id: `answer:${s.pollId}` } }),
       e(),
     );
-    expect(JSON.stringify(calls.find((c) => c.path.includes("/messages/@original"))!.body)).toContain("/l#t=");
+    const body = calls.find((c) => c.path.includes("/messages/@original"))!.body as { content: string; allowed_mentions: unknown };
+    expect(JSON.stringify(body)).toContain("/l#t=");
+    // 応答に気づきやすくするため、押した本人だけをメンションする
+    expect(body.content.startsWith(`<@${ALICE}> `)).toBe(true);
+    expect(body.allowed_mentions).toEqual({ parse: [], users: [ALICE] });
   });
 
   it("join_policy=open なら、チャンネルを見られる人を参加者に追加する", async () => {
