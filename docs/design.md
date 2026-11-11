@@ -185,6 +185,12 @@ sequenceDiagram
    - 募集メッセージを「確定: <t:UNIX:F>」に編集し、参加者へメンション付きでお知らせを投稿（メンション有無は選択可）
    - Guild Scheduled Event を作成（権限がなければスキップし、その旨を主催者に表示）
 4. 主催者の画面は S7（確定完了）に移る。
+5. **1 つの調整で、複数の候補を確定できる**（例: 2 日に分けて開催する）。ほかの候補を確定しても、確定済みの候補はそのまま残る。確定した時刻と Discord イベントは候補ごとに持つ（`slots.fixed_at`・`slots.discord_event_id`。§7.2）。
+6. **確定の取り消し**: 主催者は S4 の［確定を取り消す］で、確定した候補を 1 つずつ取り消せる（`DELETE /api/polls/{id}/fix/{slotId}`）。Worker は
+   - その候補の Discord イベントを削除する（すでに消えていれば何もしない）
+   - その候補の「確定後に変更」の記録（`answers.prev_choice_id`）を消す
+   - 募集メッセージを更新し、チャンネルに「確定を取り消しました」とお知らせを投稿する（メンションはしない）
+   - 確定した候補がなくなったら、ステータスを `open` に戻す（締切を過ぎていれば締切後として表示する）。データの削除時刻も締切から 6 ヶ月後に戻す（§9）
 
 ### 4.4 コマンドとボタン
 
@@ -524,7 +530,8 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
   - ［今すぐ更新］: 押すとその場で募集メッセージを更新し、最終更新時刻を書き換える。未反映の回答がなくても押せる（締切を過ぎた表示への切り替えなど、回答以外の理由でメッセージが古いことがあるため）。Discord の API の回数制限を守るため、同じ調整で 1 分に 1 回まで（サーバー側でも制限）。
   - S2 の上部にも最終更新時刻と［今すぐ更新］を置く。
 - [確定] と [リマインド] は主催者にのみ表示（サーバー側でも認可）。確定すると S7（確定完了）に移る（§4.3）。
-- 確定後に回答を変更した人がいれば、確定した候補の行に「確定後に変更: @a（○→×、11/10 21:05）」のように表示する。Discord への通知はしない（通知が増えすぎないようにするため）。主催者は必要なら確定をやり直せる（もう一度 [確定] を押すと、確定日時・募集メッセージ・Discord イベントを更新する）。
+- 確定後に回答を変更した人がいれば、確定した候補の行に「確定後に変更: @a（○→×、11/10 21:05）」のように表示する。変更は候補ごとに、その候補を確定した時点から数える。Discord への通知はしない（通知が増えすぎないようにするため）。主催者は必要なら確定をやり直せる（確定済みの候補の［確定し直す］で、お知らせの投稿と Discord イベントの登録・更新をやり直す）。
+- 確定した候補は複数にできる（§4.3）。確定していない候補には［確定］、確定済みの候補には［確定し直す］と［確定を取り消す］を、日時の下に並べる（狭い画面でも横にスクロールせずに押せるように）。［確定を取り消す］は確認のダイアログを出してから取り消す。
 - 確定し直すときに「Discord イベント」のチェックを外すと、登録済みのイベントは削除する（古い日時のイベントが残らないようにするため）。
 - 確定した候補の日時を S2 で変えたときは、登録済みの Discord イベントの日時も合わせて変える。
 - 調整を削除したときは、登録済みの Discord イベントも削除する。
@@ -750,9 +757,9 @@ CREATE TABLE polls (
                   CHECK (status IN ('draft','open','closed','fixed','cancelled')),
   deadline_at     INTEGER,                   -- UNIX 秒 (UTC)。未指定なら公開時に「公開から 7 日後」を入れる
                                              -- 締切を過ぎたかは画面・API で deadline_at と現在時刻から判定する（status の closed への変更は 1 日 2 回の Cron なので待たない）
-  fixed_slot_id   TEXT,
-  fixed_at        INTEGER,                   -- 確定した時刻。これより後の回答変更を S4 で「確定後に変更」と表示する
-  discord_event_id TEXT,
+  fixed_slot_id   TEXT,                      -- 使わない（0008 で slots に移した。古い Worker のために列だけ残す）
+  fixed_at        INTEGER,                   -- 使わない（同上）
+  discord_event_id TEXT,                     -- 使わない（同上）
   choices_version INTEGER NOT NULL DEFAULT 1, -- 選択肢を変更するたびに +1（§6.9.4）
   last_synced_at  INTEGER,                   -- 募集メッセージ最終更新（主催者の画面に表示。§6.5）
   last_reminded_at INTEGER,                  -- リマインドの最終実行（12 時間に 1 回まで）
@@ -774,6 +781,8 @@ CREATE TABLE slots (
   end_at    INTEGER,                         -- NULL = 終了時刻なし
   all_day   INTEGER NOT NULL DEFAULT 0,
   position  INTEGER NOT NULL,
+  fixed_at  INTEGER,                         -- 確定した時刻（NULL = 未確定）。これより後の回答変更を S4 で「確定後に変更」と表示する（§4.3）
+  discord_event_id TEXT,                     -- この候補で登録した Discord イベント
   UNIQUE (poll_id, start_at, end_at)
 );
 
@@ -896,7 +905,7 @@ CREATE TABLE rate_limits (
 |------|---------------------|
 | `draft`（未公開） | 作成から 3 日後 |
 | `open` / `closed` | 締切から 6 ヶ月（180 日）後 |
-| `fixed` | 確定日時から 6 ヶ月（180 日）後 |
+| `fixed` | 確定日時から 6 ヶ月（180 日）後（複数の候補を確定したときは、いちばん遅い確定日時から） |
 | `cancelled` | 即時 |
 | link_tokens / sessions / list_tokens / list_sessions / rate_limits | 期限切れ後、日本時間 1 時の Cron で削除（list_tokens・list_sessions は、Bot がサーバーから外されたときも削除） |
 | guild_settings（サーバーの既定値） | Bot がサーバーから外されたとき（日本時間 1 時の Cron で検知して削除） |
@@ -925,7 +934,8 @@ CREATE TABLE rate_limits (
 | PUT | `/api/polls/{id}/participants` | セッション(主催者) + CSRF | 参加者の追加・削除 |
 | POST | `/api/polls/{id}/publish` | セッション(主催者) + CSRF | 公開し募集メッセージ投稿 |
 | PUT | `/api/polls/{id}/answers/me` | セッション(参加者) + CSRF | 自分の回答を保存（状態が `open`・`closed`・`fixed` のとき。§4.2） |
-| POST | `/api/polls/{id}/fix` | セッション(主催者) + CSRF | 確定（イベント登録オプション） |
+| POST | `/api/polls/{id}/fix` | セッション(主催者) + CSRF | 候補を確定（イベント登録オプション）。確定済みの候補は残す（複数を確定できる） |
+| DELETE | `/api/polls/{id}/fix/{slotId}` | セッション(主催者) + CSRF | 確定の取り消し（Discord イベントの削除、取り消しのお知らせ） |
 | POST | `/api/polls/{id}/remind` | セッション(主催者) + CSRF | 未回答者リマインド |
 | POST | `/api/polls/{id}/repost` | セッション(主催者) + CSRF | 募集メッセージを投稿し直す（削除されたときなど。1 分に 1 回まで。§5.5） |
 | POST | `/api/polls/{id}/choices-ack` | セッション(参加者) + CSRF | 「選択肢が変更されました」を確認した（§6.9.4） |

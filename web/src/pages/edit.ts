@@ -328,8 +328,7 @@ export async function editPage(pollId: string): Promise<void> {
     for (const s of slots) {
       const hasAnswers = s.id !== null && d.answers.some((a) => a.slotId === s.id);
       // 確定した候補（保存済みで id が一致するもの）は削除できないので、× を出さない。
-      // 未保存の候補（id が null）を、未確定の調整（fixedSlotId が null）の確定候補と取り違えないよう id があるときだけ比べる
-      const isFixed = s.id !== null && s.id === d.poll.fixedSlotId;
+      const isFixed = s.id !== null && d.slots.some((x) => x.id === s.id && x.fixedAt !== null);
       list.appendChild(
         h(
           "li",
