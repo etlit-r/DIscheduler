@@ -64,7 +64,7 @@ export async function answerPage(pollId: string): Promise<void> {
     for (const s of d.slots) {
       const st = slotText(s, d.poll.timezone, tz);
       const tt = t.get(s.id)!;
-      const isFixed = s.id === d.poll.fixedSlotId;
+      const isFixed = s.fixedAt !== null;
       const group = h("div", { class: "choice-group", role: "radiogroup", aria: { label: `${st.main} の回答` } });
       for (const c of d.choices) {
         const selected = draft.get(s.id) === c.id;

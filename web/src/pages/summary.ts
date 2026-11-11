@@ -1,8 +1,8 @@
 // S4: 集計・確定（docs/design.md §6.5）
 import { loadPoll, request, type PollData } from "../lib/api";
-import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, STATUS_LABEL, statusBanner, syncPanel, viewerTimeZone, errorText } from "../ui/common";
+import { choiceMark, dateTimeText, donationLine, mountViewerTzSwitch, rememberDonation, showError, slotText, STATUS_LABEL, statusBanner, syncPanel, viewerTimeZone, errorText } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
-import { bestSlotId, compareSlots, tally, UNANSWERED } from "../../../src/shared/model";
+import { bestSlotId, compareSlots, reminderAt, tally, UNANSWERED } from "../../../src/shared/model";
 
 export async function summaryPage(pollId: string): Promise<void> {
   let data: PollData;
@@ -49,13 +49,13 @@ export async function summaryPage(pollId: string): Promise<void> {
     const canFix = isOrganizer && (d.poll.status === "open" || d.poll.status === "closed" || d.poll.status === "fixed");
 
     // 候補ごとの集計表
-    const head = h("tr", {}, h("th", { scope: "col" }, "候補"), ...d.choices.map((c) => h("th", { scope: "col" }, choiceMark(c))), h("th", { scope: "col" }, "未回答"), canFix ? h("th", { scope: "col" }, h("span", { class: "visually-hidden" }, "操作")) : null);
+    const head = h("tr", {}, h("th", { scope: "col" }, "候補"), ...d.choices.map((c) => h("th", { scope: "col" }, choiceMark(c))), h("th", { scope: "col" }, "未回答"));
     const body = h("tbody");
     for (const s of order) {
       const tt = t.get(s.id)!;
       const st = slotText(s, d.poll.timezone, tz);
-      const isFixed = s.id === d.poll.fixedSlotId;
-      const changed = isFixed && d.poll.fixedAt
+      const isFixed = s.fixedAt !== null;
+      const changed = isFixed
         ? d.answers.filter((a) => a.slotId === s.id && a.prevChoiceId !== null && a.prevChoiceId !== a.choiceId)
         : [];
       body.appendChild(
@@ -68,6 +68,7 @@ export async function summaryPage(pollId: string): Promise<void> {
             isFixed ? h("span", { class: "badge badge-fixed" }, "確定") : s.id === best ? h("span", { class: "star", aria: { label: "最有力候補" } }, "★ ") : null,
             st.main,
             st.sub ? h("span", { class: "slot-sub" }, st.sub) : null,
+            isFixed ? h("span", { class: "slot-sub" }, reminderLabel(d, s, tz)) : null,
             changed.length
               ? h(
                   "span",
@@ -78,16 +79,19 @@ export async function summaryPage(pollId: string): Promise<void> {
                     .join("、"),
                 )
               : null,
+            // 確定の操作は日時の下に置く（狭い画面でも横にスクロールせずに押せるように）
+            canFix
+              ? h(
+                  "div",
+                  { class: "fix-actions" },
+                  isFixed
+                    ? unfixButton(d, s, st.main, (m) => void reload(m))
+                    : h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { fixTarget = s.id; draw(); } }, "確定"),
+                )
+              : null,
           ),
           ...d.choices.map((c) => h("td", { class: "num" }, String(tt.byChoice[c.id] ?? 0))),
           h("td", { class: "num" }, String(d.participants.length - tt.answered)),
-          canFix
-            ? h(
-                "td",
-                {},
-                h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { fixTarget = s.id; draw(); } }, isFixed ? "確定し直す" : "確定"),
-              )
-            : null,
         ),
       );
     }
@@ -136,7 +140,8 @@ export async function summaryPage(pollId: string): Promise<void> {
           isOrganizer ? h("a", { class: "btn btn-secondary", href: `/p/${pollId}/edit` }, "調整を編集する") : null,
           h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => void reload() }, "↻ 更新"),
         ),
-        fixTarget ? fixPanel(d, fixTarget, () => { fixTarget = null; draw(); }) : null,
+        fixTarget ? fixPanel(d, fixTarget, () => { fixTarget = null; draw(); }, (m) => { fixTarget = null; void reload(m); }) : null,
+        isOrganizer ? announcePanel(d, (m) => void reload(m)) : null,
         h(
           "div",
           { class: "row" },
@@ -181,14 +186,46 @@ export async function summaryPage(pollId: string): Promise<void> {
     return btn;
   }
 
+  // 確定を取り消す（主催者）。Discord イベントも消える。チャンネルへのお知らせは［確定をお知らせする］から（§4.3）
+  function unfixButton(d: PollData, s: PollData["slots"][number], label: string, done: (m: HTMLElement) => void): HTMLElement {
+    const btn = h(
+      "button",
+      {
+        type: "button",
+        class: "btn btn-secondary btn-small",
+        onClick: async () => {
+          const ev = s.hasEvent ? "登録した Discord イベントも削除されます。" : "";
+          if (!confirm(`${label} の確定を取り消します。${ev}よろしいですか？`)) return;
+          btn.disabled = true;
+          try {
+            const r = await request<{ warnings: string[] }>("DELETE", `/api/polls/${d.poll.id}/fix/${s.id}`);
+            done(notice(r.warnings.length ? "warn" : "ok", `${label} の確定を取り消しました。チャンネルへのお知らせは［確定をお知らせする］から投稿できます。`, ...r.warnings.map((w) => ` ${w}`)));
+          } catch (e) {
+            done(notice("error", errorText(e, "summary", "確定を取り消せませんでした。")));
+          }
+        },
+      },
+      "確定を取り消す",
+    );
+    return btn;
+  }
+
   draw();
 }
 
-function fixPanel(d: PollData, slotId: string, cancel: () => void): HTMLElement {
+/** 確定した日時のリマインドの予定（§5.7） */
+function reminderLabel(d: PollData, s: PollData["slots"][number], tz: string): string {
+  const at = reminderAt(s, d.poll.timezone, d.poll.remindDayOffset, d.poll.remindHour);
+  if (at !== null) return `リマインド: ${dateTimeText(at, tz)}`;
+  // 既定（当日の 17 時）だと朝や昼の予定には送られないので、主催者には変え方を添える
+  return d.me.role === "organizer" ? "リマインド: なし（予定が始まったあとになるため。作成画面で「予定の前日」などに変えられます）" : "リマインド: なし";
+}
+
+function fixPanel(d: PollData, slotId: string, cancel: () => void, done: (m: HTMLElement) => void): HTMLElement {
   const slot = d.slots.find((s) => s.id === slotId)!;
   const tz = viewerTimeZone();
-  const mention = h("input", { type: "checkbox", id: "fix-mention", checked: true });
-  const useEvent = h("input", { type: "checkbox", id: "fix-event", checked: d.poll.hasEvent });
+  const otherFixed = d.slots.filter((s) => s.fixedAt !== null && s.id !== slotId).length;
+  const useEvent = h("input", { type: "checkbox", id: "fix-event" });
   const typeVoice = h("input", { type: "radio", name: "ev-type", id: "ev-voice", value: "voice" });
   const typeExternal = h("input", { type: "radio", name: "ev-type", id: "ev-external", value: "external", checked: true });
   const voiceSel = h("select", { id: "ev-channel" }, h("option", { value: "" }, "読み込み中…"));
@@ -206,6 +243,7 @@ function fixPanel(d: PollData, slotId: string, cancel: () => void): HTMLElement 
     }
   };
   typeVoice.addEventListener("change", () => void loadVoice());
+  const label = slotText(slot, d.poll.timezone, tz).main;
   const submit = h(
     "button",
     {
@@ -215,19 +253,13 @@ function fixPanel(d: PollData, slotId: string, cancel: () => void): HTMLElement 
         submit.disabled = true;
         status.textContent = "確定しています…";
         try {
-          const r = await request<{ redirect: string; warnings: string[] }>("POST", `/api/polls/${d.poll.id}/fix`, {
+          const r = await request<{ warnings: string[] }>("POST", `/api/polls/${d.poll.id}/fix`, {
             slotId,
-            mention: mention.checked,
             event: useEvent.checked
               ? { type: typeVoice.checked ? "voice" : "external", channelId: typeVoice.checked ? voiceSel.value || null : null, location: typeVoice.checked ? null : location.value.trim() || "Discord" }
               : null,
           });
-          try {
-            sessionStorage.setItem("dis.warnings", JSON.stringify(r.warnings));
-          } catch {
-            /* 無視 */
-          }
-          window.location.assign(r.redirect);
+          done(notice(r.warnings.length ? "warn" : "ok", `${label} を確定しました。チャンネルへのお知らせは［確定をお知らせする］から投稿できます。`, ...r.warnings.map((w) => ` ${w}`)));
         } catch (e) {
           status.textContent = errorText(e, "summary", "確定できませんでした。");
           submit.disabled = false;
@@ -240,10 +272,10 @@ function fixPanel(d: PollData, slotId: string, cancel: () => void): HTMLElement 
     "section",
     { class: "card fix-panel", aria: { label: "日時の確定" } },
     h("h2", { class: "card-title" }, "日時を確定する"),
-    h("p", {}, h("strong", {}, slotText(slot, d.poll.timezone, tz).main)),
-    h("div", { class: "field-inline" }, mention, h("label", { for: "fix-mention" }, d.poll.targetType === "role" ? "参加者のロールにメンションしてお知らせする" : "@everyone にメンションしてお知らせする")),
-    h("div", { class: "field-inline" }, useEvent, h("label", { for: "fix-event" }, d.poll.hasEvent ? "Discord イベントを更新する" : "Discord イベントとして登録する")),
-    d.poll.hasEvent ? h("p", { class: "muted small" }, "チェックを外して確定すると、登録済みの Discord イベントは削除されます。") : null,
+    h("p", {}, h("strong", {}, label)),
+    otherFixed ? h("p", { class: "muted small" }, `ほかに確定している日時（${otherFixed} 件）は、そのまま残ります。`) : null,
+    h("p", { class: "muted small" }, "確定しても、チャンネルにはまだお知らせしません。お知らせは、確定のあとに［確定をお知らせする］から投稿します。"),
+    h("div", { class: "field-inline" }, useEvent, h("label", { for: "fix-event" }, "Discord イベントとして登録する")),
     h(
       "fieldset",
       { class: "sub-fields" },
@@ -253,6 +285,59 @@ function fixPanel(d: PollData, slotId: string, cancel: () => void): HTMLElement 
     ),
     h("p", { class: "muted small" }, "確定後も、参加者は回答を変更できます。変更があればこの画面に表示されます。"),
     h("div", { class: "row row-end" }, h("button", { type: "button", class: "btn btn-secondary", onClick: cancel }, "キャンセル"), submit),
+    status,
+  );
+}
+
+/**
+ * 確定のお知らせ（主催者）。いま確定している日時と、前回のお知らせのあとに取り消した日時を、1 つのメッセージにまとめて投稿する（§4.3）
+ */
+function announcePanel(d: PollData, done: (m: HTMLElement) => void): HTMLElement | null {
+  const tz = viewerTimeZone();
+  const fixed = d.slots.filter((s) => s.fixedAt !== null);
+  const cancelled = d.slots.filter((s) => s.fixedAt === null && s.announced);
+  if (!fixed.length && !cancelled.length) return null;
+  const newly = fixed.filter((s) => !s.announced).length;
+  const pending = newly + cancelled.length;
+  const mention = h("input", { type: "checkbox", id: "announce-mention", checked: true });
+  const status = h("p", { role: "status", class: "muted" });
+  const btn = h(
+    "button",
+    {
+      type: "button",
+      class: pending ? "btn btn-primary" : "btn btn-secondary",
+      onClick: async () => {
+        if (!confirm("確定した日時と取り消した日時を、チャンネルにまとめてお知らせします。よろしいですか？")) return;
+        btn.disabled = true;
+        status.textContent = "投稿しています…";
+        try {
+          const r = await request<{ warnings: string[] }>("POST", `/api/polls/${d.poll.id}/announce`, { mention: mention.checked });
+          done(notice(r.warnings.length ? "warn" : "ok", "確定のお知らせをチャンネルに投稿しました。", ...r.warnings.map((w) => ` ${w}`), donationLine(d.donationUrl)));
+        } catch (e) {
+          status.textContent = errorText(e, "summary", "お知らせを投稿できませんでした。");
+          btn.disabled = false;
+        }
+      },
+    },
+    "確定をお知らせする",
+  );
+  const list = (slots: typeof d.slots) => slots.map((s) => slotText(s, d.poll.timezone, tz).main).join("、");
+  return h(
+    "section",
+    { class: "card announce-panel", aria: { label: "確定のお知らせ" } },
+    h("h2", { class: "card-title" }, "確定のお知らせ", h("span", { class: "tag tag-optional" }, "主催者だけに表示")),
+    h(
+      "dl",
+      { class: "kv" },
+      h("dt", {}, "確定した日時"),
+      h("dd", {}, fixed.length ? list(fixed) : "なし"),
+      cancelled.length ? h("dt", {}, "取り消した日時") : null,
+      cancelled.length ? h("dd", {}, list(cancelled)) : null,
+      h("dt", {}, "まだお知らせしていない変更"),
+      h("dd", {}, pending ? `あり（確定 ${newly} 件・取り消し ${cancelled.length} 件）` : "なし（お知らせ済みです。もう一度投稿することもできます）"),
+    ),
+    h("div", { class: "field-inline" }, mention, h("label", { for: "announce-mention" }, d.poll.targetType === "role" ? "参加者のロールにメンションしてお知らせする" : "@everyone にメンションしてお知らせする")),
+    h("div", { class: "row" }, btn),
     status,
   );
 }

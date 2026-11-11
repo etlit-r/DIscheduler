@@ -2,7 +2,8 @@ import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/core/env";
 import { runCron } from "../src/jobs/cron";
-import { DAY_REMINDER_MAX_PER_RUN, reminderRunAt, reminderWindow } from "../src/jobs/day-reminder";
+import { DAY_REMINDER_MAX_PER_RUN, REMINDER_CRON } from "../src/jobs/day-reminder";
+import { reminderAt } from "../src/shared/model";
 import { CHANNEL, mockDiscord, seedPoll, testEnv } from "./helpers";
 
 const db = () => (env as unknown as Env).DB;
@@ -12,19 +13,21 @@ beforeEach(async () => {
   await db().prepare("DELETE FROM polls").run();
 });
 
-/** 日本時間 2026-11-06 10:00 と 17:00 の Cron */
-const AT_10 = Date.parse("2026-11-06T01:00:00Z");
-const AT_17 = Date.parse("2026-11-06T08:00:00Z");
 /** 日本時間の日時（"2026-11-06T18:00"）を UNIX 秒にする */
 const jst = (local: string) => Math.floor(Date.parse(`${local}:00+09:00`) / 1000);
+/** 日本時間の日時に、予定のリマインドの Cron を動かす */
+const remindAt = (local: string) => runCron(testEnv(), jst(local) * 1000, REMINDER_CRON);
 
 /** 確定済みの調整を作り、確定した候補の開始時刻を startAt にする */
-async function fixedPoll(startAt: number, opts: { allDay?: boolean; role?: string; messageId?: string | null; timezone?: string } = {}) {
+async function fixedPoll(
+  startAt: number,
+  opts: { allDay?: boolean; role?: string; messageId?: string | null; timezone?: string; dayOffset?: number; hour?: number } = {},
+) {
   const s = await seedPoll({ status: "fixed", messageId: opts.messageId });
-  await db().prepare("UPDATE slots SET start_at = ?, end_at = ?, all_day = ? WHERE id = ?").bind(startAt, opts.allDay ? null : startAt + 7200, opts.allDay ? 1 : 0, s.slotIds[0]).run();
+  await db().prepare("UPDATE slots SET start_at = ?, end_at = ?, all_day = ?, fixed_at = 1 WHERE id = ?").bind(startAt, opts.allDay ? null : startAt + 7200, opts.allDay ? 1 : 0, s.slotIds[0]).run();
   await db()
-    .prepare("UPDATE polls SET fixed_slot_id = ?, fixed_at = 1, target_type = ?, target_id = ?, timezone = ? WHERE id = ?")
-    .bind(s.slotIds[0], opts.role ? "role" : "channel", opts.role ?? null, opts.timezone ?? "Asia/Tokyo", s.pollId)
+    .prepare("UPDATE polls SET target_type = ?, target_id = ?, timezone = ?, remind_day_offset = ?, remind_hour = ? WHERE id = ?")
+    .bind(opts.role ? "role" : "channel", opts.role ?? null, opts.timezone ?? "Asia/Tokyo", opts.dayOffset ?? 0, opts.hour ?? 17, s.pollId)
     .run();
   return s;
 }
@@ -34,71 +37,75 @@ const reminders = (calls: { method: string; path: string; body: unknown }[]) =>
 const startsOf = (calls: { method: string; path: string; body: unknown }[]) => reminders(calls).map((m) => m.content.match(/<t:(\d+):f>/)?.[1] ?? "終日");
 
 describe("予定のリマインド（§5.7）", () => {
-  it("17 時の回は、当日 18:00〜24:00・翌日 0:00〜10:59 の予定と、翌日の終日の予定に送る", async () => {
+  it("既定は予定の当日の 17 時。17 時より前に始まる予定には送らない", async () => {
     const calls = mockDiscord();
-    await fixedPoll(jst("2026-11-06T18:00")); // 送る（今日）
-    await fixedPoll(jst("2026-11-06T23:30")); // 送る（今日）
-    await fixedPoll(jst("2026-11-07T00:00")); // 送る（明日）
-    await fixedPoll(jst("2026-11-07T10:59")); // 送る（明日）
-    await fixedPoll(jst("2026-11-07T00:00"), { allDay: true }); // 送る（明日・終日）
-    await fixedPoll(jst("2026-11-06T17:59")); // 送らない（10 時の回の分）
-    await fixedPoll(jst("2026-11-07T11:00")); // 送らない（翌日の 10 時の回の分）
-    await fixedPoll(jst("2026-11-06T00:00"), { allDay: true }); // 送らない（当日の終日）
-    await fixedPoll(jst("2026-11-08T00:00"), { allDay: true }); // 送らない（翌々日の終日）
-    await runCron(testEnv(), AT_17);
-    expect(startsOf(calls).sort()).toEqual(
-      [String(jst("2026-11-06T18:00")), String(jst("2026-11-06T23:30")), String(jst("2026-11-07T00:00")), String(jst("2026-11-07T10:59")), "終日"].sort(),
-    );
+    await fixedPoll(jst("2026-11-06T21:00")); // 送る（当日 17 時）
+    await fixedPoll(jst("2026-11-06T16:00")); // 送らない（17 時には始まっている）
+    await fixedPoll(jst("2026-11-07T21:00")); // まだ（翌日の 17 時）
+    await remindAt("2026-11-06T16:00");
+    expect(reminders(calls).length).toBe(0);
+    await remindAt("2026-11-06T17:00");
+    expect(startsOf(calls)).toEqual([String(jst("2026-11-06T21:00"))]);
+    await remindAt("2026-11-07T17:00");
+    expect(startsOf(calls)).toEqual([String(jst("2026-11-06T21:00")), String(jst("2026-11-07T21:00"))]);
   });
 
-  it("10 時の回は、当日 11:00〜17:59 の予定だけに送る", async () => {
+  it("主催者が決めた日時（前日の何時か、当日の何時か）に送る", async () => {
     const calls = mockDiscord();
-    await fixedPoll(jst("2026-11-06T11:00")); // 送る
-    await fixedPoll(jst("2026-11-06T17:59")); // 送る
-    await fixedPoll(jst("2026-11-06T10:30")); // 送らない（前日の 17 時の回の分）
-    await fixedPoll(jst("2026-11-06T18:00")); // 送らない（17 時の回の分）
-    await fixedPoll(jst("2026-11-07T00:00"), { allDay: true }); // 送らない（17 時の回の分）
-    await runCron(testEnv(), AT_10);
-    expect(startsOf(calls)).toEqual([String(jst("2026-11-06T11:00")), String(jst("2026-11-06T17:59"))]);
+    await fixedPoll(jst("2026-11-07T10:00"), { dayOffset: 1, hour: 20 }); // 前日 20 時
+    await fixedPoll(jst("2026-11-07T10:00"), { dayOffset: 0, hour: 8 }); // 当日 8 時
+    await remindAt("2026-11-06T19:00");
+    expect(reminders(calls).length).toBe(0);
+    await remindAt("2026-11-06T20:00");
+    expect(reminders(calls).length).toBe(1);
+    await remindAt("2026-11-07T07:00");
+    expect(reminders(calls).length).toBe(1);
+    await remindAt("2026-11-07T08:00");
+    expect(reminders(calls).length).toBe(2);
   });
 
-  it("日付で書く（時刻のある予定はタイムスタンプ記法、終日の予定は調整のタイムゾーンでの日付）", async () => {
+  it("時刻は調整のタイムゾーンで決める", async () => {
+    const calls = mockDiscord();
+    // ニューヨークの 11/6 20:00 の予定は、ニューヨークの 11/6 17:00（日本時間 11/7 7:00）に送る
+    const start = Math.floor(Date.parse("2026-11-06T20:00:00-05:00") / 1000);
+    await fixedPoll(start, { timezone: "America/New_York" });
+    await remindAt("2026-11-07T06:00");
+    expect(reminders(calls).length).toBe(0);
+    await remindAt("2026-11-07T07:00");
+    expect(reminders(calls).length).toBe(1);
+  });
+
+  it("終日の予定は、その日が終わるまでに送る。日付で書く", async () => {
+    const calls = mockDiscord();
+    await fixedPoll(jst("2026-11-07T00:00"), { allDay: true }); // 当日 17 時
+    await fixedPoll(jst("2026-11-07T21:00"));
+    await remindAt("2026-11-07T17:00");
+    const texts = reminders(calls).map((m) => m.content.split("\n")[0]).sort();
+    expect(texts).toEqual(["**定例会** は 11/7(土) です（終日）。", `**定例会** は <t:${jst("2026-11-07T21:00")}:f> からです。`].sort());
+  });
+
+  it("送る時刻を過ぎてから確定した日時は、次の回で送る。始まった予定には送らない", async () => {
     const calls = mockDiscord();
     await fixedPoll(jst("2026-11-06T21:00"));
-    await fixedPoll(jst("2026-11-07T00:00"), { allDay: true });
-    await runCron(testEnv(), AT_17);
-    const texts = reminders(calls).map((m) => m.content.split("\n")[0]);
-    expect(texts).toEqual([`**定例会** は <t:${jst("2026-11-06T21:00")}:f> からです。`, "**定例会** は 11/7(土) です（終日）。"]);
+    await fixedPoll(jst("2026-11-06T18:00"));
+    await remindAt("2026-11-06T19:00");
+    expect(startsOf(calls)).toEqual([String(jst("2026-11-06T21:00"))]);
   });
 
-  it("終日の予定は、調整のタイムゾーンでの日付が翌日のものだけに送る", async () => {
-    const calls = mockDiscord();
-    // 11/7 の終日（ニュージーランド・ニューヨーク）は送る。ニュージーランドの 11/6・ハワイの 11/6 は送らない
-    const nz7 = Math.floor(Date.parse("2026-11-07T00:00:00+13:00") / 1000);
-    const ny7 = Math.floor(Date.parse("2026-11-07T00:00:00-05:00") / 1000);
-    const nz6 = Math.floor(Date.parse("2026-11-06T00:00:00+13:00") / 1000);
-    const hi6 = Math.floor(Date.parse("2026-11-06T00:00:00-10:00") / 1000);
-    await fixedPoll(nz7, { allDay: true, timezone: "Pacific/Auckland" });
-    await fixedPoll(ny7, { allDay: true, timezone: "America/New_York" });
-    await fixedPoll(nz6, { allDay: true, timezone: "Pacific/Auckland" });
-    await fixedPoll(hi6, { allDay: true, timezone: "Pacific/Honolulu" });
-    await runCron(testEnv(), AT_17);
-    const texts = reminders(calls).map((m) => m.content.split("\n")[0]);
-    expect(texts).toEqual(["**定例会** は 11/7(土) です（終日）。", "**定例会** は 11/7(土) です（終日）。"]);
-  });
-
-  it("確定していない調整には送らない", async () => {
+  it("確定していない調整・確定していない候補には送らない", async () => {
     const calls = mockDiscord();
     const s = await fixedPoll(jst("2026-11-06T21:00"));
-    await db().prepare("UPDATE polls SET status = 'open' WHERE id = ?").bind(s.pollId).run();
-    await runCron(testEnv(), AT_17);
-    expect(reminders(calls).length).toBe(0);
+    await db().prepare("UPDATE slots SET start_at = ?, end_at = ? WHERE id = ?").bind(jst("2026-11-06T22:00"), jst("2026-11-06T23:00"), s.slotIds[1]).run();
+    const t = await fixedPoll(jst("2026-11-06T21:00"));
+    await db().prepare("UPDATE polls SET status = 'open' WHERE id = ?").bind(t.pollId).run();
+    await remindAt("2026-11-06T17:00");
+    expect(startsOf(calls)).toEqual([String(jst("2026-11-06T21:00"))]);
   });
 
   it("募集メッセージへの返信で、リンクを入れ、ロールがなければ @everyone をメンションする", async () => {
     const calls = mockDiscord();
     await fixedPoll(jst("2026-11-06T21:00"));
-    await runCron(testEnv(), AT_17);
+    await remindAt("2026-11-06T17:00");
     const m = reminders(calls)[0]!;
     expect(m.content).toContain("https://discord.com/channels/");
     expect(m.content).toContain("@everyone");
@@ -109,7 +116,7 @@ describe("予定のリマインド（§5.7）", () => {
   it("ロールの調整はロールだけをメンションする。募集メッセージがなければ返信にしない", async () => {
     const calls = mockDiscord();
     await fixedPoll(jst("2026-11-06T21:00"), { role: "400000000000000077", messageId: null });
-    await runCron(testEnv(), AT_17);
+    await remindAt("2026-11-06T17:00");
     const m = reminders(calls)[0]!;
     expect(m.content).toContain("<@&400000000000000077>");
     expect(m.content).not.toContain("@everyone");
@@ -117,23 +124,33 @@ describe("予定のリマインド（§5.7）", () => {
     expect(m.message_reference).toBeUndefined();
   });
 
-  it("同じ確定日時には 2 回送らない。確定し直して日時が変わったら送る", async () => {
+  it("同じ確定日時には 2 回送らない。確定した候補の日時が変わったら送る", async () => {
     const calls = mockDiscord();
     const s = await fixedPoll(jst("2026-11-06T21:00"));
-    await runCron(testEnv(), AT_17);
-    await runCron(testEnv(), AT_17 + 60_000);
+    await remindAt("2026-11-06T17:00");
+    await remindAt("2026-11-06T18:00");
     expect(reminders(calls).length).toBe(1);
     await db().prepare("UPDATE slots SET start_at = ? WHERE id = ?").bind(jst("2026-11-06T22:00"), s.slotIds[0]).run();
-    await runCron(testEnv(), AT_17 + 120_000);
+    await remindAt("2026-11-06T19:00");
     expect(reminders(calls).length).toBe(2);
+  });
+
+  it("確定した日時が複数ある調整は、日時ごとに送る", async () => {
+    const calls = mockDiscord();
+    const s = await fixedPoll(jst("2026-11-06T21:00"));
+    await db().prepare("UPDATE slots SET start_at = ?, end_at = ?, fixed_at = 1 WHERE id = ?").bind(jst("2026-11-07T19:00"), jst("2026-11-07T20:00"), s.slotIds[1]).run();
+    await remindAt("2026-11-06T17:00");
+    expect(startsOf(calls)).toEqual([String(jst("2026-11-06T21:00"))]);
+    await remindAt("2026-11-07T17:00");
+    expect(startsOf(calls)).toEqual([String(jst("2026-11-06T21:00")), String(jst("2026-11-07T19:00"))]);
   });
 
   it(`1 回の実行では ${DAY_REMINDER_MAX_PER_RUN} 件まで送り、残りは次の分の回で送る`, async () => {
     const calls = mockDiscord();
     for (let i = 0; i < DAY_REMINDER_MAX_PER_RUN + 3; i++) await fixedPoll(jst("2026-11-06T21:00") + i);
-    await runCron(testEnv(), AT_17);
+    await remindAt("2026-11-06T17:00");
     expect(reminders(calls).length).toBe(DAY_REMINDER_MAX_PER_RUN);
-    await runCron(testEnv(), AT_17 + 60_000);
+    await remindAt("2026-11-06T17:01");
     expect(reminders(calls).length).toBe(DAY_REMINDER_MAX_PER_RUN + 3);
   });
 
@@ -142,21 +159,21 @@ describe("予定のリマインド（§5.7）", () => {
     const calls = mockDiscord((c) => (c.method === "POST" && n++ === 0 ? new Response("{}", { status: 403 }) : {}));
     await fixedPoll(jst("2026-11-06T21:00"));
     await fixedPoll(jst("2026-11-06T22:00"));
-    await runCron(testEnv(), AT_17);
+    await remindAt("2026-11-06T17:00");
     expect(reminders(calls).length).toBe(2);
-    await runCron(testEnv(), AT_17 + 60_000);
+    await remindAt("2026-11-06T17:01");
     expect(reminders(calls).length).toBe(2);
   });
 
-  it("10 時・17 時の回では、募集メッセージの更新・コマンドの登録・サーバーの一覧の読み込みをしない", async () => {
+  it("リマインドの回では、募集メッセージの更新・コマンドの登録・サーバーの一覧の読み込みをしない", async () => {
     const calls = mockDiscord();
     await seedPoll({ deadlineAt: 1000 });
-    await runCron(testEnv(), AT_10);
-    await runCron(testEnv(), AT_17);
+    await remindAt("2026-11-06T13:00");
+    await remindAt("2026-11-06T01:00");
     expect(calls.some((c) => c.method === "PATCH" || c.method === "PUT" || c.path.startsWith("/users/@me/guilds"))).toBe(false);
   });
 
-  it("13 時・1 時の回では送らない", async () => {
+  it("13 時・1 時の Cron では送らない", async () => {
     const calls = mockDiscord((c) => (c.path.startsWith("/users/@me/guilds") ? [] : {}));
     await fixedPoll(jst("2026-11-06T21:00"));
     await runCron(testEnv(), Date.parse("2026-11-06T04:00:00Z"));
@@ -164,22 +181,15 @@ describe("予定のリマインド（§5.7）", () => {
     expect(reminders(calls).length).toBe(0);
   });
 
-  it("範囲は日本時間で決め、0〜4 分のどの回でも同じになる", () => {
-    const at17 = reminderWindow(AT_17 + 4 * 60_000)!;
-    expect(at17.timed).toEqual({ from: jst("2026-11-06T18:00"), to: jst("2026-11-07T11:00") });
-    expect(at17.allDayDate).toBe("2026-11-07");
-    const at10 = reminderWindow(AT_10 + 4 * 60_000)!;
-    expect(at10.timed).toEqual({ from: jst("2026-11-06T11:00"), to: jst("2026-11-06T18:00") });
-    expect(at10.allDayDate).toBeNull();
-    expect(reminderWindow(Date.parse("2026-11-06T04:00:00Z"))).toBeNull();
-  });
-
-  it("予定を知らせる回の時刻は、範囲の表のとおり", () => {
-    const run = (iso: string, allDay = 0) => reminderRunAt({ start_at: jst(iso), all_day: allDay }, "Asia/Tokyo");
-    expect(run("2026-11-07T10:59")).toBe(jst("2026-11-06T17:00"));
-    expect(run("2026-11-07T11:00")).toBe(jst("2026-11-07T10:00"));
-    expect(run("2026-11-07T17:59")).toBe(jst("2026-11-07T10:00"));
-    expect(run("2026-11-07T18:00")).toBe(jst("2026-11-07T17:00"));
-    expect(run("2026-11-07T00:00", 1)).toBe(jst("2026-11-06T17:00"));
+  it("送る時刻の計算（前日・当日、夏時間、開始後なら送らない）", () => {
+    const tokyo = (iso: string, allDay = false) => ({ startAt: jst(iso), allDay });
+    expect(reminderAt(tokyo("2026-11-07T21:00"), "Asia/Tokyo", 0, 17)).toBe(jst("2026-11-07T17:00"));
+    expect(reminderAt(tokyo("2026-11-07T21:00"), "Asia/Tokyo", 1, 9)).toBe(jst("2026-11-06T09:00"));
+    expect(reminderAt(tokyo("2026-11-01T10:00"), "Asia/Tokyo", 1, 0)).toBe(jst("2026-10-31T00:00"));
+    expect(reminderAt(tokyo("2026-11-07T10:00"), "Asia/Tokyo", 0, 17)).toBeNull();
+    expect(reminderAt(tokyo("2026-11-07T00:00", true), "Asia/Tokyo", 0, 17)).toBe(jst("2026-11-07T17:00"));
+    // ニューヨークの夏時間の終わり（2026-11-01）をまたいでも、壁時計の時刻で決める
+    const ny = Math.floor(Date.parse("2026-11-01T20:00:00-05:00") / 1000);
+    expect(reminderAt({ startAt: ny, allDay: false }, "America/New_York", 1, 17)).toBe(Math.floor(Date.parse("2026-10-31T17:00:00-04:00") / 1000));
   });
 });

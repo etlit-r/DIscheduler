@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bestSlotId, effectiveStatus, tally } from "../src/shared/model";
-import { isSafeChoiceText, sanitizeDisplayName, sanitizeLine } from "../src/shared/text";
+import { donationNote, isSafeChoiceText, KOFI_DONATION_NOTE, sanitizeDisplayName, sanitizeLine } from "../src/shared/text";
 import { epochToZoned, nextCronAt, zonedToEpoch } from "../src/shared/time";
 import { canViewChannel } from "../src/discord/members";
 import { escapeMarkdown } from "../src/discord/messages";
@@ -110,3 +110,11 @@ describe("ログにトークンを残さない（security-design I-4）", () => 
   });
 });
 
+describe("寄付リンクの説明（§6.10）", () => {
+  it("Ko-fi のときだけ日本語の説明を返す", () => {
+    expect(donationNote("https://ko-fi.com/example")).toBe(KOFI_DONATION_NOTE);
+    expect(donationNote("https://www.ko-fi.com/example")).toBe(KOFI_DONATION_NOTE);
+    expect(donationNote("https://github.com/sponsors/example")).toBe("");
+    expect(donationNote("https://ko-fi.com.example.com/x")).toBe("");
+  });
+});
