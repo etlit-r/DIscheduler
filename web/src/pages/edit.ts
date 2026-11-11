@@ -197,7 +197,7 @@ export async function editPage(pollId: string): Promise<void> {
   /** 選んだ日付を候補に追加しないまま保存しようとしたら確かめる。追加しに戻るなら false */
   function confirmPendingDates(): boolean {
     if (selectedDates.size === 0) return true;
-    if (confirm(`選択中の ${selectedDates.size} 日は、まだ候補に追加されていません。\n追加しないで保存しますか？\n（追加するときは［キャンセル］を押して、［＋ 選択中の ${selectedDates.size} 日に追加］を押してください）`)) return true;
+    if (confirm(`選択中の ${selectedDates.size} 日はまだ候補に追加されていません。\n追加しないで保存しますか？\n（追加するときは［キャンセル］を押して、［＋ 選択中の ${selectedDates.size} 日に追加］を押してください）`)) return true;
     const btn = document.getElementById("add-slots");
     btn?.scrollIntoView({ block: "center" });
     btn?.focus();
@@ -700,7 +700,7 @@ export async function editPage(pollId: string): Promise<void> {
           "section",
           { class: "card" },
           h("div", { class: "field" }, h("label", { for: "deadline" }, `締切（${tz}）`), deadlineIn),
-          h("p", { class: "muted small" }, isDraft ? "未入力なら公開から 7 日後になります。締切を過ぎても回答の入力・変更はできます（目安です）。" : "締切を過ぎても回答の入力・変更はできます（目安です）。"),
+          h("p", { class: "muted small" }, isDraft ? "締切は目安です。未入力なら公開から 7 日後になります。締切を過ぎても回答の入力・変更はできます。" : "締切は目安です。締切を過ぎても回答の入力・変更はできます。"),
         ),
         h(
           "div",
