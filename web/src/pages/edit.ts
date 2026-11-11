@@ -1,6 +1,6 @@
 // S2: 調整の作成・編集（主催者。docs/design.md §6.3, §6.9）
 import { ApiError, loadPoll, request, type PollData } from "../lib/api";
-import { browserTimeZone, choiceMark, dateTimeText, rememberDonation, showError, slotText, statusBanner, syncPanel, timeZoneSelect, errorText } from "../ui/common";
+import { browserTimeZone, choiceMark, dateTimeText, donationLine, rememberDonation, showError, slotText, statusBanner, syncPanel, timeZoneSelect, errorText } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
 import {
   CHOICE_COLORS,
@@ -772,6 +772,7 @@ export async function editPage(pollId: string): Promise<void> {
                   h("p", {}, "データはすべて削除されました。"),
                   ...(r.warnings ?? []).map((w) => notice("warn", w)),
                   h("p", {}, h("a", { href: "/manual/" }, "DIscheduler のマニュアルへ")),
+                  donationLine(d.donationUrl),
                 ),
               );
             }),

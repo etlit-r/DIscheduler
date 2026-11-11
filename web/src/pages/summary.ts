@@ -1,6 +1,6 @@
 // S4: 集計・確定（docs/design.md §6.5）
 import { loadPoll, request, type PollData } from "../lib/api";
-import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, STATUS_LABEL, statusBanner, syncPanel, viewerTimeZone, errorText } from "../ui/common";
+import { choiceMark, dateTimeText, donationLine, mountViewerTzSwitch, rememberDonation, showError, slotText, STATUS_LABEL, statusBanner, syncPanel, viewerTimeZone, errorText } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
 import { bestSlotId, compareSlots, reminderAt, tally, UNANSWERED } from "../../../src/shared/model";
 
@@ -312,7 +312,7 @@ function announcePanel(d: PollData, done: (m: HTMLElement) => void): HTMLElement
         status.textContent = "投稿しています…";
         try {
           const r = await request<{ warnings: string[] }>("POST", `/api/polls/${d.poll.id}/announce`, { mention: mention.checked });
-          done(notice(r.warnings.length ? "warn" : "ok", "確定のお知らせをチャンネルに投稿しました。", ...r.warnings.map((w) => ` ${w}`)));
+          done(notice(r.warnings.length ? "warn" : "ok", "確定のお知らせをチャンネルに投稿しました。", ...r.warnings.map((w) => ` ${w}`), donationLine(d.donationUrl)));
         } catch (e) {
           status.textContent = errorText(e, "summary", "お知らせを投稿できませんでした。");
           btn.disabled = false;

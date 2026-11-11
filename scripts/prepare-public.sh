@@ -2,7 +2,7 @@
 # デプロイ前に public/ の静的ページへ設定値を埋め込む（docs/design.md §6.10, §14）
 #
 #   DISCORD_APPLICATION_ID  必須。招待リンクの client_id（数字 17〜20 桁）
-#   DONATION_URL            任意。寄付リンクの URL（https://...）
+#   DONATION_URL            任意。寄付リンクの URL（https://...）。Ko-fi のときは、リンクの近くに日本語の説明（__DONATION_NOTE__）を入れる
 #   ADMAX_ID                任意。忍者AdMax の広告枠の ID（英小文字と数字の 32 文字）。LP とセキュリティ方針ページの広告の枠
 #
 # 寄付リンクの表示切り替え:
@@ -43,6 +43,11 @@ if [[ -n "$donation_url" ]]; then
 fi
 
 # --- 広告 ---
+donation_note=""
+if [[ "$donation_url" =~ ^https://(www\.)?ko-fi\.com(/|$) ]]; then
+  donation_note="支援は Ko-fi（海外の支援サービス）で受け付けています。画面は英語ですが、金額を選んで、クレジットカードか PayPal で支払えます。"
+fi
+
 admax_id="${ADMAX_ID:-}"
 if [[ -n "$admax_id" ]]; then
   [[ "$admax_id" =~ ^[0-9a-f]{32}$ ]] || fail "ADMAX_ID の形式が正しくありません（広告コードの https://adm.shinobi.jp/s/ に続く 32 文字を指定してください）"
@@ -54,6 +59,12 @@ for f in "${files[@]}"; do
   if [[ -n "$donation_url" ]]; then
     perl -0pi -e 's/<!-- no-donation:start -->.*?<!-- no-donation:end -->//gs; s/<!-- donation:(start|end) -->//g' "$f"
     sed -i "s#__DONATION_URL__#${donation_url}#g" "$f"
+    # 支援サービスの説明。src/shared/text.ts の donationNote と同じ文にする（変えるときは両方そろえる）。説明がなければ、その段落ごと消す
+    if [[ -n "$donation_note" ]]; then
+      sed -i "s#__DONATION_NOTE__#${donation_note}#g" "$f"
+    else
+      perl -0pi -e 's#<p class="[^"]*">__DONATION_NOTE__</p>\s*##g' "$f"
+    fi
   else
     perl -0pi -e 's/<!-- donation:start -->.*?<!-- donation:end -->//gs; s/<!-- no-donation:(start|end) -->//g' "$f"
   fi
@@ -66,7 +77,7 @@ for f in "${files[@]}"; do
   fi
 
   # 置き換え漏れ・目印の残りがあれば止める
-  if grep -qE "__DISCORD_APPLICATION_ID__|__DONATION_URL__|__ADMAX_ID__|<!-- (no-)?(donation|ad):" "$f"; then
+  if grep -qE "__DISCORD_APPLICATION_ID__|__DONATION_URL__|__DONATION_NOTE__|__ADMAX_ID__|<!-- (no-)?(donation|ad):" "$f"; then
     fail "$f の置き換えに失敗しました"
   fi
 done
