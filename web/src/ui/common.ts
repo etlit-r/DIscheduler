@@ -124,7 +124,7 @@ export function showError(err: unknown, kind: PageKind = "link"): void {
       // 一覧ページの期限切れと、中継ページで使えなかったリンクは、サーバーのメッセージで受け取り方まで伝えるので、ここでは出さない
       e.status === 401 && !SELF_EXPLAINING.has(e.code) ? h("p", {}, reopenHint(kind)) : null,
       freeTier && donationFromError ? h("p", {}, "運営を支援していただけると、有料プランへの切り替えを検討できます: ", h("a", { href: donationFromError, rel: "noopener noreferrer" }, "運営を支援する")) : null,
-      h("p", {}, h("a", { href: "/" }, "DIscheduler の案内へ")),
+      h("p", {}, h("a", { href: "/manual/" }, "DIscheduler のマニュアルへ")),
     ),
   );
 }
