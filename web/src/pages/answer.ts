@@ -94,7 +94,7 @@ export async function answerPage(pollId: string): Promise<void> {
         seg.style.width = `${(tt[kind] / total) * 100}%`;
         bar.appendChild(seg);
       }
-      const who = h("details", { class: "who" }, h("summary", {}, "他の人の回答"));
+      const who = h("details", { class: "who" }, h("summary", {}, "みんなの回答"));
       const whoList = h("ul", { class: "who-list" });
       const slotAnswers = bySlot.get(s.id) ?? [];
       const answeredHere = new Set(slotAnswers.map((a) => a.userId));
