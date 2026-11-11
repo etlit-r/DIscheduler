@@ -156,6 +156,11 @@ async function handleCreate(env: Env, i: Interaction, origin: string, guildId: s
     result.reused ? "作成途中の日程調整の下書きがあります。" : "新しい日程調整の下書きを作りました。",
     "［調整を作成する］から、タイトルや候補日時を入力して公開してください（リンクは 10 分有効・1 回限り。他の人に渡さないでください）。",
   ];
+  // 参加者をロールで決めていなければ、ロールの指定をすすめる（公開時と予定のリマインドの通知が、ロールにだけ届くため。§5.5、§5.7）
+  const draft = await getPoll(env.DB, result.pollId);
+  if (draft && draft.target_type !== "role") {
+    lines.push("", "💡 参加者はロールで決めるのがおすすめです。公開したときと予定のリマインドで、そのロールのメンバーにだけ通知が届きます（ロールがないと @everyone で通知します）。作成画面の「参加者」か、`/schedule` の `role` で選べます。");
+  }
   if (result.notice) lines.push("", `⚠️ ${result.notice}`);
   await editOriginal(env, i, lines.join("\n"), [
     { type: 1, components: [linkButton("調整を作成する", url)] },

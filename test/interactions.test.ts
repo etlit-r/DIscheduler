@@ -72,6 +72,8 @@ describe("/schedule と /di", () => {
       const json = JSON.stringify(edit.body);
       expect(json).toContain("/l#t=");
       expect(json).toContain("調整を作成する");
+      // ロールを指定していないので、ロールの指定をすすめる
+      expect(json).toContain("参加者はロールで決めるのがおすすめです。");
       const db = (env as unknown as Env).DB;
       const poll = await db.prepare("SELECT id, status, title FROM polls WHERE organizer_id = ? AND channel_id = ? AND status = 'draft'").bind(ORGANIZER, CHANNEL).first<{ id: string; title: string | null }>();
       expect(poll!.title).toBeNull();
@@ -283,5 +285,27 @@ describe("［作成した調整を管理］（§6.11）", () => {
     );
     const edit = calls.find((c) => c.method === "PATCH" && c.path.includes("/webhooks/"));
     expect((edit!.body as { content: string }).content).toContain("主催している調整はありません");
+  });
+});
+
+describe("ロールの指定をすすめる案内", () => {
+  it("/schedule で role を指定したときは出さない", async () => {
+    const calls = mockDiscord((c) => {
+      if (c.path === `/channels/${CHANNEL}`) return { id: CHANNEL, type: 0, permission_overwrites: [] };
+      if (c.path === `/guilds/${GUILD}`) return { owner_id: ORGANIZER };
+      if (c.path === `/guilds/${GUILD}/roles`) return [{ id: GUILD, name: "@everyone", permissions: "1024", position: 0 }, { id: "400000000000000077", name: "定例", permissions: "0", position: 1 }];
+      if (c.path.startsWith(`/guilds/${GUILD}/members?`)) return [{ ...member(ALICE), roles: ["400000000000000077"] }, member(ORGANIZER)];
+      return {};
+    });
+    await call(
+      await signed({
+        type: 2, id: "9", application_id: "100000000000000001", token: "tok", guild_id: GUILD, channel_id: CHANNEL, member: member(ORGANIZER),
+        data: { name: "schedule", options: [{ name: "role", type: 8, value: "400000000000000077" }] },
+      }),
+      e(),
+    );
+    const edit = calls.find((c) => c.method === "PATCH" && c.path.includes("/messages/@original"))!;
+    expect(JSON.stringify(edit.body)).toContain("調整を作成する");
+    expect(JSON.stringify(edit.body)).not.toContain("参加者はロールで決めるのがおすすめです。");
   });
 });

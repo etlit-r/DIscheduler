@@ -576,6 +576,7 @@ export async function editPage(pollId: string): Promise<void> {
         h("div", { class: "field-inline" }, modeAuto, h("label", { for: "mode-auto" }, "自動（チャンネルのメンバー・ロールのメンバー）")),
         h("div", { class: "field-inline" }, modeManual, h("label", { for: "mode-manual" }, "手動で選ぶ")),
         h("div", { class: "field-inline" }, h("label", { for: "role" }, "ロール"), roleSel),
+        roleHint(),
       ),
       d.participants.length ? list : h("p", { class: "muted" }, "参加者がいません。"),
       h(
@@ -604,6 +605,22 @@ export async function editPage(pollId: string): Promise<void> {
         h("div", { class: "field-inline" }, jpClosed, h("label", { for: "jp-closed" }, "回答できない")),
         h("div", { class: "field-inline" }, jpOpen, h("label", { for: "jp-open" }, "チャンネルを見られる人なら、参加者に追加して回答できる")),
       ),
+    );
+  }
+
+  /**
+   * ロールで参加者を決めるようすすめる（下書きのときだけ）。
+   * 公開時のお知らせと予定のリマインドは、ロールがあればそのロールに、なければ @everyone にメンションするため（§5.5、§5.7）
+   */
+  function roleHint(): HTMLElement | null {
+    if (!isDraft) return null;
+    if (d.poll.targetType === "role") {
+      return h("p", { class: "muted small" }, "公開したときと予定のリマインドで、このロールにメンションして知らせます。");
+    }
+    return notice(
+      "info",
+      h("strong", {}, "参加者は「自動」でロールを選んで決めるのがおすすめです。"),
+      " 公開したときと予定のリマインドで、そのロールのメンバーにだけ通知が届きます。ロールを選ばないと、@everyone でチャンネルの全員に通知します。",
     );
   }
 
