@@ -201,6 +201,7 @@ stateDiagram-v2
 | シークレット | 保管場所 | ローテーション |
 |-------------|----------|----------------|
 | `DISCORD_BOT_TOKEN` | Cloudflare Secrets | 年 1 回および漏えい疑い時に即時 |
+| `ALERT_WEBHOOK_URL` | Cloudflare Secrets（Worker `discheduler` のみ。任意） | 漏えい疑い時に Webhook を削除して作り直す。URL を知っていればそのチャンネルに投稿できるため、リポジトリ・ログに出さない（ログでは Webhook のトークンを伏せる） |
 | `DISCORD_PUBLIC_KEY` | Cloudflare 環境変数（公開値） | アプリ再作成時 |
 | `DISCORD_APPLICATION_ID` | Cloudflare 環境変数（公開値） | — |
 | `CLOUDFLARE_API_TOKEN` | GitHub Actions Environment Secret（`production` 環境・承認必須） | 年 1 回。権限は対象 Worker / D1 の編集のみに限定 |

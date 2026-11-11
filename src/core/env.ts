@@ -15,6 +15,11 @@ export interface Env {
   PUBLIC_ORIGIN?: string;
   /** 寄付リンク（任意） */
   DONATION_URL?: string;
+  /**
+   * 運営者向けの通知を送る Discord の Webhook の URL（任意。Cloudflare の Secret として登録する。docs/design.md §14）。
+   * Bot が入っているサーバーの数が上限の目安を超えたときに使う。未設定なら通知しない（ログには残す）
+   */
+  ALERT_WEBHOOK_URL?: string;
   /** "1" のとき Web API と Discord の操作を止める（インシデント対応用。security-design §7） */
   MAINTENANCE?: string;
   /** テスト用: Discord API の接続先 */
