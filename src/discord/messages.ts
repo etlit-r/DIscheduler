@@ -105,7 +105,22 @@ export function buildMentionMessage(text: string, userIds: string[]) {
  */
 export function buildAnnounceMessage(poll: Pick<PollRow, "title" | "target_type" | "target_id">, pollMessageId: string) {
   const text = `**${escapeMarkdown(poll.title ?? "日程調整")}** の募集を始めました。募集メッセージの［回答する］から入力できます。`;
-  const reply = { message_reference: { message_id: pollMessageId, fail_if_not_exists: false } };
+  return withPollMention(poll, text, pollMessageId);
+}
+
+/**
+ * 当日のリマインド（§5.7）。メンションは公開時のお知らせと同じ。
+ * 募集メッセージがあれば、その返信にしてリンクも添える
+ */
+export function buildDayReminderMessage(poll: Pick<PollRow, "title" | "target_type" | "target_id" | "guild_id" | "channel_id" | "message_id">, startAt: number) {
+  const link = poll.message_id ? `\n${messageLink(poll.guild_id, poll.channel_id, poll.message_id)}` : "";
+  const text = `**${escapeMarkdown(poll.title ?? "日程調整")}** は今日 <t:${startAt}:t> からです。${link}`;
+  return withPollMention(poll, text, poll.message_id);
+}
+
+/** 参加者をロールで決めた調整はそのロールを、それ以外は @everyone を、本文の最後の行でメンションする（security-design E-3） */
+function withPollMention(poll: Pick<PollRow, "target_type" | "target_id">, text: string, replyTo: string | null) {
+  const reply = replyTo ? { message_reference: { message_id: replyTo, fail_if_not_exists: false } } : {};
   const roleId = poll.target_type === "role" && poll.target_id && /^\d{17,20}$/.test(poll.target_id) ? poll.target_id : null;
   if (roleId) return { content: `${text}\n<@&${roleId}>`, allowed_mentions: { parse: [] as string[], roles: [roleId], replied_user: false }, ...reply };
   return { content: `${text}\n@everyone`, allowed_mentions: { parse: ["everyone"], replied_user: false }, ...reply };
