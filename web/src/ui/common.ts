@@ -1,6 +1,7 @@
 // 画面共通の部品
 import { ApiError, request, type PollData } from "../lib/api";
 import { h, notice, render } from "../lib/dom";
+import { donationNote } from "../../../src/shared/text";
 import { DEFAULT_TIMEZONE, formatDateTime, formatSlot, isValidTimeZone, zoneAbbr, type SlotTime } from "../../../src/shared/time";
 
 const TZ_KEY = "dis.viewerTz";
@@ -260,6 +261,18 @@ export function showError(err: unknown, kind: PageKind = "link"): void {
       freeTier && donationFromError ? h("p", {}, "運営を支援していただけると、有料プランへの切り替えを検討できます: ", h("a", { href: donationFromError, rel: "noopener noreferrer" }, "運営を支援する")) : null,
       h("p", {}, h("a", { href: "/manual/" }, "DIscheduler のマニュアルへ")),
     ),
+  );
+}
+
+/** 完了の画面に置く寄付リンクの 1 行と、支援サービスの説明（§6.10）。寄付リンクがなければ null */
+export function donationLine(url: string | null): HTMLElement | null {
+  if (!url) return null;
+  const note = donationNote(url);
+  return h(
+    "div",
+    { class: "donation-line" },
+    h("p", {}, "DIscheduler は無料で運営しています。役に立ったら ", h("a", { href: url, rel: "noopener noreferrer" }, "運営を支援する"), "（任意です。支援の有無で機能は変わりません）"),
+    note ? h("p", { class: "muted small" }, note) : null,
   );
 }
 

@@ -237,6 +237,7 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .in-score { width: 72px; }
 .danger-zone { border-color: var(--c-red-soft); }
 .donation-line { margin-top: 16px; color: var(--text-muted); }
+.donation-line p { margin: 0 0 4px; }
 
 @media (max-width: 480px) {
   .site-header .container { flex-wrap: wrap; }
