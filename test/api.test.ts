@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/core/env";
 import { issueLink } from "../src/auth";
-import { ALICE, BOB, call, getReq, jsonReq, login, mockDiscord, ORGANIZER, ORIGIN, OUTSIDER, seedPoll, tokenFromUrl } from "./helpers";
+import { ALICE, BOB, call, CHANNEL, getReq, jsonReq, login, mockDiscord, ORGANIZER, ORIGIN, OUTSIDER, seedPoll, tokenFromUrl } from "./helpers";
 
 const db = () => (env as unknown as Env).DB;
 
@@ -478,6 +478,18 @@ describe("7 回目のレビューの修正", () => {
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
     await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: false, event: null }, org));
     expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/remind`, {}, org))).status).toBe(409);
+  });
+
+  it("リマインドには募集メッセージと同じ［回答する］ボタンを付ける", async () => {
+    const calls = mockDiscord();
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/remind`, {}, org))).status).toBe(200);
+    const post = calls.find((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)!;
+    expect(JSON.stringify(post.body)).toContain("募集メッセージの［回答する］から入力できます。");
+    expect((post.body as { components: unknown }).components).toEqual([
+      { type: 1, components: [{ type: 2, style: 1, label: "回答する", custom_id: `answer:${s.pollId}` }] },
+    ]);
   });
 
   it("選択肢の変更のお知らせは、ひとことだけ保存しても消えず、確認したら消える", async () => {
