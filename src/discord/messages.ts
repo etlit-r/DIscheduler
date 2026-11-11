@@ -39,12 +39,13 @@ export function buildPollMessage(d: MessageData) {
 
   const lines: string[] = [];
   if (poll.description) lines.push(escapeMarkdown(poll.description), "");
-  if (status === "fixed" && poll.fixed_slot_id) {
-    const fixed = slots.find((s) => s.id === poll.fixed_slot_id);
-    if (fixed) {
-      lines.push(`**確定: ${slotLabel(fixed)}**`);
-      lines.push(`確定した日時に参加できる人: ${t.get(fixed.id)?.ok ?? 0} 人（<t:${now}:f> 時点）`);
+  // 確定した候補は複数のことがある（§4.3）
+  const fixedSlots = slots.filter((s) => s.fixed_at !== null);
+  if (status === "fixed" && fixedSlots.length) {
+    for (const fixed of fixedSlots) {
+      lines.push(`**確定: ${slotLabel(fixed)}**（参加できる人: ${t.get(fixed.id)?.ok ?? 0} 人）`);
     }
+    lines.push(`（人数は <t:${now}:f> 時点）`);
   } else if (status === "closed") {
     lines.push("締切を過ぎました（回答の入力・変更はできます）");
   } else if (poll.deadline_at) {
@@ -52,7 +53,7 @@ export function buildPollMessage(d: MessageData) {
   }
   lines.push(`回答: ${answered}/${participants.length} 名`, "", `**候補**（${okLabel} の人数）`);
   for (const s of slots) {
-    const mark = s.id === poll.fixed_slot_id ? "✅" : s.id === best ? "★" : "・";
+    const mark = s.fixed_at !== null ? "✅" : s.id === best ? "★" : "・";
     lines.push(`${mark} ${slotLabel(s)}　${t.get(s.id)?.ok ?? 0} 人`);
   }
   lines.push("", "［回答する］から、あなた専用の入力画面を開けます。回答は参加者同士で共有されます。");
@@ -125,11 +126,20 @@ export function buildDayReminderMessage(
 }
 
 /**
- * 日程確定のお知らせ（§4.3）。mention のときは、公開時のお知らせ（§5.5）と同じく、
- * 参加者をロールで決めた調整はそのロールを、それ以外は @everyone をメンションする
+ * 確定のお知らせ（§4.3）。いま確定している日時と、前回のお知らせのあとに取り消した日時をまとめて書く。
+ * mention のときは、公開時のお知らせ（§5.5）と同じく、参加者をロールで決めた調整はそのロールを、それ以外は @everyone をメンションする
  */
-export function buildFixedMessage(poll: Pick<PollRow, "title" | "target_type" | "target_id">, when: string, mention: boolean, extra = "") {
-  const text = `**${escapeMarkdown(poll.title ?? "日程調整")}** の日程が確定しました: ${when}${extra}`;
+export function buildFixedMessage(
+  poll: Pick<PollRow, "title" | "target_type" | "target_id">,
+  fixed: readonly { when: string; note: string | null }[],
+  cancelled: readonly string[],
+  mention: boolean,
+) {
+  const lines = [`**${escapeMarkdown(poll.title ?? "日程調整")}** の日程のお知らせ`];
+  if (fixed.length) lines.push("確定した日時:", ...fixed.map((f) => `・${f.when}${f.note ? `（${f.note}）` : ""}`));
+  else lines.push("確定している日時はありません。");
+  if (cancelled.length) lines.push("確定を取り消した日時:", ...cancelled.map((w) => `・~~${w}~~`));
+  const text = lines.join("\n");
   return mention ? withPollMention(poll, text, null) : { content: text, allowed_mentions: { parse: [] as string[] } };
 }
 

@@ -350,11 +350,10 @@ export function syncPanel(d: PollData, reload: () => void): HTMLElement | null {
 
 export function statusBanner(d: PollData): HTMLElement | null {
   const tz = viewerTimeZone();
-  if (d.poll.status === "fixed" && d.poll.fixedSlotId) {
-    const s = d.slots.find((x) => x.id === d.poll.fixedSlotId);
-    if (!s) return null;
-    const t = slotText(s, d.poll.timezone, tz);
-    return notice("ok", h("strong", {}, `${t.main} に確定しています。`), " 予定が変わった場合は回答を変更してください。");
+  const fixed = d.slots.filter((x) => x.fixedAt !== null);
+  if (d.poll.status === "fixed" && fixed.length) {
+    const when = fixed.map((s) => slotText(s, d.poll.timezone, tz).main).join("、");
+    return notice("ok", h("strong", {}, `${when} に確定しています。`), " 予定が変わった場合は回答を変更してください。");
   }
   if (d.poll.status === "closed") return notice("info", "締切を過ぎています。回答の入力・変更はできます。");
   if (d.poll.status === "draft") return notice("info", "この調整はまだ公開されていません。");

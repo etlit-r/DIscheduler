@@ -26,12 +26,14 @@ import {
   getPoll,
   getSlots,
   hitRateLimit,
+  hitRateLimitStatement,
   rateLimitAllows,
   insertChoiceStatements,
   insertParticipantsStatement,
   readPollWithData,
   type PollWithData,
   type PollRow,
+  type SlotRow,
   type SessionRow,
 } from "../db";
 import { fetchMember, searchMembers } from "../discord/members";
@@ -45,7 +47,7 @@ import { isValidTimeZone, nextCronAt } from "../shared/time";
 import { isValidDonationUrl } from "../shared/text";
 import { getRecentTimes, mergeRanges, rangesFromSlots, saveRecentTimesStatement } from "../guilds/recent-times";
 import { syncAfterAnswer, syncNow } from "../polls/sync";
-import { AnswersBody, ChoicesBody, FixBody, OpenPollBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
+import { AnnounceBody, AnswersBody, ChoicesBody, FixBody, OpenPollBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
 
 type Vars = { session: SessionRow; poll: PollRow };
 type C = Context<{ Bindings: Env; Variables: Vars }>;
@@ -190,15 +192,12 @@ polls.get("/:id", async (c) => {
       targetType: poll.target_type,
       targetId: poll.target_id,
       joinPolicy: poll.join_policy,
-      fixedSlotId: poll.fixed_slot_id,
-      fixedAt: poll.fixed_at,
       choicesVersion: poll.choices_version,
       updatedAt: poll.updated_at,
       messageUrl: poll.message_id ? messageLink(poll.guild_id, poll.channel_id, poll.message_id) : null,
       lastSyncedAt: isOrganizer ? poll.last_synced_at : null,
       pendingChanges: pending,
       nextAutoSyncAt: isOrganizer ? nextCronAt(now) : null,
-      hasEvent: poll.discord_event_id !== null,
       choicesChangedAt: poll.choices_changed_at,
     },
     me: {
@@ -216,7 +215,7 @@ polls.get("/:id", async (c) => {
         (me.choices_ack_version ?? 0) < poll.choices_version &&
         answers.some((a) => a.user_id === me.user_id && a.updated_at <= poll.choices_changed_at!),
     },
-    slots: slots.map((s) => ({ id: s.id, startAt: s.start_at, endAt: s.end_at, allDay: s.all_day === 1 })),
+    slots: slots.map((s) => ({ id: s.id, startAt: s.start_at, endAt: s.end_at, allDay: s.all_day === 1, fixedAt: s.fixed_at, hasEvent: s.discord_event_id !== null, announced: s.announced_fixed === 1 })),
     choices: choices.map((ch) => ({ id: ch.id, symbol: ch.symbol, label: ch.label, kind: ch.kind, score: ch.score, color: ch.color })),
     participants: participants.map((p) => ({ userId: p.user_id, displayName: p.display_name, comment: p.comment, answeredAt: p.answered_at })),
     answers: answers.map((a) => ({ slotId: a.slot_id, userId: a.user_id, choiceId: a.choice_id, prevChoiceId: a.prev_choice_id, updatedAt: a.updated_at })),
@@ -311,7 +310,7 @@ polls.put("/:id/slots", async (c) => {
     seen.add(key);
   }
   const keepIds = new Set(body.slots.filter((s) => s.id).map((s) => s.id!));
-  if (poll.fixed_slot_id && !keepIds.has(poll.fixed_slot_id)) throw new AppError(409, "fixed_slot", "確定した候補は削除できません。");
+  if (existing.some((s) => s.fixed_at !== null && !keepIds.has(s.id))) throw new AppError(409, "fixed_slot", "確定した候補は削除できません。確定を取り消してから削除してください。");
   const sorted = [...body.slots].sort((a, b) => a.startAt - b.startAt);
   const stmts: D1PreparedStatement[] = [];
   for (const old of existing) {
@@ -336,16 +335,19 @@ polls.put("/:id/slots", async (c) => {
   // 新しく追加した候補の時間帯を、サーバーの最近使った時間帯として覚える（§6.3.1）
   const newRanges = rangesFromSlots(body.slots.filter((s) => !s.id), poll.timezone);
   if (newRanges.length) stmts.push(saveRecentTimesStatement(db, poll.guild_id, mergeRanges(newRanges, await getRecentTimes(db, poll.guild_id)), now));
-  stmts.push(db.prepare("UPDATE polls SET updated_at = ? WHERE id = ?").bind(now, poll.id));
+  // 確定した候補の日時が変わったら、データの削除時刻も決め直す（いちばん遅い確定日時から 6 か月後）
+  stmts.push(poll.status === "fixed" ? refreshFixedStatement(db, poll, now) : db.prepare("UPDATE polls SET updated_at = ? WHERE id = ?").bind(now, poll.id));
   await db.batch(stmts);
   if (poll.status !== "draft") c.executionCtx.waitUntil(syncNow(c.env, poll.id));
   // 確定した候補の日時を変えたときは、登録済みの Discord イベントの日時も合わせる
   const warnings: string[] = [];
-  const oldFixed = existing.find((s) => s.id === poll.fixed_slot_id);
-  const newFixed = body.slots.find((s) => s.id === poll.fixed_slot_id);
-  if (poll.discord_event_id && oldFixed && newFixed && (oldFixed.start_at !== newFixed.startAt || oldFixed.end_at !== newFixed.endAt || (oldFixed.all_day === 1) !== newFixed.allDay)) {
-    const err = await updateEventTime(c.env, poll, { start_at: newFixed.startAt, end_at: newFixed.endAt, all_day: newFixed.allDay ? 1 : 0 });
-    if (err) warnings.push(err);
+  for (const oldFixed of existing) {
+    if (!oldFixed.discord_event_id) continue;
+    const newFixed = body.slots.find((s) => s.id === oldFixed.id);
+    if (newFixed && (oldFixed.start_at !== newFixed.startAt || oldFixed.end_at !== newFixed.endAt || (oldFixed.all_day === 1) !== newFixed.allDay)) {
+      const err = await updateEventTime(c.env, poll, oldFixed, { start_at: newFixed.startAt, end_at: newFixed.endAt, all_day: newFixed.allDay ? 1 : 0 });
+      if (err && !warnings.includes(err)) warnings.push(err);
+    }
   }
   return c.json({ ok: true, updatedAt: now, warnings });
 });
@@ -589,14 +591,16 @@ polls.put("/:id/answers/me", async (c) => {
   }
   const old = new Map(data.answers.filter((a) => a.user_id === session.user_id).map((r) => [r.slot_id, r]));
   const isFixed = poll.status === "fixed";
+  // 確定した候補だけ、確定時点の回答からの変更を記録する（§6.5）
+  const fixedSlotIds = new Set(slots.filter((s) => s.fixed_at !== null).map((s) => s.id));
   const stmts: D1PreparedStatement[] = [];
   for (const a of body.answers) {
     const prev = old.get(a.slotId);
     if (prev && prev.choice_id === a.choiceId) continue;
     // 確定後に変えた場合は、確定時点の選択肢を残す（元に戻したら消す）。
     // 確定時点で未回答だった場合は、空文字（UNANSWERED）を残す
-    let prevChoice: string | null = prev?.prev_choice_id ?? null;
-    if (isFixed) {
+    let prevChoice: string | null = null;
+    if (fixedSlotIds.has(a.slotId)) {
       const atFix = prev ? (prev.prev_choice_id ?? prev.choice_id) : UNANSWERED;
       prevChoice = atFix === a.choiceId ? null : atFix;
     }
@@ -630,6 +634,41 @@ polls.put("/:id/answers/me", async (c) => {
   return c.json({ ok: true });
 });
 
+/** 確定した候補の日時の表示（Discord のメッセージ用） */
+function slotWhen(slot: { start_at: number; all_day: number }): string {
+  return slot.all_day ? `<t:${slot.start_at}:D>（終日）` : `<t:${slot.start_at}:F>`;
+}
+
+/** 登録済みの Discord イベントを消す。すでに消えていれば何もしない。消せなかったら警告の文を返す */
+async function deleteEvent(env: Env, poll: PollRow, slot: SlotRow): Promise<string | null> {
+  if (!slot.discord_event_id) return null;
+  try {
+    await discord(env, "DELETE", `/guilds/${poll.guild_id}/scheduled-events/${slot.discord_event_id}`);
+  } catch (e) {
+    // 消せなくても記録は外す（古いイベントが取り消した候補に結び付いたまま残らないように。主催者には Discord で消すよう知らせる）
+    if (!(e instanceof DiscordError && e.status === 404)) {
+      await env.DB.prepare("UPDATE slots SET discord_event_id = NULL WHERE id = ?").bind(slot.id).run();
+      return "登録済みの Discord イベントを削除できませんでした。Discord で削除してください。";
+    }
+  }
+  await env.DB.prepare("UPDATE slots SET discord_event_id = NULL WHERE id = ?").bind(slot.id).run();
+  return null;
+}
+
+/** 調整のステータスと削除時刻を、確定した候補の有無から決め直す文（確定・取り消しが重なっても、slots の状態と食い違わないよう SQL の中で数える） */
+function refreshFixedStatement(db: D1Database, poll: PollRow, now: number): D1PreparedStatement {
+  return db
+    .prepare(
+      "UPDATE polls SET " +
+        "status = CASE WHEN EXISTS (SELECT 1 FROM slots WHERE poll_id = ?1 AND fixed_at IS NOT NULL) THEN 'fixed' ELSE 'open' END, " +
+        "purge_after = COALESCE((SELECT MAX(MAX(start_at), ?2) FROM slots WHERE poll_id = ?1 AND fixed_at IS NOT NULL), MAX(COALESCE(deadline_at, ?2), ?2)) + ?3, " +
+        "updated_at = ?2 WHERE id = ?1",
+    )
+    .bind(poll.id, now, RETENTION);
+}
+
+// 候補を確定する。確定済みの候補はそのまま残し、複数の候補を確定できる（§4.3）。
+// チャンネルへのお知らせはここではせず、主催者が［確定をお知らせする］（POST /announce）でまとめて投稿する
 polls.post("/:id/fix", async (c) => {
   requireOrganizer(c);
   const body = await readJson(c, FixBody);
@@ -640,66 +679,113 @@ polls.post("/:id/fix", async (c) => {
   const slots = await getSlots(db, poll.id);
   const slot = slots.find((s) => s.id === body.slotId);
   if (!slot) throw new AppError(400, "invalid", "候補が見つかりません。");
-
+  const alreadyFixed = () => new AppError(409, "already_fixed", "この候補はすでに確定しています。画面を再読み込みしてください。");
+  if (slot.fixed_at !== null) throw alreadyFixed();
+  // 先に確定の権利を取る（同時に 2 回押されても、イベントの登録などは 1 回だけにする）
+  const claimed = await db.prepare("UPDATE slots SET fixed_at = ? WHERE id = ? AND fixed_at IS NULL").bind(now, slot.id).run();
+  if (claimed.meta.changes !== 1) throw alreadyFixed();
   await db.batch([
-    db.prepare("UPDATE answers SET prev_choice_id = NULL WHERE poll_id = ?").bind(poll.id),
-    db
-      .prepare("UPDATE polls SET status = 'fixed', fixed_slot_id = ?, fixed_at = ?, updated_at = ?, purge_after = ? WHERE id = ?")
-      .bind(slot.id, now, now, Math.max(slot.start_at, now) + RETENTION, poll.id),
+    // この候補の「確定後の変更」の記録は、確定した時点から数える
+    db.prepare("UPDATE answers SET prev_choice_id = NULL WHERE slot_id = ?").bind(slot.id),
+    refreshFixedStatement(db, poll, now),
   ]);
   const warnings: string[] = [];
   await syncNow(c.env, poll.id).catch(() => warnings.push("募集メッセージを更新できませんでした。"));
+  if (body.event) {
+    const err = await upsertEvent(c.env, poll, slot, body.event);
+    if (err) warnings.push(err);
+  }
+  return c.json({ ok: true, warnings });
+});
 
-  const when = slot.all_day ? `<t:${slot.start_at}:D>（終日）` : `<t:${slot.start_at}:F>`;
+// 確定を取り消す（主催者）。Discord イベントを消す。チャンネルへのお知らせは［確定をお知らせする］でまとめて投稿する。
+// 確定した候補がなくなったら、募集中（締切を過ぎていれば締切後）に戻る
+polls.delete("/:id/fix/:slotId", async (c) => {
+  requireOrganizer(c);
+  const { poll } = c.var;
+  const db = c.env.DB;
+  const now = nowSec();
+  const slots = await getSlots(db, poll.id);
+  const slot = slots.find((s) => s.id === c.req.param("slotId"));
+  if (!slot) throw new AppError(404, "not_found", "候補が見つかりません。画面を再読み込みしてください。");
+  if (slot.fixed_at === null) throw new AppError(409, "not_fixed", "この候補は確定していません。画面を再読み込みしてください。");
+
+  const warnings: string[] = [];
+  const err = await deleteEvent(c.env, poll, slot);
+  if (err) warnings.push(err);
+  await db.batch([
+    db.prepare("UPDATE answers SET prev_choice_id = NULL WHERE slot_id = ?").bind(slot.id),
+    // 取り消した日時にリマインドを送らないよう、送った記録も消す（もう一度確定したら改めて送る）
+    db.prepare("UPDATE slots SET fixed_at = NULL, day_reminded_at = NULL WHERE id = ?").bind(slot.id),
+    refreshFixedStatement(db, poll, now),
+  ]);
+  await syncNow(c.env, poll.id).catch(() => warnings.push("募集メッセージを更新できませんでした。"));
+  return c.json({ ok: true, warnings });
+});
+
+// 確定をお知らせする（主催者）。いま確定している日時と、前回のお知らせのあとに取り消した日時を、1 つのメッセージにまとめて投稿する（§4.3）
+polls.post("/:id/announce", async (c) => {
+  requireOrganizer(c);
+  const body = await readJson(c, AnnounceBody);
+  const { poll } = c.var;
+  const db = c.env.DB;
+  const now = nowSec();
+  if (!canAnswer(poll.status)) throw new AppError(409, "not_published", "公開中の調整だけお知らせできます。");
+  const slots = await getSlots(db, poll.id);
+  const fixed = slots.filter((s) => s.fixed_at !== null);
+  const cancelled = slots.filter((s) => s.fixed_at === null && s.announced_fixed === 1);
+  if (!fixed.length && !cancelled.length) throw new AppError(409, "nothing", "お知らせする確定日・取り消しがありません。");
+  // チャンネルへの投稿が続かないよう、1 つの調整につき 1 時間に 10 回まで
+  if (!(await hitRateLimit(db, `announce:${poll.id}`, 10, 3600, now))) throw new AppError(429, "rate_limited", "確定のお知らせは 1 時間に 10 回までです。");
+
+  const warnings: string[] = [];
   // メンションは公開時のお知らせと同じ（ロールの調整はそのロール、それ以外は @everyone。§5.5）。
-  // 確定し直しを繰り返してロールや @everyone への通知が続かないよう、メンションは 1 つの調整につき 1 時間に 3 回まで（投稿できたときだけ数える）
+  // ロールや @everyone への通知が続かないよう、メンションは 1 つの調整につき 1 時間に 3 回まで（投稿できたときだけ数える）
   const MENTION_KEY = `fix-mention:${poll.id}`;
   let mention = body.mention;
   if (mention && !(await rateLimitAllows(db, MENTION_KEY, 3, 3600, now))) {
     mention = false;
     warnings.push("確定のお知らせのメンションは 1 時間に 3 回までのため、今回はメンションせずに投稿しました。");
   }
-  // 予定のリマインド（§5.7）を送る回がもう過ぎていて、予定がまだ先なら、確定のお知らせがリマインドを兼ねる。
+  // 予定のリマインド（§5.7）を送る回がもう過ぎていて、予定がまだ先なら、このお知らせがリマインドを兼ねる。
   // 開始までの時間を添え、あとの回で同じ日時に重ねて送らないよう記録する
-  const lateForReminder = reminderRunAt(slot, poll.timezone) <= now && slot.start_at > now;
-  if (lateForReminder) await db.prepare("UPDATE polls SET day_reminded_slot_at = ? WHERE id = ?").bind(slot.start_at, poll.id).run();
-  const announce = buildFixedMessage(poll, when, mention, lateForReminder ? `\n<t:${slot.start_at}:R>に始まります。` : "");
+  const late = fixed.filter((s) => s.start_at > now && s.day_reminded_at !== s.start_at && reminderRunAt(s, poll.timezone) <= now);
+  const lateIds = new Set(late.map((s) => s.id));
+  const message = buildFixedMessage(
+    poll,
+    fixed.map((s) => ({ when: slotWhen(s), note: lateIds.has(s.id) ? `<t:${s.start_at}:R>に始まります` : null })),
+    cancelled.map((s) => slotWhen(s)),
+    mention,
+  );
   try {
-    await discord(c.env, "POST", `/channels/${poll.channel_id}/messages`, announce);
-    if (mention) await hitRateLimit(db, MENTION_KEY, 3, 3600, now);
+    await discord(c.env, "POST", `/channels/${poll.channel_id}/messages`, message);
   } catch {
-    warnings.push("確定のお知らせを投稿できませんでした。");
+    throw new AppError(502, "discord_failed", "確定のお知らせを投稿できませんでした。Bot がこのチャンネルに投稿できるか確認してください。");
   }
-
-  if (body.event) {
-    const err = await upsertEvent(c.env, poll, slot, body.event);
-    if (err) warnings.push(err);
-  } else if (poll.discord_event_id) {
-    // 登録済みのイベントが古い日時のまま残らないよう、イベントを外したら削除する
-    try {
-      await discord(c.env, "DELETE", `/guilds/${poll.guild_id}/scheduled-events/${poll.discord_event_id}`);
-    } catch (e) {
-      if (!(e instanceof DiscordError && e.status === 404)) warnings.push("登録済みの Discord イベントを削除できませんでした。Discord で削除してください。");
-    }
-    await db.prepare("UPDATE polls SET discord_event_id = NULL WHERE id = ?").bind(poll.id).run();
-  }
-  return c.json({ ok: true, redirect: `/p/${poll.id}/done?kind=fixed`, warnings });
+  const stmts: D1PreparedStatement[] = [
+    // お知らせした内容を覚える（次のお知らせで、取り消した日時を知らせるため）
+    db.prepare("UPDATE slots SET announced_fixed = CASE WHEN fixed_at IS NULL THEN 0 ELSE 1 END WHERE poll_id = ?").bind(poll.id),
+    ...late.map((s) => db.prepare("UPDATE slots SET day_reminded_at = ? WHERE id = ?").bind(s.start_at, s.id)),
+  ];
+  if (mention) stmts.push(hitRateLimitStatement(db, MENTION_KEY, 3600, now));
+  await db.batch(stmts);
+  return c.json({ ok: true, warnings });
 });
 
 /** 登録済みの Discord イベントの日時だけを変える（場所などはそのまま） */
-async function updateEventTime(env: Env, poll: PollRow, slot: { start_at: number; end_at: number | null; all_day: number }): Promise<string | null> {
-  if (!poll.discord_event_id) return null;
-  if (slot.start_at <= nowSec() + 60) return "確定した候補の開始日時が過ぎているため、Discord イベントの日時は変更しませんでした。";
-  const end = slot.end_at ?? slot.start_at + (slot.all_day ? DAY : 3600);
+async function updateEventTime(env: Env, poll: PollRow, slot: SlotRow, time: { start_at: number; end_at: number | null; all_day: number }): Promise<string | null> {
+  if (!slot.discord_event_id) return null;
+  if (time.start_at <= nowSec() + 60) return "確定した候補の開始日時が過ぎているため、Discord イベントの日時は変更しませんでした。";
+  const end = time.end_at ?? time.start_at + (time.all_day ? DAY : 3600);
   try {
-    await discord(env, "PATCH", `/guilds/${poll.guild_id}/scheduled-events/${poll.discord_event_id}`, {
-      scheduled_start_time: new Date(slot.start_at * 1000).toISOString(),
+    await discord(env, "PATCH", `/guilds/${poll.guild_id}/scheduled-events/${slot.discord_event_id}`, {
+      scheduled_start_time: new Date(time.start_at * 1000).toISOString(),
       scheduled_end_time: new Date(end * 1000).toISOString(),
     });
     return null;
   } catch (e) {
     if (e instanceof DiscordError && e.status === 404) {
-      await env.DB.prepare("UPDATE polls SET discord_event_id = NULL WHERE id = ?").bind(poll.id).run();
+      await env.DB.prepare("UPDATE slots SET discord_event_id = NULL WHERE id = ?").bind(slot.id).run();
       return null;
     }
     return "Discord イベントの日時を変更できませんでした。Discord で変更してください。";
@@ -709,7 +795,7 @@ async function updateEventTime(env: Env, poll: PollRow, slot: { start_at: number
 async function upsertEvent(
   env: Env,
   poll: PollRow,
-  slot: { start_at: number; end_at: number | null; all_day: number },
+  slot: SlotRow,
   ev: { type: "voice" | "external"; channelId: string | null; location: string | null },
 ): Promise<string | null> {
   const now = nowSec();
@@ -732,17 +818,17 @@ async function upsertEvent(
     payload.entity_metadata = { location: ev.location ?? "Discord" };
   }
   try {
-    if (poll.discord_event_id) {
-      await discord(env, "PATCH", `/guilds/${poll.guild_id}/scheduled-events/${poll.discord_event_id}`, payload);
+    if (slot.discord_event_id) {
+      await discord(env, "PATCH", `/guilds/${poll.guild_id}/scheduled-events/${slot.discord_event_id}`, payload);
     } else {
       const res = await discord<{ id: string }>(env, "POST", `/guilds/${poll.guild_id}/scheduled-events`, payload);
-      await env.DB.prepare("UPDATE polls SET discord_event_id = ? WHERE id = ?").bind(res.id, poll.id).run();
+      await env.DB.prepare("UPDATE slots SET discord_event_id = ? WHERE id = ?").bind(res.id, slot.id).run();
     }
     return null;
   } catch (e) {
-    if (e instanceof DiscordError && e.status === 404 && poll.discord_event_id) {
-      await env.DB.prepare("UPDATE polls SET discord_event_id = NULL WHERE id = ?").bind(poll.id).run();
-      return upsertEvent(env, { ...poll, discord_event_id: null }, slot, ev);
+    if (e instanceof DiscordError && e.status === 404 && slot.discord_event_id) {
+      await env.DB.prepare("UPDATE slots SET discord_event_id = NULL WHERE id = ?").bind(slot.id).run();
+      return upsertEvent(env, poll, { ...slot, discord_event_id: null }, ev);
     }
     if (e instanceof DiscordError && e.status === 403) return "Bot に「イベントの作成」権限がないため、Discord イベントは登録しませんでした。";
     return "Discord イベントを登録できませんでした。";
@@ -833,12 +919,10 @@ async function deletePollEverywhere(env: Env, poll: PollRow): Promise<string[]> 
   }
   // 確定時に登録した Discord イベントも、調整と一緒に消す
   const warnings: string[] = [];
-  if (poll.discord_event_id) {
-    try {
-      await discord(env, "DELETE", `/guilds/${poll.guild_id}/scheduled-events/${poll.discord_event_id}`);
-    } catch (e) {
-      if (!(e instanceof DiscordError && e.status === 404)) warnings.push("Discord イベントを削除できませんでした。Discord で削除してください。");
-    }
+  const eventIds = (await env.DB.prepare("SELECT discord_event_id FROM slots WHERE poll_id = ? AND discord_event_id IS NOT NULL").bind(poll.id).all<{ discord_event_id: string }>()).results;
+  const results = await Promise.allSettled(eventIds.map(({ discord_event_id }) => discord(env, "DELETE", `/guilds/${poll.guild_id}/scheduled-events/${discord_event_id}`)));
+  if (results.some((r) => r.status === "rejected" && !(r.reason instanceof DiscordError && r.reason.status === 404))) {
+    warnings.push("Discord イベントを削除できませんでした。Discord で削除してください。");
   }
   await deletePollData(env.DB, poll.id);
   return warnings;
@@ -901,10 +985,10 @@ guilds.get("/:guildId/polls", async (c: LC) => {
   const now = nowSec();
   const rows = await c.env.DB.prepare(
     "SELECT p.id, p.title, p.status, p.deadline_at, p.channel_id, p.message_id, p.created_at, p.updated_at, p.timezone, " +
-      "s.start_at AS fixed_start, s.end_at AS fixed_end, s.all_day AS fixed_all_day, " +
+      "(SELECT json_group_array(json_object('s', s.start_at, 'e', s.end_at, 'a', s.all_day)) FROM slots s WHERE s.poll_id = p.id AND s.fixed_at IS NOT NULL) AS fixed_json, " +
       "(SELECT COUNT(*) FROM participants pa WHERE pa.poll_id = p.id) AS participants, " +
       "(SELECT COUNT(*) FROM participants pa WHERE pa.poll_id = p.id AND pa.answered_at IS NOT NULL) AS answered " +
-      "FROM polls p LEFT JOIN slots s ON s.id = p.fixed_slot_id " +
+      "FROM polls p " +
       "WHERE p.guild_id = ? AND p.organizer_id = ? AND p.status != 'cancelled' ORDER BY p.updated_at DESC LIMIT 200",
   )
     .bind(list.guild_id, list.user_id)
@@ -918,9 +1002,7 @@ guilds.get("/:guildId/polls", async (c: LC) => {
       created_at: number;
       updated_at: number;
       timezone: string;
-      fixed_start: number | null;
-      fixed_end: number | null;
-      fixed_all_day: number | null;
+      fixed_json: string;
       participants: number;
       answered: number;
     }>();
@@ -933,7 +1015,9 @@ guilds.get("/:guildId/polls", async (c: LC) => {
       status: effectiveStatus(r.status, r.deadline_at, now),
       deadlineAt: r.deadline_at,
       timezone: r.timezone,
-      fixed: r.fixed_start === null ? null : { startAt: r.fixed_start, endAt: r.fixed_end, allDay: r.fixed_all_day === 1 },
+      fixed: (JSON.parse(r.fixed_json) as { s: number; e: number | null; a: number }[])
+        .map((f) => ({ startAt: f.s, endAt: f.e, allDay: f.a === 1 }))
+        .sort((x, y) => x.startAt - y.startAt),
       participants: r.participants,
       answered: r.answered,
       createdAt: r.created_at,
