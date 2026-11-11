@@ -651,7 +651,11 @@ describe("主催者の調整一覧（§6.11）", () => {
   it("別のサーバーの一覧には、そのサーバーのセッションがなければ入れない", async () => {
     const { cookie } = await listLogin("200000000000000001", ORGANIZER);
     expect((await call(getReq(`/api/guilds/${OTHER_GUILD}/polls`, cookie))).status).toBe(401);
-    expect((await call(getReq(`/api/guilds/200000000000000001/polls`))).status).toBe(401);
+    const expired = await call(getReq(`/api/guilds/200000000000000001/polls`));
+    expect(expired.status).toBe(401);
+    const err = ((await expired.json()) as { error: { code: string; message: string } }).error;
+    expect(err.code).toBe("list_session_expired");
+    expect(err.message).toContain("もう一度 /schedule を実行し、［自分の調整を管理］を押して、新しいリンクを受け取ってください");
   });
 
   it("一覧のリンクも 1 回だけ使える", async () => {
