@@ -43,8 +43,10 @@ function linkButton(label: string, url: string) {
   return { type: 2, style: 5, label, url };
 }
 
-async function editOriginal(env: Env, i: Interaction, content: string, components: unknown[] = []): Promise<void> {
-  await discord(env, "PATCH", `/webhooks/${i.application_id}/${i.token}/messages/@original`, { content, components, allowed_mentions: NO_MENTIONS }, { auth: "none" });
+/** mentionUser を渡したときは、その人へのメンションだけを有効にする（本人にだけ見える応答で、本人を強調するため） */
+async function editOriginal(env: Env, i: Interaction, content: string, components: unknown[] = [], mentionUser?: string): Promise<void> {
+  const allowed_mentions = mentionUser ? { parse: [] as string[], users: [mentionUser] } : NO_MENTIONS;
+  await discord(env, "PATCH", `/webhooks/${i.application_id}/${i.token}/messages/@original`, { content, components, allowed_mentions }, { auth: "none" });
 }
 
 /** 応答後の処理。失敗しても利用者に理由を伝える */
@@ -259,8 +261,10 @@ async function handlePollButton(
   await editOriginal(
     env,
     i,
-    `「${escapeMarkdown(poll.title ?? "日程調整")}」のあなた専用のリンクです（10 分有効・1 回限り）。他の人に渡さないでください。${note ? `\n${note}` : ""}`,
+    // 応答に気づきやすくするため、押した本人をメンションする（本人にだけ見える応答なので、ほかの人には見えない）
+    `<@${userId}> 「${escapeMarkdown(poll.title ?? "日程調整")}」のあなた専用のリンクです（10 分有効・1 回限り）。他の人に渡さないでください。${note ? `\n${note}` : ""}`,
     [{ type: 1, components: [linkButton(label, url)] }],
+    userId,
   );
 }
 
