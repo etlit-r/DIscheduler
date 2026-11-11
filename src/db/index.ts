@@ -234,6 +234,13 @@ export async function hitRateLimit(db: D1Database, key: string, limit: number, w
   return (row?.count ?? 1) <= limit;
 }
 
+/** レート制限の残りがあるかだけを確かめる（数えない）。成功したときだけ hitRateLimit で数えたいときに使う */
+export async function rateLimitAllows(db: D1Database, key: string, limit: number, windowSec: number, now: number): Promise<boolean> {
+  const windowStart = Math.floor(now / windowSec) * windowSec;
+  const row = await db.prepare("SELECT count FROM rate_limits WHERE key = ?").bind(`${key}:${windowStart}`).first<{ count: number }>();
+  return (row?.count ?? 0) < limit;
+}
+
 /** 残り時間（秒）を知るために、レート制限のウィンドウの終わりを返す */
 export function rateLimitResetIn(windowSec: number, now: number): number {
   return Math.floor(now / windowSec) * windowSec + windowSec - now;

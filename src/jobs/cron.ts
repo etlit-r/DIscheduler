@@ -69,21 +69,22 @@ export async function runCron(env: Env, scheduledTime: number): Promise<void> {
  * 通知したことは meta に残し、数が目安以下に戻ったら消す（また超えたら、もう一度通知する）
  */
 async function alertGuildCount(env: Env, count: number): Promise<void> {
-  const db = env.DB;
-  const KEY = "guild_alert_sent";
-  if (count <= GUILD_ALERT_THRESHOLD) {
-    await db.prepare("DELETE FROM meta WHERE key = ?").bind(KEY).run();
-    return;
-  }
-  const sent = await db.prepare("SELECT value FROM meta WHERE key = ?").bind(KEY).first<{ value: string }>();
-  if (sent) return;
-  const m = /^https:\/\/(?:discord\.com|discordapp\.com)\/api\/webhooks\/(\d{17,20})\/([A-Za-z0-9_-]{20,100})$/.exec(env.ALERT_WEBHOOK_URL ?? "");
-  if (!m) {
-    console.error(JSON.stringify({ event: "guild_alert_skipped", reason: env.ALERT_WEBHOOK_URL ? "bad_webhook_url" : "no_webhook_url", count }));
-    return;
-  }
+  // 通知の失敗（D1・Discord のエラー）で、外されたサーバーのデータの削除が止まらないよう、ここで受け止める
   try {
-    await discord(env, "POST", `/webhooks/${m[1]}/${m[2]}`, {
+    const db = env.DB;
+    const KEY = "guild_alert_sent";
+    if (count <= GUILD_ALERT_THRESHOLD) {
+      await db.prepare("DELETE FROM meta WHERE key = ?").bind(KEY).run();
+      return;
+    }
+    const sent = await db.prepare("SELECT value FROM meta WHERE key = ?").bind(KEY).first<{ value: string }>();
+    if (sent) return;
+    const hook = parseWebhookUrl(env.ALERT_WEBHOOK_URL);
+    if (!hook) {
+      console.error(JSON.stringify({ event: "guild_alert_skipped", reason: env.ALERT_WEBHOOK_URL ? "bad_webhook_url" : "no_webhook_url", count }));
+      return;
+    }
+    await discord(env, "POST", `/webhooks/${hook.id}/${hook.token}`, {
       content: `DIscheduler の Bot が入っているサーバーが ${count} になりました（通知の目安: ${GUILD_ALERT_THRESHOLD}）。`,
       allowed_mentions: { parse: [] },
     }, { auth: "none" });
@@ -91,6 +92,24 @@ async function alertGuildCount(env: Env, count: number): Promise<void> {
   } catch (e) {
     console.error(JSON.stringify({ event: "guild_alert_failed", error: e instanceof Error ? e.message : "unknown" }));
   }
+}
+
+/**
+ * Discord の Webhook の URL から ID とトークンを取り出す。discord.com・discordapp.com と、
+ * PTB・Canary の版のアドレス、API の版（/api/v10/…）、末尾の「/」やクエリ（?wait=true など）を受け付ける
+ */
+export function parseWebhookUrl(raw: string | undefined): { id: string; token: string } | null {
+  if (!raw) return null;
+  let u: URL;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  const hosts = ["discord.com", "ptb.discord.com", "canary.discord.com", "discordapp.com", "ptb.discordapp.com", "canary.discordapp.com"];
+  if (u.protocol !== "https:" || !hosts.includes(u.hostname)) return null;
+  const m = /^\/api(?:\/v\d+)?\/webhooks\/(\d{17,20})\/([A-Za-z0-9_-]{20,100})\/?$/.exec(u.pathname);
+  return m ? { id: m[1]!, token: m[2]! } : null;
 }
 
 async function cleanup(env: Env, now: number): Promise<void> {

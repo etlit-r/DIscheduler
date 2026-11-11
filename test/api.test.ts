@@ -313,6 +313,44 @@ describe("主催者だけの操作", () => {
     expect(posts.map((p) => p.content.includes("@everyone"))).toEqual([true, true, true, false]);
   });
 
+  it("予定のリマインドの回が過ぎてから確定したときは、確定のお知らせに開始までの時間を添え、あとで重ねて送らない", async () => {
+    const calls = mockDiscord();
+    const s = await seedPoll();
+    // 30 分後に始まる予定（知らせる回は、開始の 1 時間以上前なので必ず過ぎている）
+    const start = Math.floor(Date.now() / 1000) + 1800;
+    await db().prepare("UPDATE slots SET start_at = ?, end_at = ? WHERE id = ?").bind(start, start + 3600, s.slotIds[0]).run();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: true, event: null }, org));
+    const post = calls.find((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)!.body as { content: string };
+    expect(post.content).toContain(`<t:${start}:R>に始まります。`);
+    const row = await db().prepare("SELECT day_reminded_slot_at FROM polls WHERE id = ?").bind(s.pollId).first<{ day_reminded_slot_at: number }>();
+    expect(row!.day_reminded_slot_at).toBe(start);
+  });
+
+  it("予定のリマインドの回がまだ先なら、確定のお知らせには開始までの時間を添えない", async () => {
+    const calls = mockDiscord();
+    const s = await seedPoll();
+    const start = Math.floor(Date.now() / 1000) + 30 * 86400;
+    await db().prepare("UPDATE slots SET start_at = ?, end_at = ? WHERE id = ?").bind(start, start + 3600, s.slotIds[0]).run();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: true, event: null }, org));
+    const post = calls.find((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)!.body as { content: string };
+    expect(post.content).not.toContain(":R>");
+    const row = await db().prepare("SELECT day_reminded_slot_at FROM polls WHERE id = ?").bind(s.pollId).first<{ day_reminded_slot_at: number | null }>();
+    expect(row!.day_reminded_slot_at).toBeNull();
+  });
+
+  it("確定のお知らせの投稿に失敗したときは、メンションの回数に数えない", async () => {
+    let fail = 3;
+    const calls = mockDiscord((c) => (c.method === "POST" && c.path === `/channels/${CHANNEL}/messages` && fail-- > 0 ? new Response("{}", { status: 500 }) : {}));
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    for (let i = 0; i < 4; i++) await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], mention: true, event: null }, org));
+    const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).map((c) => c.body as { content: string });
+    // 失敗した 3 回のあとの 4 回目も、メンションつきで送る
+    expect(posts.at(-1)!.content).toContain("@everyone");
+  });
+
   it("手動更新は 1 分に 1 回まで", async () => {
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
