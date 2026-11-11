@@ -1,6 +1,6 @@
 // S7: 公開完了（docs/design.md §6.3, §6.10）。確定は集計画面の中で完了を知らせる（§4.3）
 import { loadPoll } from "../lib/api";
-import { rememberDonation, showError } from "../ui/common";
+import { donationLine, rememberDonation, showError } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
 
 export async function donePage(pollId: string): Promise<void> {
@@ -34,15 +34,7 @@ export async function donePage(pollId: string): Promise<void> {
         h("a", { class: "btn btn-primary", href: `/p/${pollId}` }, "集計画面を開く"),
         d.poll.messageUrl ? h("a", { class: "btn btn-secondary", href: d.poll.messageUrl, rel: "noopener noreferrer" }, "募集メッセージを開く") : null,
       ),
-      d.donationUrl
-        ? h(
-            "p",
-            { class: "donation-line" },
-            "DIscheduler は無料で運営しています。役に立ったら ",
-            h("a", { href: d.donationUrl, rel: "noopener noreferrer" }, "運営を支援する"),
-            "（任意です。支援の有無で機能は変わりません）",
-          )
-        : null,
+      donationLine(d.donationUrl),
     ),
   );
 }

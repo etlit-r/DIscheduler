@@ -55,6 +55,15 @@ export function isValidDonationUrl(u: string | null | undefined): u is string {
   return typeof u === "string" && DONATION_URL_PATTERN.test(u);
 }
 
+/**
+ * 寄付リンクの近くに添える、リンク先の支援サービスの説明（§6.10）。Ko-fi のときだけ、画面が英語であることと支払い方を書く。
+ * scripts/prepare-public.sh の __DONATION_NOTE__ の文と同じにする（変えるときは両方そろえる）
+ */
+export const KOFI_DONATION_NOTE = "支援は Ko-fi（海外の支援サービス）で受け付けています。画面は英語ですが、金額を選んで、クレジットカードか PayPal で支払えます。";
+export function donationNote(url: string): string {
+  return /^https:\/\/(www\.)?ko-fi\.com(\/|$)/.test(url) ? KOFI_DONATION_NOTE : "";
+}
+
 /** 選択肢の記号・名前に使えない文字（メンション・カスタム絵文字の記法など） */
 export function isSafeChoiceText(s: string): boolean {
   return !hasControlChars(s) && !/[<>@`\\]/.test(s);
