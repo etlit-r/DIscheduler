@@ -20,7 +20,7 @@ export interface CreateOptions {
 }
 
 export type CreateResult =
-  | { ok: true; pollId: string; reused: boolean; notice: string | null }
+  | { ok: true; pollId: string; reused: boolean; notice: string | null; targetType: PollRow["target_type"] }
   | { ok: false; message: string };
 
 /** 未入力（タイトルも候補もない）の下書き。あれば使い回す（§4.4） */
@@ -42,7 +42,7 @@ export async function createOrReuseDraft(env: Env, opts: CreateOptions): Promise
 
   const existing = await findEmptyDraft(db, o.organizerId, o.channelId);
   if (existing && !hasOptions) {
-    return { ok: true, pollId: existing.id, reused: true, notice: null };
+    return { ok: true, pollId: existing.id, reused: true, notice: null, targetType: existing.target_type };
   }
 
   // 作成数の上限（§5.4.2）
@@ -102,7 +102,7 @@ export async function createOrReuseDraft(env: Env, opts: CreateOptions): Promise
   }
   if (participants.length) stmts.push(insertParticipantsStatement(db, pollId, participants));
   await db.batch(stmts);
-  return { ok: true, pollId, reused: !!existing, notice };
+  return { ok: true, pollId, reused: !!existing, notice, targetType: finalTarget };
 }
 
 export type TargetType = "channel" | "role" | "manual";

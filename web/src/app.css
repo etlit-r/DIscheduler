@@ -214,7 +214,7 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .cal-day:disabled { opacity: 0.35; cursor: not-allowed; }
 .cal-day.is-range-start { outline: 3px solid var(--accent); outline-offset: 1px; font-weight: 700; }
 .pick-mode { display: flex; gap: 6px; margin: 0 0 8px; }
-/* 日付を選んだあと、［＋ 選択中の日付に追加］を押すよう促す */
+/* 日付を選んだあと、［＋ 選択した日時を候補に追加］を押すよう促す */
 .add-prompt, .card .add-prompt { margin: 12px 0 6px; font-weight: 700; color: var(--emphasis); }
 .add-prompt::before { content: "▼ "; }
 .btn-attention { animation: attention-ring 1.6s ease-out infinite; }

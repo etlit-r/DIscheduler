@@ -184,8 +184,8 @@ export async function editPage(pollId: string): Promise<void> {
       const [, m, d] = rangeStart.split("-").map(Number);
       return `${m}月${d}日から、終わりの日をタップしてください（別の月にも移れます）。`;
     }
-    // 日付を選んだら、候補にするには［＋ 選択中の日付に追加］を押す必要があることを伝える
-    if (selectedDates.size) return `${selectedDates.size} 日を選択中です。② で時間帯を決めて、下の［＋ 選択中の ${selectedDates.size} 日に追加］を押すと候補になります。`;
+    // 日付を選んだら、候補にするには［＋ 選択した日時を候補に追加］を押す必要があることを伝える
+    if (selectedDates.size) return `${selectedDates.size} 日を選択中です。② で時間帯を決めて、下の［＋ 選択した日時を候補に追加］を押すと候補になります。`;
     if (pickMode === "range") return "始まりの日をタップしてください。";
     // Shift + クリックの案内は、幅の広い画面（パソコン）でだけ出す
     return [
@@ -197,7 +197,7 @@ export async function editPage(pollId: string): Promise<void> {
   /** 選んだ日付を候補に追加しないまま保存しようとしたら確かめる。追加しに戻るなら false */
   function confirmPendingDates(): boolean {
     if (selectedDates.size === 0) return true;
-    if (confirm(`選択中の ${selectedDates.size} 日はまだ候補に追加されていません。\n追加しないで保存しますか？\n（追加するときは［キャンセル］を押して、［＋ 選択中の ${selectedDates.size} 日に追加］を押してください）`)) return true;
+    if (confirm(`選択中の ${selectedDates.size} 日はまだ候補に追加されていません。\n追加しないで保存しますか？\n（追加するときは［キャンセル］を押して、［＋ 選択した日時を候補に追加］を押してください）`)) return true;
     const btn = document.getElementById("add-slots");
     btn?.scrollIntoView({ block: "center" });
     btn?.focus();
@@ -382,7 +382,7 @@ export async function editPage(pollId: string): Promise<void> {
       h(
         "button",
         { type: "button", id: "add-slots", class: `btn btn-primary${selectedDates.size ? " btn-attention" : ""}`, disabled: selectedDates.size === 0, onClick: addSlots },
-        selectedDates.size ? `＋ 選択中の ${selectedDates.size} 日に追加` : "＋ 選択中の日付に追加",
+        "＋ 選択した日時を候補に追加",
       ),
       h("h2", { class: "card-title" }, `③ 候補一覧（${slots.length} 件）`),
       slots.length ? list : h("p", { class: "muted" }, "まだ候補がありません。"),
@@ -488,7 +488,7 @@ export async function editPage(pollId: string): Promise<void> {
         type: "button",
         class: "btn btn-secondary btn-small",
         disabled: choices.length >= LIMITS.choicesMax,
-        onClick: () => { choices.push({ id: null, symbol: "？", label: `選択肢${choices.length + 1}`, kind: "maybe", score: 1, color: "gray" }); choicesChanged = true; draw(); },
+        onClick: () => { choices.push({ id: null, symbol: "？", label: `選択肢${choices.length + 1}`, kind: "maybe", score: DEFAULT_SCORE.maybe, color: "gray" }); choicesChanged = true; draw(); },
       }, `＋ 選択肢を追加（最大 ${LIMITS.choicesMax} 個）`),
       ...reassignFields,
       h("p", {}, "プレビュー: ", ...choices.map((c) => h("span", { class: `choice-btn choice-${c.color} is-preview` }, c.symbol, " ", c.label))),
@@ -575,6 +575,7 @@ export async function editPage(pollId: string): Promise<void> {
         h("div", { class: "field-inline" }, modeAuto, h("label", { for: "mode-auto" }, "自動（チャンネルのメンバー・ロールのメンバー）")),
         h("div", { class: "field-inline" }, modeManual, h("label", { for: "mode-manual" }, "手動で選ぶ")),
         h("div", { class: "field-inline" }, h("label", { for: "role" }, "ロール"), roleSel),
+        roleHint(),
       ),
       d.participants.length ? list : h("p", { class: "muted" }, "参加者がいません。"),
       h(
@@ -603,6 +604,22 @@ export async function editPage(pollId: string): Promise<void> {
         h("div", { class: "field-inline" }, jpClosed, h("label", { for: "jp-closed" }, "回答できない")),
         h("div", { class: "field-inline" }, jpOpen, h("label", { for: "jp-open" }, "チャンネルを見られる人なら、参加者に追加して回答できる")),
       ),
+    );
+  }
+
+  /**
+   * ロールで参加者を決めるようすすめる（下書きのときだけ）。
+   * 公開時のお知らせと予定のリマインドは、ロールがあればそのロールに、なければ @everyone にメンションするため（§5.5、§5.7）
+   */
+  function roleHint(): HTMLElement | null {
+    if (!isDraft) return null;
+    if (d.poll.targetType === "role") {
+      return h("p", { class: "muted small" }, "公開したときと予定のリマインドで、このロールにメンションして知らせます。");
+    }
+    return notice(
+      "info",
+      h("strong", {}, "参加者は「自動」でロールを選んで決めるのがおすすめです。"),
+      " 公開したときと予定のリマインドで、そのロールのメンバーにだけ通知が届きます。ロールを選ばないと、@everyone でチャンネルの全員に通知します。",
     );
   }
 

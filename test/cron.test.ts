@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/core/env";
-import { runCron } from "../src/jobs/cron";
+import { parseWebhookUrl, runCron } from "../src/jobs/cron";
 import { ALICE, GUILD, mockDiscord, seedPoll, testEnv } from "./helpers";
 
 const db = () => (env as unknown as Env).DB;
@@ -93,3 +93,63 @@ describe("Cron（1 日 2 回）", () => {
   });
 });
 
+
+describe("サーバーの数の通知（§14）", () => {
+  const WEBHOOK = "https://discord.com/api/webhooks/900000000000000001/abcdefghijklmnopqrstuvwxyz0123456789";
+  const guildList = (n: number) => Array.from({ length: n }, (_, i) => ({ id: String(100000000000000000n + BigInt(i)) }));
+
+  it("75 を超えたら Webhook に 1 回だけ通知する", async () => {
+    const calls = mockDiscord((c) => (c.path.startsWith("/users/@me/guilds") ? guildList(76) : {}));
+    await runCron(testEnv({ ALERT_WEBHOOK_URL: WEBHOOK }), Date.parse("2026-11-06T16:00:00Z"));
+    await runCron(testEnv({ ALERT_WEBHOOK_URL: WEBHOOK }), Date.parse("2026-11-07T16:00:00Z"));
+    const posts = calls.filter((c) => c.method === "POST" && c.path.startsWith("/webhooks/900000000000000001/"));
+    expect(posts.length).toBe(1);
+    expect(JSON.stringify(posts[0]!.body)).toContain("76");
+  });
+
+  it("75 以下なら通知せず、75 以下に戻ったら次に超えたときにまた通知する", async () => {
+    let n = 75;
+    const calls = mockDiscord((c) => (c.path.startsWith("/users/@me/guilds") ? guildList(n) : {}));
+    const run = () => runCron(testEnv({ ALERT_WEBHOOK_URL: WEBHOOK }), Date.parse("2026-11-06T16:00:00Z"));
+    const count = () => calls.filter((c) => c.path.startsWith("/webhooks/")).length;
+    await run();
+    expect(count()).toBe(0);
+    n = 76;
+    await run();
+    expect(count()).toBe(1);
+    n = 74;
+    await run();
+    n = 77;
+    await run();
+    expect(count()).toBe(2);
+  });
+
+  it("13 時の回では数えない", async () => {
+    const calls = mockDiscord((c) => (c.path.startsWith("/users/@me/guilds") ? guildList(101) : {}));
+    await runCron(testEnv({ ALERT_WEBHOOK_URL: WEBHOOK }), Date.parse("2026-11-06T04:00:00Z"));
+    expect(calls.some((c) => c.path.startsWith("/webhooks/"))).toBe(false);
+  });
+
+  it("Webhook の URL がなければ通知しない（ほかの処理は続ける）", async () => {
+    const calls = mockDiscord((c) => (c.path.startsWith("/users/@me/guilds") ? guildList(101) : {}));
+    await runCron(testEnv(), Date.parse("2026-11-06T16:00:00Z"));
+    expect(calls.some((c) => c.path.startsWith("/webhooks/"))).toBe(false);
+  });
+
+  it("Webhook の URL は PTB・Canary・API の版・末尾の / やクエリつきも受け付け、ほかは受け付けない", () => {
+    const id = "900000000000000001";
+    const token = "abcdefghijklmnopqrstuvwxyz0123456789";
+    for (const u of [
+      `https://discord.com/api/webhooks/${id}/${token}`,
+      `https://ptb.discord.com/api/webhooks/${id}/${token}`,
+      `https://canary.discord.com/api/webhooks/${id}/${token}`,
+      `https://discordapp.com/api/v10/webhooks/${id}/${token}/`,
+      `https://discord.com/api/webhooks/${id}/${token}?wait=true`,
+    ]) {
+      expect(parseWebhookUrl(u)).toEqual({ id, token });
+    }
+    for (const u of [undefined, "", "not a url", `http://discord.com/api/webhooks/${id}/${token}`, `https://example.com/api/webhooks/${id}/${token}`, `https://discord.com/api/webhooks/${id}`]) {
+      expect(parseWebhookUrl(u)).toBeNull();
+    }
+  });
+});
