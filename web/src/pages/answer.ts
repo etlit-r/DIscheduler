@@ -155,7 +155,9 @@ export async function answerPage(pollId: string): Promise<void> {
               answers: [...draft].map(([slotId, choiceId]) => ({ slotId, choiceId })),
               comment: comment.trim() ? comment.trim() : null,
             });
-            await reload(notice("ok", "保存しました。集計にあなたの回答が反映されました。"));
+            // 回答の完了画面へ移る（広告の枠はこの画面にだけ出す。§6.4, §6.10.1）。
+            // 調整の ID は # の後ろに置き、サーバーのログにも広告の枠にも送らない
+            location.assign(`/answered#p=${pollId}`);
           } catch (err) {
             message = notice("error", err instanceof Error ? err.message : "保存できませんでした。");
             saveBtn.disabled = false;
