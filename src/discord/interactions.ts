@@ -173,7 +173,7 @@ function menuRow(admin: boolean) {
     { type: 2, style: 2, label: "使い方", custom_id: "help" },
   ];
   // サーバー管理の権限がある人にだけ、既定値の設定を出す（§5.3.1）
-  if (admin) buttons.push({ type: 2, style: 2, label: "サーバーの既定値", custom_id: "settings" });
+  if (admin) buttons.push({ type: 2, style: 2, label: "サーバー既定値の設定", custom_id: "settings" });
   return [{ type: 1, components: buttons }];
 }
 
@@ -312,7 +312,7 @@ export function helpText(origin: string): string {
     "・入力リンクは本人専用で、10 分有効・1 回限りです。他の人に渡さないでください。",
     "・回答はその調整の参加者同士で共有され、参加者以外には見えません。",
     "・サーバー管理者は「サーバー設定 → 連携サービス → DIscheduler」で、コマンドを使えるチャンネルを指定できます。",
-    "・サーバー管理者は `/schedule` の［サーバーの既定値］で、参加者の決め方（チャンネル・ロール・手動）の既定値を決められます。",
+    "・サーバー管理者は `/schedule` の［サーバー既定値の設定］で、参加者の決め方（チャンネル・ロール・手動）の既定値を決められます。",
     "",
     `案内: ${origin}/`,
     `マニュアル: ${origin}/manual/`,

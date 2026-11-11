@@ -168,14 +168,14 @@ describe("サーバーの既定値（§5.3.1）", () => {
     expect(await db().prepare("SELECT * FROM guild_settings WHERE guild_id = ?").bind(GUILD).first()).toBeNull();
   });
 
-  it("［サーバーの既定値］ボタンは管理者にだけ表示する", async () => {
+  it("［サーバー既定値の設定］ボタンは管理者にだけ表示する", async () => {
     const calls = mockDiscord(guildMock);
     await call(await schedule("1024"), e());
-    expect(JSON.stringify(calls.find((c) => c.path.includes("@original"))!.body)).not.toContain("サーバーの既定値");
+    expect(JSON.stringify(calls.find((c) => c.path.includes("@original"))!.body)).not.toContain("サーバー既定値の設定");
     await db().prepare("DELETE FROM polls").run();
     const calls2 = mockDiscord(guildMock);
     await call(await schedule(ADMIN_PERMS), e());
-    expect(JSON.stringify(calls2.find((c) => c.path.includes("@original"))!.body)).toContain("サーバーの既定値");
+    expect(JSON.stringify(calls2.find((c) => c.path.includes("@original"))!.body)).toContain("サーバー既定値の設定");
   });
 
   it("既定のロールを設定すると、/schedule でそのロールのメンバーが参加者になる", async () => {
@@ -209,7 +209,7 @@ describe("サーバーの既定値（§5.3.1）", () => {
 });
 
 describe("6 回目のレビューの修正", () => {
-  it("［サーバーの既定値］では、保存済みのロールを選択状態にしない（削除されていても開けるように）", async () => {
+  it("［サーバー既定値の設定］では、保存済みのロールを選択状態にしない（削除されていても開けるように）", async () => {
     mockDiscord();
     const db = (env as unknown as Env).DB;
     await db.prepare("INSERT OR REPLACE INTO guild_settings (guild_id, mode, role_id, updated_by, updated_at) VALUES (?, 'role', '900000000000000555', ?, 1)").bind(GUILD, ORGANIZER).run();
