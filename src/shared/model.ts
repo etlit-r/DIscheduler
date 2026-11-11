@@ -82,8 +82,8 @@ export const CHOICE_TEMPLATES: readonly ChoiceTemplate[] = [
     name: "時間の条件つき",
     choices: [
       { symbol: "○", label: "参加", kind: "ok", score: 3, color: "green" },
-      { symbol: "遅", label: "遅れて参加", kind: "maybe", score: 2, color: "teal" },
-      { symbol: "早", label: "途中で抜ける", kind: "maybe", score: 2, color: "orange" },
+      { symbol: "遅", label: "遅刻", kind: "maybe", score: 2, color: "teal" },
+      { symbol: "早", label: "早退", kind: "maybe", score: 2, color: "orange" },
       { symbol: "×", label: "不可", kind: "ng", score: 0, color: "red" },
     ],
   },
