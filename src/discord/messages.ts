@@ -2,6 +2,7 @@
 // 個人ごとの回答は載せず、候補ごとの「参加できる」区分の人数と回答率だけを出す。
 import type { ChoiceRow, ParticipantRow, PollRow, SlotRow, AnswerRow } from "../db";
 import { bestSlotId, effectiveStatus, tally } from "../shared/model";
+import { formatDate } from "../shared/time";
 
 /** Discord の Markdown として解釈される記号をエスケープする */
 export function escapeMarkdown(s: string): string {
@@ -109,17 +110,17 @@ export function buildAnnounceMessage(poll: Pick<PollRow, "title" | "target_type"
 }
 
 /**
- * 予定のリマインド（§5.7）。当日の予定は「今日」、翌日の予定は「明日」と書く。メンションは公開時のお知らせと同じ。
+ * 予定のリマインド（§5.7）。日付で書く。時刻のある予定は Discord のタイムスタンプ記法（見る人のタイムゾーンで日付と時刻を表示）、
+ * 終日の予定は調整のタイムゾーンでの日付（例: 11/7(土)）。メンションは公開時のお知らせと同じ。
  * 募集メッセージがあれば、その返信にしてリンクも添える
  */
 export function buildDayReminderMessage(
   poll: Pick<PollRow, "title" | "target_type" | "target_id" | "guild_id" | "channel_id" | "message_id">,
-  when: { startAt: number; allDay: boolean; isTomorrow: boolean },
+  when: { startAt: number; allDay: boolean; timezone: string },
 ) {
   const link = poll.message_id ? `\n${messageLink(poll.guild_id, poll.channel_id, poll.message_id)}` : "";
-  const day = when.isTomorrow ? "明日" : "今日";
-  const time = when.allDay ? `${day}です（終日）。` : `${day} <t:${when.startAt}:t> からです。`;
-  const text = `**${escapeMarkdown(poll.title ?? "日程調整")}** は${time}${link}`;
+  const time = when.allDay ? `${formatDate(when.startAt, when.timezone)} です（終日）。` : `<t:${when.startAt}:f> からです。`;
+  const text = `**${escapeMarkdown(poll.title ?? "日程調整")}** は ${time}${link}`;
   return withPollMention(poll, text, poll.message_id);
 }
 
@@ -127,8 +128,8 @@ export function buildDayReminderMessage(
  * 日程確定のお知らせ（§4.3）。mention のときは、公開時のお知らせ（§5.5）と同じく、
  * 参加者をロールで決めた調整はそのロールを、それ以外は @everyone をメンションする
  */
-export function buildFixedMessage(poll: Pick<PollRow, "title" | "target_type" | "target_id">, when: string, mention: boolean) {
-  const text = `**${escapeMarkdown(poll.title ?? "日程調整")}** の日程が確定しました: ${when}`;
+export function buildFixedMessage(poll: Pick<PollRow, "title" | "target_type" | "target_id">, when: string, mention: boolean, extra = "") {
+  const text = `**${escapeMarkdown(poll.title ?? "日程調整")}** の日程が確定しました: ${when}${extra}`;
   return mention ? withPollMention(poll, text, null) : { content: text, allowed_mentions: { parse: [] as string[] } };
 }
 

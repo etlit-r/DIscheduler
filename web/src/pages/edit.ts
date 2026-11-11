@@ -489,7 +489,7 @@ export async function editPage(pollId: string): Promise<void> {
         type: "button",
         class: "btn btn-secondary btn-small",
         disabled: choices.length >= LIMITS.choicesMax,
-        onClick: () => { choices.push({ id: null, symbol: "？", label: `選択肢${choices.length + 1}`, kind: "maybe", score: 1, color: "gray" }); choicesChanged = true; draw(); },
+        onClick: () => { choices.push({ id: null, symbol: "？", label: `選択肢${choices.length + 1}`, kind: "maybe", score: DEFAULT_SCORE.maybe, color: "gray" }); choicesChanged = true; draw(); },
       }, `＋ 選択肢を追加（最大 ${LIMITS.choicesMax} 個）`),
       ...reassignFields,
       h("p", {}, "プレビュー: ", ...choices.map((c) => h("span", { class: `choice-btn choice-${c.color} is-preview` }, c.symbol, " ", c.label))),
