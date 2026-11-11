@@ -64,6 +64,8 @@ export async function editPage(pollId: string): Promise<void> {
   let tz = d.poll.timezone;
   let tzChanged = false;
   let joinPolicy = d.poll.joinPolicy;
+  // ロールのない調整で、公開したときに @everyone に知らせるか（主催者がチェックしたときだけ。§5.5）
+  let mentionEveryone = false;
   let deadlineLocal = d.poll.deadlineAt ? toLocalInput(d.poll.deadlineAt, tz) : "";
   let slots: SlotDraft[] = d.slots.map((s) => ({ ...s }));
   let slotsChanged = false;
@@ -607,6 +609,21 @@ export async function editPage(pollId: string): Promise<void> {
     );
   }
 
+  /** 公開したときのお知らせ。ロールで決めた調整はロールに知らせ、それ以外は @everyone に知らせるかを選ぶ（§5.5） */
+  function mentionSection(): HTMLElement | null {
+    if (!isDraft) return null;
+    if (d.poll.targetType === "role") {
+      return h("p", { class: "muted small" }, "公開すると、参加者を決めたロールにメンションでお知らせします。");
+    }
+    const box = h("input", { type: "checkbox", id: "mention-everyone", checked: mentionEveryone, onChange: () => (mentionEveryone = box.checked) });
+    return h(
+      "div",
+      { class: "field" },
+      h("div", { class: "field-inline" }, box, h("label", { for: "mention-everyone" }, "公開したときに @everyone でお知らせする")),
+      h("p", { class: "muted small" }, "このチャンネルを見られる人全員に通知が届きます。Bot に「@everyone、@here、全てのロールにメンション」の権限が必要です。"),
+    );
+  }
+
   function draw(): void {
     setTitle(isDraft ? "新しい日程調整" : `${d.poll.title ?? ""} の編集`);
     const titleIn = h("input", {
@@ -671,7 +688,7 @@ export async function editPage(pollId: string): Promise<void> {
           onClick: () => run(async () => {
             if (!confirmPendingDates()) return;
             await save();
-            const r = await request<{ redirect: string }>("POST", `/api/polls/${pollId}/publish`, {});
+            const r = await request<{ redirect: string }>("POST", `/api/polls/${pollId}/publish`, { mentionEveryone: d.poll.targetType !== "role" && mentionEveryone });
             location.assign(r.redirect);
           }),
         }, "公開してチャンネルに投稿")
@@ -701,6 +718,7 @@ export async function editPage(pollId: string): Promise<void> {
           { class: "card" },
           h("div", { class: "field" }, h("label", { for: "deadline" }, `締切（${tz}）`), deadlineIn),
           h("p", { class: "muted small" }, isDraft ? "締切は目安です。未入力なら公開から 7 日後になります。締切を過ぎても回答の入力・変更はできます。" : "締切は目安です。締切を過ぎても回答の入力・変更はできます。"),
+          mentionSection(),
         ),
         h(
           "div",
