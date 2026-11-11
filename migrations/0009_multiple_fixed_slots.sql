@@ -17,3 +17,6 @@ WHERE id IN (SELECT fixed_slot_id FROM polls WHERE fixed_slot_id IS NOT NULL);
 
 UPDATE polls SET fixed_slot_id = NULL, fixed_at = NULL, discord_event_id = NULL, day_reminded_slot_at = NULL
 WHERE fixed_slot_id IS NOT NULL OR discord_event_id IS NOT NULL OR day_reminded_slot_at IS NOT NULL;
+
+-- 予定のリマインド（§5.7）の Cron は、確定した候補を開始時刻の範囲で探す
+CREATE INDEX idx_slots_fixed_start ON slots(start_at) WHERE fixed_at IS NOT NULL;

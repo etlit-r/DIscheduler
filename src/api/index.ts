@@ -335,7 +335,8 @@ polls.put("/:id/slots", async (c) => {
   // 新しく追加した候補の時間帯を、サーバーの最近使った時間帯として覚える（§6.3.1）
   const newRanges = rangesFromSlots(body.slots.filter((s) => !s.id), poll.timezone);
   if (newRanges.length) stmts.push(saveRecentTimesStatement(db, poll.guild_id, mergeRanges(newRanges, await getRecentTimes(db, poll.guild_id)), now));
-  stmts.push(db.prepare("UPDATE polls SET updated_at = ? WHERE id = ?").bind(now, poll.id));
+  // 確定した候補の日時が変わったら、データの削除時刻も決め直す（いちばん遅い確定日時から 6 か月後）
+  stmts.push(poll.status === "fixed" ? refreshFixedStatement(db, poll, now) : db.prepare("UPDATE polls SET updated_at = ? WHERE id = ?").bind(now, poll.id));
   await db.batch(stmts);
   if (poll.status !== "draft") c.executionCtx.waitUntil(syncNow(c.env, poll.id));
   // 確定した候補の日時を変えたときは、登録済みの Discord イベントの日時も合わせる
@@ -638,23 +639,32 @@ function slotWhen(slot: { start_at: number; all_day: number }): string {
   return slot.all_day ? `<t:${slot.start_at}:D>（終日）` : `<t:${slot.start_at}:F>`;
 }
 
-/** データを消す時刻。確定した候補があれば、いちばん遅い確定日時から 6 か月後。なければ締切から 6 か月後（§9） */
-function purgeAfterFor(poll: PollRow, slots: readonly SlotRow[], now: number): number {
-  const fixed = slots.filter((s) => s.fixed_at !== null);
-  if (fixed.length) return Math.max(now, ...fixed.map((s) => s.start_at)) + RETENTION;
-  return Math.max(now, poll.deadline_at ?? now) + RETENTION;
-}
-
 /** 登録済みの Discord イベントを消す。すでに消えていれば何もしない。消せなかったら警告の文を返す */
 async function deleteEvent(env: Env, poll: PollRow, slot: SlotRow): Promise<string | null> {
   if (!slot.discord_event_id) return null;
   try {
     await discord(env, "DELETE", `/guilds/${poll.guild_id}/scheduled-events/${slot.discord_event_id}`);
   } catch (e) {
-    if (!(e instanceof DiscordError && e.status === 404)) return "登録済みの Discord イベントを削除できませんでした。Discord で削除してください。";
+    // 消せなくても記録は外す（古いイベントが取り消した候補に結び付いたまま残らないように。主催者には Discord で消すよう知らせる）
+    if (!(e instanceof DiscordError && e.status === 404)) {
+      await env.DB.prepare("UPDATE slots SET discord_event_id = NULL WHERE id = ?").bind(slot.id).run();
+      return "登録済みの Discord イベントを削除できませんでした。Discord で削除してください。";
+    }
   }
   await env.DB.prepare("UPDATE slots SET discord_event_id = NULL WHERE id = ?").bind(slot.id).run();
   return null;
+}
+
+/** 調整のステータスと削除時刻を、確定した候補の有無から決め直す文（確定・取り消しが重なっても、slots の状態と食い違わないよう SQL の中で数える） */
+function refreshFixedStatement(db: D1Database, poll: PollRow, now: number): D1PreparedStatement {
+  return db
+    .prepare(
+      "UPDATE polls SET " +
+        "status = CASE WHEN EXISTS (SELECT 1 FROM slots WHERE poll_id = ?1 AND fixed_at IS NOT NULL) THEN 'fixed' ELSE 'open' END, " +
+        "purge_after = COALESCE((SELECT MAX(MAX(start_at), ?2) FROM slots WHERE poll_id = ?1 AND fixed_at IS NOT NULL), MAX(COALESCE(deadline_at, ?2), ?2)) + ?3, " +
+        "updated_at = ?2 WHERE id = ?1",
+    )
+    .bind(poll.id, now, RETENTION);
 }
 
 // 候補を確定する。確定済みの候補はそのまま残し、複数の候補を確定できる（§4.3）。
@@ -669,14 +679,15 @@ polls.post("/:id/fix", async (c) => {
   const slots = await getSlots(db, poll.id);
   const slot = slots.find((s) => s.id === body.slotId);
   if (!slot) throw new AppError(400, "invalid", "候補が見つかりません。");
-  if (slot.fixed_at !== null) throw new AppError(409, "already_fixed", "この候補はすでに確定しています。画面を再読み込みしてください。");
-  const after = slots.map((s) => (s.id === slot.id ? { ...s, fixed_at: now } : s));
-
+  const alreadyFixed = () => new AppError(409, "already_fixed", "この候補はすでに確定しています。画面を再読み込みしてください。");
+  if (slot.fixed_at !== null) throw alreadyFixed();
+  // 先に確定の権利を取る（同時に 2 回押されても、イベントの登録などは 1 回だけにする）
+  const claimed = await db.prepare("UPDATE slots SET fixed_at = ? WHERE id = ? AND fixed_at IS NULL").bind(now, slot.id).run();
+  if (claimed.meta.changes !== 1) throw alreadyFixed();
   await db.batch([
     // この候補の「確定後の変更」の記録は、確定した時点から数える
     db.prepare("UPDATE answers SET prev_choice_id = NULL WHERE slot_id = ?").bind(slot.id),
-    db.prepare("UPDATE slots SET fixed_at = ? WHERE id = ?").bind(now, slot.id),
-    db.prepare("UPDATE polls SET status = 'fixed', updated_at = ?, purge_after = ? WHERE id = ?").bind(now, purgeAfterFor(poll, after, now), poll.id),
+    refreshFixedStatement(db, poll, now),
   ]);
   const warnings: string[] = [];
   await syncNow(c.env, poll.id).catch(() => warnings.push("募集メッセージを更新できませんでした。"));
@@ -698,8 +709,6 @@ polls.delete("/:id/fix/:slotId", async (c) => {
   const slot = slots.find((s) => s.id === c.req.param("slotId"));
   if (!slot) throw new AppError(404, "not_found", "候補が見つかりません。画面を再読み込みしてください。");
   if (slot.fixed_at === null) throw new AppError(409, "not_fixed", "この候補は確定していません。画面を再読み込みしてください。");
-  const after = slots.map((s) => (s.id === slot.id ? { ...s, fixed_at: null } : s));
-  const stillFixed = after.some((s) => s.fixed_at !== null);
 
   const warnings: string[] = [];
   const err = await deleteEvent(c.env, poll, slot);
@@ -708,9 +717,7 @@ polls.delete("/:id/fix/:slotId", async (c) => {
     db.prepare("UPDATE answers SET prev_choice_id = NULL WHERE slot_id = ?").bind(slot.id),
     // 取り消した日時にリマインドを送らないよう、送った記録も消す（もう一度確定したら改めて送る）
     db.prepare("UPDATE slots SET fixed_at = NULL, day_reminded_at = NULL WHERE id = ?").bind(slot.id),
-    db
-      .prepare(`UPDATE polls SET status = ${stillFixed ? "'fixed'" : "'open'"}, updated_at = ?, purge_after = ? WHERE id = ?`)
-      .bind(now, purgeAfterFor(poll, after, now), poll.id),
+    refreshFixedStatement(db, poll, now),
   ]);
   await syncNow(c.env, poll.id).catch(() => warnings.push("募集メッセージを更新できませんでした。"));
   return c.json({ ok: true, warnings });
@@ -913,12 +920,9 @@ async function deletePollEverywhere(env: Env, poll: PollRow): Promise<string[]> 
   // 確定時に登録した Discord イベントも、調整と一緒に消す
   const warnings: string[] = [];
   const eventIds = (await env.DB.prepare("SELECT discord_event_id FROM slots WHERE poll_id = ? AND discord_event_id IS NOT NULL").bind(poll.id).all<{ discord_event_id: string }>()).results;
-  for (const { discord_event_id } of eventIds) {
-    try {
-      await discord(env, "DELETE", `/guilds/${poll.guild_id}/scheduled-events/${discord_event_id}`);
-    } catch (e) {
-      if (!(e instanceof DiscordError && e.status === 404) && !warnings.length) warnings.push("Discord イベントを削除できませんでした。Discord で削除してください。");
-    }
+  const results = await Promise.allSettled(eventIds.map(({ discord_event_id }) => discord(env, "DELETE", `/guilds/${poll.guild_id}/scheduled-events/${discord_event_id}`)));
+  if (results.some((r) => r.status === "rejected" && !(r.reason instanceof DiscordError && r.reason.status === 404))) {
+    warnings.push("Discord イベントを削除できませんでした。Discord で削除してください。");
   }
   await deletePollData(env.DB, poll.id);
   return warnings;
