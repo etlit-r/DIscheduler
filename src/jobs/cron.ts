@@ -23,7 +23,7 @@ const MAX_SYNC_ON_CLEANUP_RUN = 4;
 /** Bot が入っているサーバーの一覧を読むページ数の上限（200 件 × 10 = 2000 サーバー） */
 const MAX_GUILD_PAGES = 10;
 /** Bot が入っているサーバーの数がこれを超えたら、運営者に通知する（§14） */
-export const GUILD_ALERT_THRESHOLD = 100;
+export const GUILD_ALERT_THRESHOLD = 75;
 
 export async function runCron(env: Env, scheduledTime: number): Promise<void> {
   const now = nowSec();

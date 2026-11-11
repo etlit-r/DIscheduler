@@ -1230,12 +1230,12 @@ flowchart LR
 4. 「Storage & Databases → D1」で `discheduler` という名前のデータベースを作り、Database ID を控える。
 5. 「Workers & Pages → Create → Pages」で、直接アップロード（Direct Upload）の Pages プロジェクトを作る（名前は例: `discheduler`。作成時に仮のファイルを 1 つアップロードしてよい。本番のブランチは `main`）。表示された `https://<プロジェクト名>.pages.dev` を控える（名前が使われていると、末尾に文字が付いたアドレスになる）。
 6. Pages のプロジェクトの「Settings → Variables and Secrets」で、本番（Production）の **Secret** として `DISCORD_BOT_TOKEN`（Bot トークン）を登録する。初回のデプロイのあと、Worker（`discheduler`）にも同じ Secret を登録する（Cron が Discord の API を呼ぶため）。Bot トークンは GitHub には置かない。
-7. （任意）運営者向けの通知を受け取る Discord のチャンネルで Webhook を作り、その URL を Worker（`discheduler`）の **Secret** `ALERT_WEBHOOK_URL` として登録する。Bot が入っているサーバーの数が 100 を超えたときに通知が届く（下の「サーバーの数の確認」）。
+7. （任意）運営者向けの通知を受け取る Discord のチャンネルで Webhook を作り、その URL を Worker（`discheduler`）の **Secret** `ALERT_WEBHOOK_URL` として登録する。Bot が入っているサーバーの数が 75 を超えたときに通知が届く（下の「サーバーの数の確認」）。
 
 **サーバーの数の確認**
 - 日本時間 1 時の Cron で、Bot が入っているサーバーの一覧を読むとき（§7.4）に、その数をログに残す（`{"event":"guild_count","count":N,"complete":true}`）。Cloudflare のダッシュボードの Worker のログで見られる。サーバーの ID や名前は残さない。
-- 数が 100 を超えたら、`ALERT_WEBHOOK_URL` の Webhook に 1 回だけ通知する。通知したことは `meta`（`guild_alert_sent`）に残し、100 以下に戻ったら消す（また超えたら、もう一度通知する）。Webhook の URL がない・形式が違う・送信に失敗したときは、ログに残すだけで、ほかの処理は続ける。
-- 100 を目安にしているのは、Server Members Intent の利用（§5.3）と、Bot の認証（Verification）が要るかどうかの境目のため。
+- 数が 75 を超えたら、`ALERT_WEBHOOK_URL` の Webhook に 1 回だけ通知する。通知したことは `meta`（`guild_alert_sent`）に残し、75 以下に戻ったら消す（また超えたら、もう一度通知する）。Webhook の URL がない・形式が違う・送信に失敗したときは、ログに残すだけで、ほかの処理は続ける。
+- 75 を目安にしているのは、認証（Verification）を受けていない Bot は 100 を超えるサーバーに入れず、認証の申請が 75 サーバーからできるため。100 に届く前に申請を始められるようにする。Server Members Intent の利用（§5.3）も、100 サーバー以上では Discord への申請が要る。
 
 **Discord**（初回のデプロイと Bot トークンの登録のあと）
 1. Developer Portal の「General Information」で、Interactions Endpoint URL に `https://<プロジェクト名>.pages.dev/discord/interactions` を入れて保存する。保存時の PING を受けた Pages が `/schedule`・`/di` を自動で登録する。
