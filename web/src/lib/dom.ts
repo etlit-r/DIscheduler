@@ -120,6 +120,24 @@ export function notice(kind: "info" | "ok" | "warn" | "error", ...children: Chil
   return h("div", { class: `notice notice-${kind}`, role: kind === "error" ? "alert" : "status" }, ...children);
 }
 
+/**
+ * 線で描くアイコン（Lucide と同じ 24×24 の形）。d には決まった文字列だけを渡す（利用者の入力は渡さない）。
+ * 飾りなので、読み上げの対象から外す
+ */
+export function lineIcon(cls: string, paths: readonly string[]): SVGSVGElement {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  for (const [k, v] of Object.entries({ class: cls, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", focusable: "false" })) {
+    svg.setAttribute(k, v);
+  }
+  for (const d of paths) {
+    const p = document.createElementNS(NS, "path");
+    p.setAttribute("d", d);
+    svg.appendChild(p);
+  }
+  return svg;
+}
+
 export function setTitle(t: string): void {
   document.title = t ? `${t}｜DIscheduler` : "DIscheduler";
 }
