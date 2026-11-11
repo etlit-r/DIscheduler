@@ -655,7 +655,7 @@ describe("主催者の調整一覧（§6.11）", () => {
     expect(expired.status).toBe(401);
     const err = ((await expired.json()) as { error: { code: string; message: string } }).error;
     expect(err.code).toBe("list_session_expired");
-    expect(err.message).toContain("もう一度 /schedule を実行し、［自分の調整を管理］を押して、新しいリンクを受け取ってください");
+    expect(err.message).toContain("もう一度 /schedule を実行し、［作成した調整を管理］を押して、新しいリンクを受け取ってください");
   });
 
   it("一覧のリンクも 1 回だけ使える", async () => {

@@ -1,5 +1,5 @@
 // S9: 主催者の調整一覧（docs/design.md §6.11）
-// Discord の［自分の調整を管理］から開く。このサーバーで自分が主催した調整だけを表示し、編集・集計・削除ができる。
+// Discord の［作成した調整を管理］から開く。このサーバーで自分が主催した調整だけを表示し、編集・集計・削除ができる。
 import { ApiError, request, setCsrf } from "../lib/api";
 import { h, notice, render, setTitle } from "../lib/dom";
 import { dateTimeText, showError, viewerTimeZone } from "../ui/common";
@@ -103,7 +103,7 @@ export async function minePage(guildId: string): Promise<void> {
   }
 
   function draw(): void {
-    setTitle("自分の調整");
+    setTitle("作成した調整");
     const shown = polls.filter((p) => filter === "all" || p.status === filter);
     const count = (f: Filter) => (f === "all" ? polls.length : polls.filter((p) => p.status === f).length);
     render(
@@ -111,7 +111,7 @@ export async function minePage(guildId: string): Promise<void> {
       h(
         "section",
         { class: "page" },
-        h("h1", {}, "自分の調整"),
+        h("h1", {}, "作成した調整"),
         h("p", { class: "muted" }, "このサーバーであなたが主催している調整の一覧です。他の人には見えません。"),
         message,
         h(

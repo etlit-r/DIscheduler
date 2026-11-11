@@ -839,7 +839,7 @@ guilds.use("/:guildId/*", async (c: LC, next) => {
     throw new AppError(
       401,
       "list_session_expired",
-      "一覧ページの有効期限が切れています。前に届いたリンクはもう使えません。Discord でもう一度 /schedule を実行し、［自分の調整を管理］を押して、新しいリンクを受け取ってください。",
+      "一覧ページの有効期限が切れています。前に届いたリンクはもう使えません。Discord でもう一度 /schedule を実行し、［作成した調整を管理］を押して、新しいリンクを受け取ってください。",
     );
   }
   if (c.req.method !== "GET") {

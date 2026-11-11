@@ -96,7 +96,7 @@ export async function handleInteraction(env: Env, ctx: Ctx, i: Interaction, orig
       background(env, ctx, i, () => handleManage(env, i, origin, guildId, userId));
       return deferred();
     }
-    // 以前の［自分の調整を管理］の選択メニュー（すでに送ったメッセージに残っている分）にも応える
+    // 以前の［作成した調整を管理］の選択メニュー（すでに送ったメッセージに残っている分）にも応える
     if (id === "manage_select") {
       const pollId = i.data?.values?.[0] ?? "";
       const poll = await getPoll(env.DB, pollId);
@@ -169,7 +169,7 @@ function isAdmin(i: Interaction): boolean {
 function menuRow(admin: boolean) {
   const buttons: unknown[] = [
     { type: 2, style: 2, label: "このチャンネルの調整", custom_id: "list" },
-    { type: 2, style: 2, label: "自分の調整を管理", custom_id: "manage" },
+    { type: 2, style: 2, label: "作成した調整を管理", custom_id: "manage" },
     { type: 2, style: 2, label: "使い方", custom_id: "help" },
   ];
   // サーバー管理の権限がある人にだけ、既定値の設定を出す（§5.3.1）
@@ -279,7 +279,7 @@ async function handleList(env: Env, i: Interaction, guildId: string, channelId: 
   await editOriginal(env, i, ["このチャンネルの調整です。回答は各募集メッセージの［回答する］から入力できます。", ...lines].join("\n"));
 }
 
-/** ［自分の調整を管理］: このサーバーで自分が主催した調整の一覧ページ（S9。§6.11）のリンクを本人にだけ返す */
+/** ［作成した調整を管理］: このサーバーで自分が主催した調整の一覧ページ（S9。§6.11）のリンクを本人にだけ返す */
 async function handleManage(env: Env, i: Interaction, origin: string, guildId: string, userId: string): Promise<void> {
   const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM polls WHERE guild_id = ? AND organizer_id = ? AND status != 'cancelled'")
     .bind(guildId, userId)
@@ -297,7 +297,7 @@ async function handleManage(env: Env, i: Interaction, origin: string, guildId: s
     env,
     i,
     `このサーバーであなたが主催している調整（${row.n} 件）の一覧です。編集・集計・削除ができます。\nリンクは 10 分有効・1 回限りです。他の人に渡さないでください。`,
-    [{ type: 1, components: [linkButton("自分の調整の一覧を開く", url)] }],
+    [{ type: 1, components: [linkButton("作成した調整の一覧を開く", url)] }],
   );
 }
 
