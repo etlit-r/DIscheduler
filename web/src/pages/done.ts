@@ -8,7 +8,7 @@ export async function donePage(pollId: string): Promise<void> {
   try {
     d = await loadPoll(pollId);
   } catch (e) {
-    return showError(e);
+    return showError(e, "done");
   }
   rememberDonation(d.donationUrl);
   const kind = new URLSearchParams(location.search).get("kind") === "fixed" ? "fixed" : "published";

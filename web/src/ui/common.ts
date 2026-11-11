@@ -80,8 +80,36 @@ export const STATUS_LABEL: Record<string, string> = {
   cancelled: "削除済み",
 };
 
+/** エラーが出た画面の種類。リンクの期限が切れたときに、どのボタンを押し直せばよいかの案内を変える */
+export type PageKind = "answer" | "summary" | "edit" | "done" | "link";
+
+/** サーバーのメッセージだけで、新しいリンクの受け取り方まで伝えているエラー */
+const SELF_EXPLAINING = new Set(["list_session_expired", "link_expired"]);
+
+/** リンク（セッション）の期限が切れたときに、新しいリンクを受け取る方法 */
+export function reopenHint(kind: PageKind): string {
+  switch (kind) {
+    case "answer":
+      return "チャンネルの募集メッセージの［回答する］を、もう一度押してください。";
+    case "summary":
+      return "チャンネルの募集メッセージの［集計を見る］を、もう一度押してください。";
+    case "edit":
+    case "done":
+      return "Discord でもう一度 /schedule を実行し、［作成した調整を管理］を押して、新しいリンクを受け取ってください。";
+    default:
+      return "参加者はチャンネルの募集メッセージの［回答する］または［集計を見る］を、主催者は Discord で /schedule を実行して［作成した調整を管理］を、もう一度押してください。";
+  }
+}
+
+/** 画面の中に出すエラーの文。リンクの期限切れなら、新しいリンクを受け取る方法を添える */
+export function errorText(e: unknown, kind: PageKind, fallback: string): string {
+  if (!(e instanceof ApiError)) return e instanceof Error ? e.message : fallback;
+  if (e.status === 401 && !SELF_EXPLAINING.has(e.code)) return `${e.message}${reopenHint(kind)}`;
+  return e.message;
+}
+
 /** エラー画面（S5） */
-export function showError(err: unknown): void {
+export function showError(err: unknown, kind: PageKind = "link"): void {
   const app = document.getElementById("app")!;
   const e = err instanceof ApiError ? err : new ApiError(0, "unknown", "エラーが発生しました。");
   const freeTier = e.code === "free_tier_exceeded";
@@ -92,7 +120,9 @@ export function showError(err: unknown): void {
       { class: "card error-card" },
       h("h1", {}, freeTier ? "本日の無料枠を超えました" : e.status === 401 || e.status === 404 ? "ページを開けません" : "エラーが発生しました"),
       h("p", {}, e.message),
-      e.status === 401 ? h("p", { class: "muted" }, "Discord の募集メッセージの［回答する］［集計を見る］、または /schedule の［自分の調整を管理］から、もう一度リンクを開いてください。") : null,
+      // リンクの期限切れは、画面に合わせて押し直すボタンを案内する。
+      // 一覧ページの期限切れと、中継ページで使えなかったリンクは、サーバーのメッセージで受け取り方まで伝えるので、ここでは出さない
+      e.status === 401 && !SELF_EXPLAINING.has(e.code) ? h("p", {}, reopenHint(kind)) : null,
       freeTier && donationFromError ? h("p", {}, "運営を支援していただけると、有料プランへの切り替えを検討できます: ", h("a", { href: donationFromError, rel: "noopener noreferrer" }, "運営を支援する")) : null,
       h("p", {}, h("a", { href: "/" }, "DIscheduler の案内へ")),
     ),
@@ -124,7 +154,7 @@ export function syncPanel(d: PollData, reload: () => void): HTMLElement | null {
           await request("POST", `/api/polls/${d.poll.id}/repost`, {});
           reload();
         } catch (e) {
-          repostStatus.textContent = e instanceof Error ? e.message : "投稿できませんでした。";
+          repostStatus.textContent = errorText(e, "summary", "投稿できませんでした。");
           repostBtn.disabled = false;
         }
       },
@@ -157,7 +187,7 @@ export function syncPanel(d: PollData, reload: () => void): HTMLElement | null {
           await request("POST", `/api/polls/${d.poll.id}/sync-message`, {});
           reload();
         } catch (e) {
-          status.textContent = e instanceof Error ? e.message : "更新できませんでした。";
+          status.textContent = errorText(e, "summary", "更新できませんでした。");
           btn.disabled = false;
         }
       },

@@ -1,6 +1,6 @@
 // S3: 回答入力（各候補の集計つき。docs/design.md §6.4）
 import { loadPoll, request, type PollData } from "../lib/api";
-import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, statusBanner, viewerTimeZone } from "../ui/common";
+import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, statusBanner, viewerTimeZone, errorText } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
 import { bestSlotId, canAnswer, tally } from "../../../src/shared/model";
 
@@ -10,7 +10,7 @@ export async function answerPage(pollId: string): Promise<void> {
   try {
     data = await loadPoll(pollId);
   } catch (e) {
-    return showError(e);
+    return showError(e, "answer");
   }
   rememberDonation(data.donationUrl);
   if (!data.me.isParticipant) {
@@ -30,7 +30,7 @@ export async function answerPage(pollId: string): Promise<void> {
       message = msg ?? null;
       draw();
     } catch (e) {
-      showError(e);
+      showError(e, "answer");
     }
   };
 
@@ -212,7 +212,7 @@ export async function answerPage(pollId: string): Promise<void> {
                       await request("POST", `/api/polls/${pollId}/choices-ack`, {});
                       await reload();
                     } catch (e) {
-                      message = notice("error", e instanceof Error ? e.message : "保存できませんでした。");
+                      message = notice("error", errorText(e, "answer", "保存できませんでした。"));
                       draw();
                     }
                   },
