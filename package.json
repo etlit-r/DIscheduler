@@ -6,7 +6,8 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p web/tsconfig.json",
     "test": "vitest run",
-    "dev": "vite build && wrangler dev"
+    "dev": "vite build && wrangler dev",
+    "test:mutation": "stryker run"
   },
   "dependencies": {
     "hono": "4.13.16",
@@ -15,6 +16,8 @@
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.5.0",
     "@cloudflare/workers-types": "5.20261103.1",
+    "@stryker-mutator/core": "10.1.1",
+    "@stryker-mutator/vitest-runner": "10.1.1",
     "typescript": "7.0.2",
     "vite": "8.3.5",
     "vitest": "5.1.0",

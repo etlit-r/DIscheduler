@@ -3,3 +3,5 @@ public/app/
 node_modules/
 .wrangler/
 .dev.vars
+reports/
+.stryker-tmp/
