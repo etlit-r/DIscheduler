@@ -235,21 +235,11 @@ describe("主催者だけの操作", () => {
     expect(poll!.deadline_at).toBeGreaterThan(Date.now() / 1000 + 6 * 86400);
   });
 
-  it("ロールのない調整は、チェックしなければ公開してもメンションしない", async () => {
+  it("ロールのない調整は、公開すると募集メッセージへの返信で @everyone をメンションする", async () => {
     const calls = mockDiscord((c) => (c.method === "POST" ? { id: "600000000000000001" } : {}));
     const s = await seedPoll({ status: "draft", messageId: null, deadlineAt: null });
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
     expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, {}, org))).status).toBe(200);
-    const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`);
-    expect(posts.length).toBe(1);
-    expect(JSON.stringify(posts[0]!.body)).not.toContain(`<@${ALICE}>`);
-  });
-
-  it("ロールのない調整は、主催者がチェックしたときだけ @everyone でお知らせする", async () => {
-    const calls = mockDiscord((c) => (c.method === "POST" ? { id: "600000000000000001" } : {}));
-    const s = await seedPoll({ status: "draft", messageId: null, deadlineAt: null });
-    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, { mentionEveryone: true }, org))).status).toBe(200);
     const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`);
     expect(posts.length).toBe(2);
     const announce = posts[1]!.body as { content: string; allowed_mentions: unknown; message_reference: unknown };
@@ -265,8 +255,7 @@ describe("主催者だけの操作", () => {
     const s = await seedPoll({ status: "draft", messageId: null, deadlineAt: null });
     await db().prepare("UPDATE polls SET target_type = 'role', target_id = '400000000000000077' WHERE id = ?").bind(s.pollId).run();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    // ロールの調整では、@everyone の指定があってもロールだけをメンションする
-    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, { mentionEveryone: true }, org))).status).toBe(200);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, {}, org))).status).toBe(200);
     const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`);
     expect(posts.length).toBe(2);
     const announce = posts[1]!.body as { content: string; allowed_mentions: unknown };
@@ -281,7 +270,7 @@ describe("主催者だけの操作", () => {
     mockDiscord((c) => (c.method === "POST" ? (n++ === 0 ? { id: "600000000000000001" } : new Response("{}", { status: 403 })) : {}));
     const s = await seedPoll({ status: "draft", messageId: null, deadlineAt: null });
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, { mentionEveryone: true }, org))).status).toBe(200);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/publish`, {}, org))).status).toBe(200);
     const poll = await db().prepare("SELECT status FROM polls WHERE id = ?").bind(s.pollId).first<{ status: string }>();
     expect(poll!.status).toBe("open");
   });
