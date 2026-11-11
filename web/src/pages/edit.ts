@@ -184,8 +184,8 @@ export async function editPage(pollId: string): Promise<void> {
       const [, m, d] = rangeStart.split("-").map(Number);
       return `${m}月${d}日から、終わりの日をタップしてください（別の月にも移れます）。`;
     }
-    // 日付を選んだら、候補にするには［＋ 選択中の日付に追加］を押す必要があることを伝える
-    if (selectedDates.size) return `${selectedDates.size} 日を選択中です。② で時間帯を決めて、下の［＋ 選択中の ${selectedDates.size} 日に追加］を押すと候補になります。`;
+    // 日付を選んだら、候補にするには［＋ 選択した日時を候補に追加］を押す必要があることを伝える
+    if (selectedDates.size) return `${selectedDates.size} 日を選択中です。② で時間帯を決めて、下の［＋ 選択した日時を候補に追加］を押すと候補になります。`;
     if (pickMode === "range") return "始まりの日をタップしてください。";
     // Shift + クリックの案内は、幅の広い画面（パソコン）でだけ出す
     return [
@@ -197,7 +197,7 @@ export async function editPage(pollId: string): Promise<void> {
   /** 選んだ日付を候補に追加しないまま保存しようとしたら確かめる。追加しに戻るなら false */
   function confirmPendingDates(): boolean {
     if (selectedDates.size === 0) return true;
-    if (confirm(`選択中の ${selectedDates.size} 日はまだ候補に追加されていません。\n追加しないで保存しますか？\n（追加するときは［キャンセル］を押して、［＋ 選択中の ${selectedDates.size} 日に追加］を押してください）`)) return true;
+    if (confirm(`選択中の ${selectedDates.size} 日はまだ候補に追加されていません。\n追加しないで保存しますか？\n（追加するときは［キャンセル］を押して、［＋ 選択した日時を候補に追加］を押してください）`)) return true;
     const btn = document.getElementById("add-slots");
     btn?.scrollIntoView({ block: "center" });
     btn?.focus();
@@ -383,7 +383,7 @@ export async function editPage(pollId: string): Promise<void> {
       h(
         "button",
         { type: "button", id: "add-slots", class: `btn btn-primary${selectedDates.size ? " btn-attention" : ""}`, disabled: selectedDates.size === 0, onClick: addSlots },
-        selectedDates.size ? `＋ 選択中の ${selectedDates.size} 日に追加` : "＋ 選択中の日付に追加",
+        "＋ 選択した日時を候補に追加",
       ),
       h("h2", { class: "card-title" }, `③ 候補一覧（${slots.length} 件）`),
       slots.length ? list : h("p", { class: "muted" }, "まだ候補がありません。"),
