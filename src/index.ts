@@ -81,6 +81,6 @@ app.notFound((c) => c.text("Not Found", 404));
 export default {
   fetch: app.fetch,
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(runCron(env, controller.scheduledTime));
+    ctx.waitUntil(runCron(env, controller.scheduledTime, controller.cron));
   },
 } satisfies ExportedHandler<Env>;

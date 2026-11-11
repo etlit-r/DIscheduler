@@ -1,14 +1,15 @@
 // 予定のリマインド（docs/design.md §5.7）
-// 日本時間 10 時と 17 時の Cron で、確定した日時が近い調整のチャンネルへ知らせる。
-// - 10 時の回: 当日の 11:00〜17:59:59 に始まる予定
-// - 17 時の回: 当日の 18:00〜23:59:59 と、翌日の 0:00〜10:59:59 に始まる予定、翌日の終日の予定
-// Cron は各時刻の 0〜4 分に 1 分おきに 5 回動き、1 回で DAY_REMINDER_MAX_PER_RUN 件まで送る（残りは次の分の回）。
-// 回が過ぎてから確定した予定は、［確定をお知らせする］のお知らせにリマインドの一文を添える（reminderRunAt。§5.7）。
+// 確定した日時ごとに、主催者が決めた日時（予定の当日か前日の何時。調整のタイムゾーン。既定は当日の 17 時）に、調整のチャンネルへ知らせる。
+// Cron は毎時 0〜4 分に 1 分おきに 5 回動き、送る時刻を過ぎていて、まだ送っていない日時に送る。1 回で DAY_REMINDER_MAX_PER_RUN 件まで（残りは次の分の回）。
+// 送る時刻を過ぎてから確定した日時は、次の回で送る。［確定をお知らせする］のお知らせが先なら、お知らせにリマインドの一文を添えて、それで送ったことにする（§4.3）。
 import type { Env } from "../core/env";
 import type { PollRow } from "../db";
 import { buildDayReminderMessage } from "../discord/messages";
 import { discord, DiscordError } from "../discord/rest";
-import { epochToZoned } from "../shared/time";
+import { reminderAt } from "../shared/model";
+
+/** 予定のリマインドだけを行う Cron（wrangler.jsonc の crons と同じ文字列） */
+export const REMINDER_CRON = "0-4 * * * *";
 
 /**
  * 1 回の実行で送る数の上限。無料プランでは、Discord への送信（サブリクエスト）と D1 の問い合わせが、
@@ -18,92 +19,47 @@ export const DAY_REMINDER_MAX_PER_RUN = 20;
 
 const HOUR = 3600;
 const DAY = 24 * HOUR;
-/** 日本時間（UTC+9。夏時間なし） */
-const JST_OFFSET = 9 * HOUR;
 /**
- * 終日の候補の開始時刻（調整のタイムゾーンでのその日の 0:00）は、日本時間の 0:00 から見て -5〜+21 時間にある
- * （UTC-12〜UTC+14 のタイムゾーン）。この幅で広めに読み、調整のタイムゾーンでの日付で絞り込む
+ * 読み込む予定の範囲。送る時刻は、早くて予定の前日の 0 時（予定の開始の最大 48 時間前。夏時間の境目で前後する分を足す）。
+ * 終日の予定は、その日が終わるまで送れる
  */
-const ALL_DAY_BEFORE = 5 * HOUR;
-const ALL_DAY_AFTER = 21 * HOUR;
+const LOOKAHEAD = 2 * DAY + 2 * HOUR;
+/** 1 回に読み込む予定の数の上限（送る時刻を過ぎていないものも含まれるため、送る数より多めに読む） */
+const MAX_CANDIDATES = 200;
 
-/** 日本時間のその日の 0:00（UNIX 秒） */
-function jstDayStart(sec: number): number {
-  return Math.floor((sec + JST_OFFSET) / DAY) * DAY - JST_OFFSET;
+type Target = Pick<PollRow, "id" | "guild_id" | "channel_id" | "message_id" | "title" | "target_type" | "target_id" | "timezone" | "remind_day_offset" | "remind_hour"> & {
+  slot_id: string;
+  start_at: number;
+  all_day: number;
+};
+
+/** 送る時刻を過ぎていて、予定がまだ終わっていないか */
+export function isReminderDue(t: Pick<Target, "start_at" | "all_day" | "timezone" | "remind_day_offset" | "remind_hour">, now: number): boolean {
+  const at = reminderAt({ startAt: t.start_at, allDay: t.all_day === 1 }, t.timezone, t.remind_day_offset, t.remind_hour);
+  const limit = t.all_day === 1 ? t.start_at + DAY : t.start_at;
+  return at !== null && at <= now && now < limit;
 }
-
-/** 日本時間の日付（"2026-11-07"） */
-function jstDate(sec: number): string {
-  return new Date((sec + JST_OFFSET) * 1000).toISOString().slice(0, 10);
-}
-
-/** 調整のタイムゾーンでの日付（"2026-11-07"） */
-function zonedDate(sec: number, tz: string): string {
-  const p = epochToZoned(sec, tz);
-  return `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
-}
-
-/** その回で知らせる範囲（UNIX 秒。from は含み、to は含まない） */
-export interface ReminderWindow {
-  /** 時刻を決めた予定（終日でない） */
-  timed: { from: number; to: number };
-  /** 終日の予定は、調整のタイムゾーンでの日付がこの日（日本時間の翌日の日付）のもの。10 時の回は null */
-  allDayDate: string | null;
-}
-
-/** Cron の実行時刻（ミリ秒）から、その回で知らせる範囲を決める。10 時・17 時の回でなければ null */
-export function reminderWindow(scheduledTime: number): ReminderWindow | null {
-  const sec = Math.floor(scheduledTime / 1000);
-  const dayStart = jstDayStart(sec);
-  const hourJst = Math.floor((sec - dayStart) / HOUR);
-  const tomorrow = dayStart + DAY;
-  if (hourJst === 10) return { timed: { from: dayStart + 11 * HOUR, to: dayStart + 18 * HOUR }, allDayDate: null };
-  if (hourJst === 17) return { timed: { from: dayStart + 18 * HOUR, to: tomorrow + 11 * HOUR }, allDayDate: jstDate(tomorrow) };
-  return null;
-}
-
-/**
- * その予定を知らせる回の時刻（UNIX 秒。各時刻の 0 分）。
- * 時刻を決めた予定: 0:00〜10:59 は前日 17 時、11:00〜17:59 は当日 10 時、18:00〜23:59 は当日 17 時。
- * 終日の予定: 調整のタイムゾーンでの日付の前日 17 時（日本時間）
- */
-export function reminderRunAt(slot: { start_at: number; all_day: number }, timezone: string): number {
-  if (slot.all_day === 1) {
-    const [y, m, d] = zonedDate(slot.start_at, timezone).split("-").map(Number) as [number, number, number];
-    const dateStartJst = Date.UTC(y, m - 1, d) / 1000 - JST_OFFSET;
-    return dateStartJst - DAY + 17 * HOUR;
-  }
-  const dayStart = jstDayStart(slot.start_at);
-  const hourJst = Math.floor((slot.start_at - dayStart) / HOUR);
-  if (hourJst < 11) return dayStart - DAY + 17 * HOUR;
-  if (hourJst < 18) return dayStart + 10 * HOUR;
-  return dayStart + 17 * HOUR;
-}
-
-type Target = Pick<PollRow, "id" | "guild_id" | "channel_id" | "message_id" | "title" | "target_type" | "target_id" | "timezone"> & { slot_id: string; start_at: number; all_day: number };
 
 export async function runDayReminder(env: Env, scheduledTime: number): Promise<void> {
-  const w = reminderWindow(scheduledTime);
-  if (!w) return;
+  const now = Math.floor(scheduledTime / 1000);
   const db = env.DB;
-  // 確定した候補が範囲の中で始まり、その日時についてまだ送っていないもの（確定した候補が複数ある調整は、候補ごとに送る）。
-  // 終日の予定は広めに読み、調整のタイムゾーンでの日付で絞り込む
-  const allDayFrom = w.allDayDate ? Date.parse(`${w.allDayDate}T00:00:00+09:00`) / 1000 - ALL_DAY_BEFORE : 0;
-  const allDayTo = w.allDayDate ? allDayFrom + ALL_DAY_BEFORE + ALL_DAY_AFTER + 1 : 0;
+  // 確定した日時のうち、これから始まる（終日はその日が終わっていない）もので、その日時についてまだ送っていないもの。
+  // 送る時刻は調整ごとの設定とタイムゾーンで決まるので、読み込んだあとで絞り込む
   const rows = await db
     .prepare(
-      "SELECT s.id AS slot_id, p.id, p.guild_id, p.channel_id, p.message_id, p.title, p.target_type, p.target_id, p.timezone, s.start_at, s.all_day " +
+      "SELECT s.id AS slot_id, p.id, p.guild_id, p.channel_id, p.message_id, p.title, p.target_type, p.target_id, p.timezone, " +
+        "p.remind_day_offset, p.remind_hour, s.start_at, s.all_day " +
         "FROM slots s JOIN polls p ON p.id = s.poll_id " +
-        "WHERE p.status = 'fixed' AND s.fixed_at IS NOT NULL " +
-        "AND ((s.all_day = 0 AND s.start_at >= ? AND s.start_at < ?) OR (s.all_day = 1 AND s.start_at >= ? AND s.start_at < ?)) " +
+        "WHERE s.fixed_at IS NOT NULL AND s.start_at > ? AND s.start_at <= ? AND p.status = 'fixed' " +
         "AND (s.day_reminded_at IS NULL OR s.day_reminded_at != s.start_at) " +
-        "ORDER BY s.start_at, p.id LIMIT ?",
+        "ORDER BY s.start_at, s.id LIMIT ?",
     )
-    .bind(w.timed.from, w.timed.to, allDayFrom, allDayTo, DAY_REMINDER_MAX_PER_RUN + 1)
+    .bind(now - DAY, now + LOOKAHEAD, MAX_CANDIDATES)
     .all<Target>();
-  // 上限より 1 件多く読み、残りがあるかだけを知る（ログ用）
-  const deferred = rows.results.length > DAY_REMINDER_MAX_PER_RUN;
-  const targets = rows.results.slice(0, DAY_REMINDER_MAX_PER_RUN).filter((t) => t.all_day === 0 || zonedDate(t.start_at, t.timezone) === w.allDayDate);
+  const due = rows.results.filter((t) => isReminderDue(t, now));
+  // 上限を超えた分は、次の分の回で送る（ログ用に残りがあるかを残す）
+  const deferred = due.length > DAY_REMINDER_MAX_PER_RUN;
+  const targets = due.slice(0, DAY_REMINDER_MAX_PER_RUN);
 
   let sent = 0;
   let failed = 0;
