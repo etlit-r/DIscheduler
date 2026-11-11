@@ -515,7 +515,7 @@ async function postPollMessage(
       messageId = res.id;
     } catch (e) {
       if (e instanceof DiscordError && (e.status === 403 || e.status === 404)) {
-        throw new AppError(502, "discord_forbidden", "チャンネルに投稿できませんでした。Bot がこのチャンネルを見る権限・メッセージを送信する権限を持っているか確認してください。");
+        throw new AppError(502, "discord_forbidden", "チャンネルに投稿できませんでした。Bot にこのチャンネルの「チャンネルを見る」「メッセージを送信」の権限があるか確認してください。");
       }
       throw e;
     }
