@@ -283,8 +283,8 @@ export function donationLine(url: string | null): HTMLElement | null {
     h(
       "div",
       { class: "support-body" },
-      h("p", { class: "support-lead" }, "DIscheduler は無料で運営しています。役に立ったら、運営を支援していただけるとうれしいです。"),
-      h("p", {}, h("a", { class: "btn btn-secondary btn-small", href: url, rel: "noopener noreferrer" }, "運営を支援する")),
+      h("p", { class: "support-lead" }, "DIscheduler は無料で運営しています。役に立ったら、コーヒー 1 杯分の支援をいただけるとうれしいです。"),
+      h("p", {}, h("a", { class: "btn btn-secondary btn-small", href: url, rel: "noopener noreferrer" }, "コーヒーを 1 杯おごる")),
       h("p", { class: "term" }, "任意です。支援の有無で機能は変わりません。"),
       note ? h("p", { class: "term" }, note) : null,
     ),
