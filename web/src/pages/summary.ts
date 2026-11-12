@@ -1,6 +1,6 @@
 // S4: 集計・確定（docs/design.md §6.5）
 import { loadPoll, request, type PollData } from "../lib/api";
-import { choiceMark, dateTimeText, donationLine, mountViewerTzSwitch, rememberDonation, showError, slotText, STATUS_LABEL, statusBanner, syncPanel, viewerTimeZone, errorText } from "../ui/common";
+import { choiceMark, dateTimeText, donationLine, memberMatrix, mountViewerTzSwitch, rememberDonation, showError, slotText, STATUS_LABEL, statusBanner, syncPanel, viewerTimeZone, errorText } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
 import { bestSlotId, compareSlots, reminderAt, tally, UNANSWERED } from "../../../src/shared/model";
 
@@ -13,6 +13,8 @@ export async function summaryPage(pollId: string): Promise<void> {
   }
   rememberDonation(data.donationUrl);
   let sortByScore = false;
+  // 描き直しても［メンバー別に表示］の開いた状態を保つ
+  let matrixOpen = false;
   let fixTarget: string | null = null;
   let message: HTMLElement | null = null;
 
@@ -43,8 +45,6 @@ export async function summaryPage(pollId: string): Promise<void> {
     const answered = new Set(d.answers.map((a) => a.userId));
     const nameOf = new Map(d.participants.map((p) => [p.userId, p.displayName]));
     const choiceById = new Map(d.choices.map((c) => [c.id, c]));
-    // 「候補:メンバー」→ 回答。表の各マスで毎回探さないよう、先に索引を作る
-    const answerAt = new Map(d.answers.map((a) => [`${a.slotId}:${a.userId}`, a]));
     const symbolOf = (id: string) => (id === UNANSWERED ? "未回答" : (choiceById.get(id)?.symbol ?? "?"));
     const canFix = isOrganizer && (d.poll.status === "open" || d.poll.status === "closed" || d.poll.status === "fixed");
 
@@ -98,28 +98,7 @@ export async function summaryPage(pollId: string): Promise<void> {
     const table = h("div", { class: "table-wrap" }, h("table", { class: "data tally-table" }, h("thead", {}, head), body));
 
     // メンバー別の表
-    const matrixHead = h("tr", {}, h("th", { scope: "col" }, "メンバー"), ...d.slots.map((s) => h("th", { scope: "col" }, slotText(s, d.poll.timezone, tz).main)));
-    const matrixBody = h("tbody");
-    for (const p of d.participants) {
-      matrixBody.appendChild(
-        h(
-          "tr",
-          { class: p.userId === d.me.userId ? "is-me" : "" },
-          h("th", { scope: "row" }, p.displayName, p.comment ? h("span", { class: "slot-sub" }, p.comment) : null),
-          ...d.slots.map((s) => {
-            const a = answerAt.get(`${s.id}:${p.userId}`);
-            const c = a ? choiceById.get(a.choiceId) : undefined;
-            return h("td", { class: "num" }, c ? choiceMark(c) : h("span", { class: "muted" }, "—"));
-          }),
-        ),
-      );
-    }
-    const matrix = h(
-      "details",
-      { class: "card" },
-      h("summary", {}, "メンバー別に表示"),
-      h("div", { class: "table-wrap matrix" }, h("table", { class: "data" }, h("thead", {}, matrixHead), matrixBody)),
-    );
+    const matrix = memberMatrix(d, tz, "メンバー別に表示", matrixOpen, (o) => (matrixOpen = o));
 
     const unanswered = d.participants.filter((p) => !answered.has(p.userId));
 
