@@ -37,6 +37,8 @@
 
 .app-main { padding: 24px 0 48px; min-height: 60vh; }
 .page { display: grid; gap: 16px; max-width: 860px; }
+/* 横に長い表があっても、画面の幅を超えて広がらない（表は枠の中で横にスクロールする） */
+.page > * { min-width: 0; }
 .page h1 { font-size: clamp(1.4rem, 4vw, 1.9rem); line-height: 1.4; margin: 0; }
 .meta { color: var(--text-muted); margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .sep { color: var(--border); }
@@ -153,8 +155,6 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .slot-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; font-weight: 700; }
 .slot-sub { display: block; font-weight: 400; font-size: 0.82rem; color: var(--text-muted); }
 .tally-item { display: inline-flex; align-items: center; gap: 4px; }
-.who summary { cursor: pointer; color: var(--accent); }
-.who-list { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 4px; }
 .choice-group { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .choice-btn {
   display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 8px 14px; border-radius: 10px;
@@ -180,7 +180,6 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .answer-when .slot-sub { font-size: 0.78rem; }
 .tally-line { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; margin-top: 2px; font-size: 0.82rem; }
 .tally-line .tally-item { gap: 3px; }
-.tally-line .who summary { font-size: 0.82rem; }
 .mark-tiny { min-width: 18px; height: 18px; font-size: 0.75rem; border-radius: 5px; padding: 0 3px; }
 .answer-row .choice-group { flex: 0 0 auto; margin-top: 0; gap: 6px; }
 .choice-btn-compact { justify-content: center; min-width: 44px; padding: 6px; }
@@ -209,6 +208,8 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .tally-table tr.is-fixed th, .tally-table tr.is-fixed td { background: var(--c-green-soft); }
 .matrix th:first-child, .matrix td:first-child { position: sticky; left: 0; background: var(--surface); }
 .matrix tr.is-me th { color: var(--accent); }
+/* 見出しと名前は折り返さない（1 文字ずつ縦に並ばないように） */
+.matrix th { white-space: nowrap; }
 .changed-note { display: block; font-size: 0.82rem; color: var(--c-orange); font-weight: 400; }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 8px; }
 .kv dt { color: var(--text-muted); }

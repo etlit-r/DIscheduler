@@ -1,6 +1,6 @@
 // S3: 回答入力（各候補の集計つき。docs/design.md §6.4）
 import { loadPoll, request, type PollData } from "../lib/api";
-import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, statusBanner, viewerTimeZone, errorText } from "../ui/common";
+import { choiceMark, dateTimeText, memberMatrix, mountViewerTzSwitch, rememberDonation, showError, slotText, statusBanner, viewerTimeZone, errorText } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
 import { canAnswer, tally } from "../../../src/shared/model";
 import { formatDate, formatSlotTime, zoneAbbr } from "../../../src/shared/time";
@@ -26,7 +26,7 @@ export async function answerPage(pollId: string): Promise<void> {
   let message: HTMLElement | null = null;
   // 描き直しても、押したボタンのフォーカスと、開いた［みんなの回答］を保つ（画面全体を作り直すため）
   let focusKey: string | null = null;
-  const openWho = new Set<string>();
+  let whoOpen = false;
 
   const reload = async (msg?: HTMLElement) => {
     try {
@@ -51,14 +51,6 @@ export async function answerPage(pollId: string): Promise<void> {
     const slots = d.slots.map((s) => ({ id: s.id, startAt: s.startAt }));
     const t = tally(slots, d.choices, saved);
     const answeredUsers = new Set(d.answers.map((a) => a.userId));
-    const nameOf = new Map(d.participants.map((p) => [p.userId, p.displayName]));
-    // 候補ごとの回答の索引（描画のたびに全回答を探し直さない）
-    const bySlot = new Map<string, typeof d.answers>();
-    for (const a of d.answers) {
-      const list = bySlot.get(a.slotId);
-      if (list) list.push(a);
-      else bySlot.set(a.slotId, [a]);
-    }
     const editable = canAnswer(d.poll.status);
     const first = d.choices[0];
     const last = d.choices[d.choices.length - 1];
@@ -109,22 +101,6 @@ export async function answerPage(pollId: string): Promise<void> {
           ),
         );
       }
-      // ［みんなの回答］は、その候補に回答があるときだけ作る
-      const whoDetails = (): HTMLElement => {
-        const whoList = h("ul", { class: "who-list" });
-        const slotAnswers = bySlot.get(s.id) ?? [];
-        const answeredHere = new Set(slotAnswers.map((a) => a.userId));
-        for (const c of d.choices) {
-          const names = slotAnswers.filter((a) => a.choiceId === c.id).map((a) => nameOf.get(a.userId) ?? "?");
-          if (names.length) whoList.appendChild(h("li", {}, choiceMark(c), " ", names.join("、")));
-        }
-        const notAnswered = d.participants.filter((p) => !answeredHere.has(p.userId)).map((p) => p.displayName);
-        if (notAnswered.length) whoList.appendChild(h("li", {}, h("span", { class: "muted" }, "未回答"), " ", notAnswered.join("、")));
-        const details = h("details", { class: "who", open: openWho.has(s.id) }, h("summary", {}, "みんなの回答"), whoList);
-        details.addEventListener("toggle", () => (details.open ? openWho.add(s.id) : openWho.delete(s.id)));
-        return details;
-      };
-
       // 1 件を 1 行にまとめる: 左に日時と集計（人数だけ）、右に選択ボタン。狭い画面でボタンが入らなければ、ボタンだけ次の行に回る
       day!.appendChild(
         h(
@@ -149,7 +125,6 @@ export async function answerPage(pollId: string): Promise<void> {
               h("span", { class: "visually-hidden" }, "いまの回答: "),
               ...d.choices.map((c) => h("span", { class: "tally-item" }, choiceMark(c, "mark-tiny"), String(tt.byChoice[c.id] ?? 0))),
               h("span", { class: "tally-item muted" }, `未回答 ${d.participants.length - tt.answered}`),
-              tt.answered ? whoDetails() : null,
             ),
           ),
           group,
@@ -257,6 +232,8 @@ export async function answerPage(pollId: string): Promise<void> {
           : null,
         message,
         form,
+        // 誰がどう答えたかは、行ごとではなく、いちばん下にまとめた表で見る（畳んでおく）
+        d.answers.length ? memberMatrix(d, tz, "みんなの回答", whoOpen, (o) => (whoOpen = o)) : null,
       ),
     );
     if (focusKey) {
