@@ -194,9 +194,12 @@ export function mountViewerTzSwitch(onChange: () => void): void {
 
 /** 候補日時の表示。閲覧者のタイムゾーンが調整と違えば両方を出す（§6.7） */
 export function slotText(slot: SlotTime, pollTz: string, viewerTz: string): { main: string; sub: string | null } {
-  const main = `${formatSlot(slot, pollTz)} ${slot.allDay ? "" : zoneAbbr(slot.startAt, pollTz)}`.trim();
-  if (viewerTz === pollTz || slot.allDay) return { main, sub: null };
-  return { main, sub: `あなたの時刻: ${formatSlot(slot, viewerTz)} ${zoneAbbr(slot.startAt, viewerTz)}` };
+  // 閲覧者のタイムゾーンが調整と同じなら、タイムゾーンの略号（JST など）は付けない（候補の行を短くするため）
+  if (viewerTz === pollTz || slot.allDay) return { main: formatSlot(slot, pollTz), sub: null };
+  return {
+    main: `${formatSlot(slot, pollTz)} ${zoneAbbr(slot.startAt, pollTz)}`,
+    sub: `あなたの時刻: ${formatSlot(slot, viewerTz)} ${zoneAbbr(slot.startAt, viewerTz)}`,
+  };
 }
 
 export function dateTimeText(epoch: number, tz: string): string {
