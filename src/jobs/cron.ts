@@ -43,11 +43,13 @@ export async function runCron(env: Env, scheduledTime: number, cron = ""): Promi
     .all<{ id: string; message_id: string | null }>();
   const toSync: string[] = closed.results.filter((p) => p.message_id).map((p) => p.id).slice(0, maxSync);
 
-  // 未反映の回答の変更がある募集メッセージ
+  // 未反映の回答の変更がある募集メッセージと、締切のあとにまだ更新していない募集メッセージ
+  // （締め切った調整が多くて前の回で更新しきれなかったもの・更新に失敗したもの。「締切を過ぎました」にする）
   if (toSync.length < maxSync) {
     const targets = await env.DB.prepare(
       "SELECT id FROM polls p WHERE message_id IS NOT NULL AND status IN ('open','closed','fixed') " +
-        "AND EXISTS (SELECT 1 FROM answers a WHERE a.poll_id = p.id AND a.updated_at > COALESCE(p.last_synced_at, 0)) " +
+        "AND (EXISTS (SELECT 1 FROM answers a WHERE a.poll_id = p.id AND a.updated_at > COALESCE(p.last_synced_at, 0)) " +
+        "OR (status = 'closed' AND deadline_at IS NOT NULL AND deadline_at > COALESCE(last_synced_at, 0))) " +
         "ORDER BY last_synced_at LIMIT ?",
     )
       .bind(maxSync)
