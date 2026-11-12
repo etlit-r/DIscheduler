@@ -63,22 +63,22 @@ export async function answerPage(pollId: string): Promise<void> {
     const first = d.choices[0];
     const last = d.choices[d.choices.length - 1];
 
-    // 同じ日に候補が 2 つ以上ある調整だけ、日付を見出しにまとめ、行には時間帯だけを書く。
-    // どの日も候補が 1 つなら、見出しを付けず、行に日付と時間帯を書く（日付は調整のタイムゾーンで決める。候補は日時の順に並んでいる）
+    // 同じ日に候補が 2 つ以上ある調整だけ、同じ日付の候補を 1 つの枠で囲み、日付は枠の最初の行の時間帯の上にだけ書く（枠の中は区切り線を引かない）。
+    // どの日も候補が 1 つなら、1 つの枠に区切り線で並べ、行に日付と時間帯を書く（日付は調整のタイムゾーンで決める。候補は日時の順に並んでいる）
     const dates = d.slots.map((s) => formatDate(s.startAt, d.poll.timezone));
     const byDate = new Set(dates).size < dates.length;
-    const list = h("div", { class: "answer-list" });
+    const list = h("div", { class: `answer-list${byDate ? " is-grouped" : ""}` });
     let day: HTMLElement | null = byDate ? null : list.appendChild(h("ol", { class: "answer-day" }));
     let dayLabel = "";
+    let firstOfDay = false;
     d.slots.forEach((s, i) => {
       const st = slotText(s, d.poll.timezone, tz);
       const label = dates[i]!;
+      firstOfDay = false;
       if (byDate && (!day || label !== dayLabel)) {
         dayLabel = label;
-        // 一覧の名前は見出しから取る（日付を 2 回読み上げないように）
-        const headingId = `answer-date-${i}`;
-        day = h("ol", { class: "answer-day", aria: { labelledby: headingId } });
-        list.append(h("h2", { class: "answer-date", id: headingId }, label), day);
+        firstOfDay = true;
+        day = list.appendChild(h("ol", { class: "answer-day", aria: { label } }));
       }
       // 閲覧者のタイムゾーンが違うときだけ、略号（JST など）を付ける（slotText と同じ決まり）
       const time = byDate ? formatSlotTime(s, d.poll.timezone) + (st.sub ? ` ${zoneAbbr(s.startAt, d.poll.timezone)}` : "") : st.main;
@@ -136,6 +136,8 @@ export async function answerPage(pollId: string): Promise<void> {
             h(
               "div",
               { class: "slot-head" },
+              // 日付は、その日の枠の最初の行にだけ、時間帯の上に書く（読み上げは一覧の名前で伝える）
+              firstOfDay ? h("span", { class: "answer-date", aria: { hidden: "true" } }, label) : null,
               // 最有力候補（★）は回答画面には出さない（集計画面だけで出す）
               isFixed ? h("span", { class: "badge badge-fixed" }, "確定") : null,
               h("span", { class: "slot-main" }, time),
