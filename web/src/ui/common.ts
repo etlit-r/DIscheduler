@@ -1,6 +1,6 @@
 // 画面共通の部品
 import { ApiError, request, type PollData } from "../lib/api";
-import { h, notice, render } from "../lib/dom";
+import { h, lineIcon, notice, render } from "../lib/dom";
 import { donationNote } from "../../../src/shared/text";
 import { DEFAULT_TIMEZONE, formatDateTime, formatSlot, isValidTimeZone, zoneAbbr, type SlotTime } from "../../../src/shared/time";
 
@@ -264,15 +264,30 @@ export function showError(err: unknown, kind: PageKind = "link"): void {
   );
 }
 
-/** 完了の画面に置く寄付リンクの 1 行と、支援サービスの説明（§6.10）。寄付リンクがなければ null */
+/** コーヒーカップ（Lucide の coffee。public/assets/lucide-LICENSE.txt） */
+const COFFEE_PATHS = ["M10 2v2", "M14 2v2", "M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1", "M6 2v2"] as const;
+
+/**
+ * 完了の画面に置く寄付リンク（§6.10）。枠で囲み、コーヒーカップの絵を添える。
+ * 回答の完了画面（public/answered.html）と同じ形にする。寄付リンクがなければ null
+ */
 export function donationLine(url: string | null): HTMLElement | null {
   if (!url) return null;
   const note = donationNote(url);
+  const cup = h("span", { class: "support-cup" });
+  cup.appendChild(lineIcon("support-cup-ic", COFFEE_PATHS));
   return h(
-    "div",
-    { class: "donation-line" },
-    h("p", {}, "DIscheduler は無料で運営しています。役に立ったら ", h("a", { href: url, rel: "noopener noreferrer" }, "運営を支援する"), "（任意です。支援の有無で機能は変わりません）"),
-    note ? h("p", { class: "muted small" }, note) : null,
+    "aside",
+    { class: "support-card", aria: { label: "運営の支援" } },
+    cup,
+    h(
+      "div",
+      { class: "support-body" },
+      h("p", { class: "support-lead" }, "DIscheduler は無料で運営しています。役に立ったら、運営を支援していただけるとうれしいです。"),
+      h("p", {}, h("a", { class: "btn btn-secondary btn-small", href: url, rel: "noopener noreferrer" }, "運営を支援する")),
+      h("p", { class: "term" }, "任意です。支援の有無で機能は変わりません。"),
+      note ? h("p", { class: "term" }, note) : null,
+    ),
   );
 }
 

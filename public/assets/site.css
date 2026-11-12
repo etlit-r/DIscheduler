@@ -226,6 +226,43 @@ table.data tr:last-child th, table.data tr:last-child td { border-bottom: 0; }
   .brand { font-size: 1rem; }
 }
 
-/* 完了の画面の寄付リンク（docs/design.md §6.10） */
-.donation-line { margin-top: 24px; color: var(--text-muted); }
-.donation-line p { margin: 0 0 4px; }
+/* 完了の画面の寄付リンク（docs/design.md §6.10）。枠で囲み、コーヒーカップの絵を添えて目立たせる */
+.support-card {
+  --cup: #e0a04a;
+  --cup-soft: rgb(217 135 40 / 14%);
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin: 32px 0 0;
+  padding: 20px;
+  border: 1px solid rgb(217 135 40 / 45%);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: left;
+}
+@media (prefers-color-scheme: dark) {
+  .support-card { --cup: #f2b45a; --cup-soft: rgb(242 180 90 / 14%); }
+}
+.lp .support-card { --cup: #f2b45a; --cup-soft: rgb(242 180 90 / 14%); }
+.support-cup {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--cup-soft);
+  color: var(--cup);
+}
+.support-cup-ic { width: 26px; height: 26px; }
+.support-body { min-width: 0; }
+.support-card .support-body p { margin: 0 0 8px; }
+.support-body p:last-child { margin-bottom: 0; }
+.support-lead { font-weight: 600; }
+.support-card .support-body p.term { margin: 0 0 4px; }
+.support-card .btn.btn-secondary { background: var(--cup); border-color: transparent; color: #1f1405; font-weight: 700; }
+.support-card .btn.btn-secondary:hover { background: var(--cup); color: #1f1405; filter: brightness(1.08); }
+@media (max-width: 420px) {
+  .support-card { flex-direction: column; align-items: center; text-align: center; }
+}
