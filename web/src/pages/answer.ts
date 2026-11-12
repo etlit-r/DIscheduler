@@ -62,14 +62,12 @@ export async function answerPage(pollId: string): Promise<void> {
     const list = h("div", { class: `answer-list${byDate ? " is-grouped" : ""}` });
     let day: HTMLElement | null = byDate ? null : list.appendChild(h("ol", { class: "answer-day" }));
     let dayLabel = "";
-    let firstOfDay = false;
     d.slots.forEach((s, i) => {
       const st = slotText(s, d.poll.timezone, tz);
       const label = dates[i]!;
-      firstOfDay = false;
-      if (byDate && (!day || label !== dayLabel)) {
+      const firstOfDay = byDate && (!day || label !== dayLabel);
+      if (firstOfDay) {
         dayLabel = label;
-        firstOfDay = true;
         day = list.appendChild(h("ol", { class: "answer-day", aria: { label } }));
       }
       // 閲覧者のタイムゾーンが違うときだけ、略号（JST など）を付ける（slotText と同じ決まり）

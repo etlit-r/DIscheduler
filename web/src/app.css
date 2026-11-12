@@ -210,6 +210,8 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .matrix tr.is-me th { color: var(--accent); }
 /* 見出しと名前は折り返さない（1 文字ずつ縦に並ばないように） */
 .matrix th { white-space: nowrap; }
+/* ひとこと（最大 100 文字）は折り返す（折り返さないと、固定した名前の列が画面を覆う） */
+.matrix th .slot-sub { white-space: normal; min-width: 8em; max-width: 14em; }
 .changed-note { display: block; font-size: 0.82rem; color: var(--c-orange); font-weight: 400; }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 8px; }
 .kv dt { color: var(--text-muted); }
