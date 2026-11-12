@@ -73,9 +73,11 @@ export async function answerPage(pollId: string): Promise<void> {
             "button",
             {
               type: "button",
-              class: `choice-btn choice-${c.color}${selected ? " is-selected" : ""}`,
+              // 1 行に収めるため、ボタンには記号だけを出す。名前は読み上げとマウスを乗せたときの表示、表の上の凡例で伝える
+              class: `choice-btn choice-btn-compact choice-${c.color}${selected ? " is-selected" : ""}`,
               role: "radio",
-              aria: { checked: String(selected) },
+              title: c.label,
+              aria: { checked: String(selected), label: `${c.symbol} ${c.label}` },
               disabled: !editable,
               onClick: () => {
                 draft.set(s.id, c.id);
@@ -83,16 +85,8 @@ export async function answerPage(pollId: string): Promise<void> {
               },
             },
             h("span", { class: "choice-symbol", aria: { hidden: "true" } }, c.symbol),
-            h("span", {}, c.label),
           ),
         );
-      }
-      const bar = h("div", { class: "bar", aria: { hidden: "true" } });
-      const total = Math.max(d.participants.length, 1);
-      for (const kind of ["ok", "maybe", "ng"] as const) {
-        const seg = h("span", { class: `bar-seg bar-${kind}` });
-        seg.style.width = `${(tt[kind] / total) * 100}%`;
-        bar.appendChild(seg);
       }
       const who = h("details", { class: "who" }, h("summary", {}, "みんなの回答"));
       const whoList = h("ul", { class: "who-list" });
@@ -106,27 +100,30 @@ export async function answerPage(pollId: string): Promise<void> {
       if (notAnswered.length) whoList.appendChild(h("li", {}, h("span", { class: "muted" }, "未回答"), " ", notAnswered.join("、")));
       who.appendChild(whoList);
 
+      // 1 件を 1 行にまとめる: 左に日時と集計（人数だけ）、右に選択ボタン。狭い画面でボタンが入らなければ、ボタンだけ次の行に回る
       list.appendChild(
         h(
           "li",
-          { class: `answer-item${isFixed ? " is-fixed" : ""}` },
+          { class: `answer-row${isFixed ? " is-fixed" : ""}` },
           h(
             "div",
-            { class: "slot-head" },
-            isFixed ? h("span", { class: "badge badge-fixed" }, "確定") : s.id === best ? h("span", { class: "star", aria: { label: "最有力候補" } }, "★") : null,
-            h("span", { class: "slot-main" }, st.main),
+            { class: "answer-when" },
+            h(
+              "div",
+              { class: "slot-head" },
+              isFixed ? h("span", { class: "badge badge-fixed" }, "確定") : s.id === best ? h("span", { class: "star", aria: { label: "最有力候補" } }, "★") : null,
+              h("span", { class: "slot-main" }, st.main),
+            ),
             st.sub ? h("span", { class: "slot-sub" }, st.sub) : null,
+            h(
+              "div",
+              { class: "tally-line" },
+              h("span", { class: "visually-hidden" }, "いまの回答: "),
+              ...d.choices.map((c) => h("span", { class: "tally-item" }, choiceMark(c, "mark-tiny"), String(tt.byChoice[c.id] ?? 0))),
+              h("span", { class: "tally-item muted" }, `未回答 ${d.participants.length - tt.answered}`),
+              tt.answered ? who : null,
+            ),
           ),
-          tt.answered === 0
-            ? h("p", { class: "tally muted" }, "まだ回答がありません")
-            : h(
-                "div",
-                { class: "tally" },
-                h("span", { class: "muted" }, "いまの回答: "),
-                ...d.choices.map((c) => h("span", { class: "tally-item" }, choiceMark(c, "mark-small"), String(tt.byChoice[c.id] ?? 0))),
-                bar,
-                who,
-              ),
           group,
         ),
       );
@@ -165,6 +162,11 @@ export async function answerPage(pollId: string): Promise<void> {
           }
         },
       },
+      h(
+        "p",
+        { class: "choice-legend muted small" },
+        ...d.choices.flatMap((c, i) => [i ? "　" : "", choiceMark(c, "mark-tiny"), ` ${c.label}`]),
+      ),
       list,
       editable && first && last
         ? h(
