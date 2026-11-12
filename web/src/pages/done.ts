@@ -39,8 +39,8 @@ export async function donePage(pollId: string): Promise<void> {
             "p",
             { class: "donation-line" },
             "DIscheduler は無料で運営しています。役に立ったら ",
-            h("a", { href: d.donationUrl, rel: "noopener noreferrer" }, "運営を支援する"),
-            "（任意です。支援の有無で機能は変わりません）",
+            h("a", { href: d.donationUrl, rel: "noopener noreferrer" }, "☕ コーヒーを 1 杯おごる"),
+            "（Buy Me a Coffee。任意です。支援の有無で機能は変わりません）",
           )
         : null,
     ),
