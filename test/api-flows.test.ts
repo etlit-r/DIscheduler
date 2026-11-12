@@ -306,12 +306,21 @@ describe("確定と取り消し", () => {
     expect(body.warnings).toEqual(["開始日時が過ぎているため、Discord イベントは登録しませんでした。"]);
   });
 
-  it("募集メッセージを更新できなくても確定する（警告は出さない: 更新の失敗は後で取り戻す）", async () => {
+  it("募集メッセージを更新できなくても確定・取り消しはし、警告を返す", async () => {
     const t = await organizer({}, (c) => (c.method === "PATCH" ? new Response("{}", { status: 500 }) : {}));
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const res = await t.req("POST", "/fix", { slotId: t.slotIds[0], event: null });
-    expect(res.status).toBe(200);
+    const fixed = await t.req("POST", "/fix", { slotId: t.slotIds[0], event: null });
+    expect(await fixed.json()).toEqual({ ok: true, warnings: ["募集メッセージを更新できませんでした。"] });
     expect((await slotRow(t.slotIds[0]))!.fixed_at).not.toBeNull();
+    const unfixed = await t.req("DELETE", `/fix/${t.slotIds[0]}`);
+    expect(await unfixed.json()).toEqual({ ok: true, warnings: ["募集メッセージを更新できませんでした。"] });
+    expect((await slotRow(t.slotIds[0]))!.fixed_at).toBeNull();
+  });
+
+  it("募集メッセージがない調整では、更新できない警告を出さない", async () => {
+    const t = await organizer({ messageId: null });
+    expect(await (await t.req("POST", "/fix", { slotId: t.slotIds[0], event: null })).json()).toEqual({ ok: true, warnings: [] });
+    expect(await (await t.req("DELETE", `/fix/${t.slotIds[0]}`)).json()).toEqual({ ok: true, warnings: [] });
   });
 
   it("取り消し: 知らない候補は 404、確定していない候補は 409。イベントを消せなければ警告", async () => {
