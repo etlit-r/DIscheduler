@@ -5,7 +5,7 @@ import type { Env } from "../src/core/env";
 import { DAY, nowSec } from "../src/core/lib";
 import { handleInteraction, helpText } from "../src/discord/interactions";
 import { PERM } from "../src/discord/permissions";
-import { ALICE, BOB, CHANNEL, GUILD, mockDiscord, ORGANIZER, ORIGIN, OUTSIDER, seedPoll, testEnv, type DiscordCall } from "./helpers";
+import { ALICE, BOB, CHANNEL, GUILD, freezeMidWindow, mockDiscord, ORGANIZER, ORIGIN, OUTSIDER, seedPoll, testEnv, type DiscordCall } from "./helpers";
 
 type Interaction = Parameters<typeof handleInteraction>[2];
 const db = () => (env as unknown as Env).DB;
@@ -164,7 +164,8 @@ describe("募集メッセージのボタン", () => {
     const calls = mockDiscord();
     const r = await run(button(`${kind}:${pollId}`, user, permissions));
     expect(r).toEqual({ type: 5, data: { flags: 64 } });
-    vi.restoreAllMocks();
+    // fetch の差し替えだけを戻す（時計の固定などは残す）
+    vi.mocked(globalThis.fetch).mockRestore();
     return edited(calls)[0]!;
   }
 
@@ -207,6 +208,7 @@ describe("募集メッセージのボタン", () => {
   });
 
   it("リンクの発行は 1 時間に 20 回まで", async () => {
+    freezeMidWindow();
     const user = "400000000000000066";
     const { pollId } = await seedPoll({ participants: [user] });
     for (let n = 0; n < 20; n++) expect((await press("view", pollId, user)).content).toContain("あなた専用のリンクです");

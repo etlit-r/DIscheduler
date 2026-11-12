@@ -6,11 +6,9 @@ import type { Env } from "../src/core/env";
 import { issueListLink } from "../src/auth";
 import { DAY, nowSec } from "../src/core/lib";
 import { RETENTION } from "../src/polls/create";
-import { ALICE, BOB, call, CHANNEL, getReq, GUILD, jsonReq, login, mockDiscord, ORGANIZER, ORIGIN, seedPoll, testEnv, tokenFromUrl, type DiscordCall } from "./helpers";
+import { ALICE, BOB, call, CHANNEL, errorOf, freezeMidWindow, getReq, GUILD, jsonReq, login, mockDiscord, ORGANIZER, ORIGIN, pollRow, seedPoll, testEnv, tokenFromUrl, type DiscordCall } from "./helpers";
 
 const db = () => (env as unknown as Env).DB;
-const errorOf = async (res: Response) => ((await res.json()) as { error: { code: string; message: string } }).error;
-const pollRow = (id: string) => db().prepare("SELECT * FROM polls WHERE id = ?").bind(id).first<Record<string, unknown>>();
 const slotRow = (id: string) => db().prepare("SELECT * FROM slots WHERE id = ?").bind(id).first<Record<string, unknown>>();
 afterEach(() => vi.restoreAllMocks());
 
@@ -103,9 +101,7 @@ describe("公開", () => {
     await db().prepare("UPDATE polls SET title = NULL WHERE id = ?").bind(t.pollId).run();
     expect((await errorOf(await t.req("POST", "/publish"))).code).toBe("no_title");
     await db().prepare("UPDATE polls SET title = 't' WHERE id = ?").bind(t.pollId).run();
-    await db().prepare("DELETE FROM participants WHERE poll_id = ? AND user_id != ?").bind(t.pollId, ORGANIZER).run();
     await db().prepare("DELETE FROM participants WHERE poll_id = ?").bind(t.pollId).run();
-    // 参加者がいなくても、セッションは有効（主催者の操作）
     expect((await errorOf(await t.req("POST", "/publish"))).code).toBe("no_participants");
     await db().prepare("INSERT INTO participants (poll_id, user_id, display_name) VALUES (?, ?, 'a')").bind(t.pollId, ALICE).run();
     await db().prepare("DELETE FROM slots WHERE poll_id = ?").bind(t.pollId).run();
@@ -248,6 +244,7 @@ describe("回答", () => {
   });
 
   it("保存は 10 分に 30 回まで", async () => {
+    freezeMidWindow();
     const t = await participant();
     await db().prepare("DELETE FROM rate_limits WHERE key LIKE 'answer:%'").run();
     for (let i = 0; i < 30; i++) expect((await t.put({ choicesVersion: 1, answers: [], comment: null })).status).toBe(200);

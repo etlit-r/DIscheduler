@@ -211,7 +211,10 @@ describe("募集メッセージの組み立て", () => {
 });
 
 describe("募集メッセージの更新", () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
   const row = (id: string) => db().prepare("SELECT message_id, last_synced_at FROM polls WHERE id = ?").bind(id).first<{ message_id: string | null; last_synced_at: number | null }>();
 
   it("更新できたら true。間隔の内側なら更新しない", async () => {
@@ -257,30 +260,39 @@ describe("募集メッセージの更新", () => {
     await syncAfterAnswer(testEnv(), pollId);
     expect(calls).toHaveLength(1);
 
-    const start = Date.now();
+    // 区切りまで 2 秒。待っているあいだは更新せず、区切りが過ぎたら 1 回だけ更新する
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
     await db().prepare("UPDATE polls SET last_synced_at = ? WHERE id = ?").bind(nowSec() - SYNC_INTERVAL + 1, pollId).run();
-    await syncAfterAnswer(testEnv(), pollId);
+    const p = syncAfterAnswer(testEnv(), pollId);
+    await vi.waitFor(() => expect(vi.getTimerCount()).toBe(1));
+    expect(calls).toHaveLength(1);
+    vi.setSystemTime(Date.now() + 3000);
+    await vi.runAllTimersAsync();
+    await p;
     expect(calls).toHaveLength(2);
-    expect(Date.now() - start).toBeGreaterThanOrEqual(1000);
   });
 
-  it("最終更新時刻が先の時刻なら待たずに諦める。まだ更新したことがなければ後追いしない", async () => {
+  it("最終更新時刻が先の時刻なら待たずに諦める", async () => {
     const { pollId } = await seedPoll();
     const calls = mockDiscord();
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
     await db().prepare("UPDATE polls SET last_synced_at = ? WHERE id = ?").bind(nowSec() + 60, pollId).run();
-    const start = Date.now();
     await syncAfterAnswer(testEnv(), pollId);
-    expect(Date.now() - start).toBeLessThan(1000);
+    expect(vi.getTimerCount()).toBe(0);
     expect(calls).toHaveLength(0);
   });
 
   it("待っているあいだにほかの保存が更新していれば、重ねて更新しない", async () => {
     const { pollId } = await seedPoll();
     const calls = mockDiscord();
-    const t0 = nowSec() - SYNC_INTERVAL + 1;
-    await db().prepare("UPDATE polls SET last_synced_at = ? WHERE id = ?").bind(t0, pollId).run();
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
+    await db().prepare("UPDATE polls SET last_synced_at = ? WHERE id = ?").bind(nowSec() - SYNC_INTERVAL + 1, pollId).run();
     const p = syncAfterAnswer(testEnv(), pollId);
-    await db().prepare("UPDATE polls SET last_synced_at = ? WHERE id = ?").bind(nowSec() + 5, pollId).run();
+    // 待ちに入ってから（最終更新時刻を読んだあとで）、最終更新時刻が変わったことにする。
+    // 変わった値は間隔の外にしておき、この確認がなければ更新してしまう状態にする
+    await vi.waitFor(() => expect(vi.getTimerCount()).toBe(1));
+    await db().prepare("UPDATE polls SET last_synced_at = ? WHERE id = ?").bind(nowSec() - SYNC_INTERVAL - 5, pollId).run();
+    await vi.runAllTimersAsync();
     await p;
     expect(calls).toHaveLength(0);
   });
