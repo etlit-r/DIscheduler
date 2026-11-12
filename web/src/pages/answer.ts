@@ -60,20 +60,24 @@ export async function answerPage(pollId: string): Promise<void> {
     const first = d.choices[0];
     const last = d.choices[d.choices.length - 1];
 
-    // 日付を見出しにまとめ、行には時間帯だけを書く（日付は調整のタイムゾーンで決める。候補は日時の順に並んでいる）
+    // 同じ日に候補が 2 つ以上ある調整だけ、日付を見出しにまとめ、行には時間帯だけを書く。
+    // どの日も候補が 1 つなら、見出しを付けず、行に日付と時間帯を書く（日付は調整のタイムゾーンで決める。候補は日時の順に並んでいる）
+    const dateOf = (s: (typeof d.slots)[number]) => formatDate(s.startAt, d.poll.timezone);
+    const dates = d.slots.map(dateOf);
+    const byDate = new Set(dates).size < dates.length;
     const list = h("div", { class: "answer-list" });
-    let day: HTMLElement | null = null;
+    let day: HTMLElement | null = byDate ? null : list.appendChild(h("ol", { class: "answer-day" }));
     let dayLabel = "";
     for (const s of d.slots) {
       const st = slotText(s, d.poll.timezone, tz);
-      const label = formatDate(s.startAt, d.poll.timezone);
-      if (!day || label !== dayLabel) {
+      const label = dateOf(s);
+      if (byDate && (!day || label !== dayLabel)) {
         dayLabel = label;
         day = h("ol", { class: "answer-day", aria: { label } });
         list.append(h("h2", { class: "answer-date" }, label), day);
       }
       // 閲覧者のタイムゾーンが違うときだけ、略号（JST など）を付ける（slotText と同じ決まり）
-      const time = formatSlotTime(s, d.poll.timezone) + (st.sub ? ` ${zoneAbbr(s.startAt, d.poll.timezone)}` : "");
+      const time = byDate ? formatSlotTime(s, d.poll.timezone) + (st.sub ? ` ${zoneAbbr(s.startAt, d.poll.timezone)}` : "") : st.main;
       const tt = t.get(s.id)!;
       const isFixed = s.fixedAt !== null;
       const group = h("div", { class: "choice-group", role: "radiogroup", aria: { label: `${st.main} の回答` } });
@@ -112,7 +116,7 @@ export async function answerPage(pollId: string): Promise<void> {
       who.appendChild(whoList);
 
       // 1 件を 1 行にまとめる: 左に日時と集計（人数だけ）、右に選択ボタン。狭い画面でボタンが入らなければ、ボタンだけ次の行に回る
-      day.appendChild(
+      day!.appendChild(
         h(
           "li",
           { class: `answer-row${isFixed ? " is-fixed" : ""}` },
