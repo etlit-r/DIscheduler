@@ -3,10 +3,9 @@ import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/core/env";
 import { DAY, nowSec } from "../src/core/lib";
-import { call, jsonReq, login, mockDiscord, ORGANIZER, seedPoll, type DiscordCall } from "./helpers";
+import { call, errorOf, jsonReq, login, mockDiscord, ORGANIZER, seedPoll, type DiscordCall } from "./helpers";
 
 const db = () => (env as unknown as Env).DB;
-const errorOf = async (res: Response) => ((await res.json()) as { error: { code: string; message: string } }).error;
 
 let calls: DiscordCall[];
 beforeEach(() => {

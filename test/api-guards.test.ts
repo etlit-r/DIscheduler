@@ -5,11 +5,9 @@ import type { Env } from "../src/core/env";
 import { issueLink } from "../src/auth";
 import { DAY, nowSec } from "../src/core/lib";
 import { RETENTION } from "../src/polls/create";
-import { ALICE, BOB, call, getReq, GUILD, jsonReq, login, mockDiscord, ORGANIZER, ORIGIN, seedPoll, testEnv, tokenFromUrl, type DiscordCall } from "./helpers";
+import { ALICE, BOB, call, errorOf, getReq, GUILD, jsonReq, login, mockDiscord, ORGANIZER, ORIGIN, pollRow, seedPoll, testEnv, tokenFromUrl, type DiscordCall } from "./helpers";
 
 const db = () => (env as unknown as Env).DB;
-const errorOf = async (res: Response) => ((await res.json()) as { error: { code: string; message: string } }).error;
-const pollRow = (id: string) => db().prepare("SELECT * FROM polls WHERE id = ?").bind(id).first<Record<string, unknown>>();
 
 let calls: DiscordCall[];
 beforeEach(() => {

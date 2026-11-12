@@ -110,3 +110,22 @@ export function mockDiscord(handler: (c: DiscordCall) => unknown = () => ({})): 
   });
   return calls;
 }
+
+/** API のエラー応答の本文 */
+export async function errorOf(res: Response): Promise<{ code: string; message: string }> {
+  return ((await res.json()) as { error: { code: string; message: string } }).error;
+}
+
+/** 調整の行をそのまま読む */
+export function pollRow(id: string) {
+  return (env as unknown as Env).DB.prepare("SELECT * FROM polls WHERE id = ?").bind(id).first<Record<string, unknown>>();
+}
+
+/**
+ * 時計を、いまの 1 時間の 25 分（10 分・1 時間の区切りのどちらからも離れた時刻）に止める。
+ * 回数制限の区切りをテストの途中でまたぐと、数え直しになってテストが失敗するため
+ */
+export function freezeMidWindow(): void {
+  const t = Math.floor(Date.now() / 3_600_000) * 3_600_000 + 25 * 60_000;
+  vi.spyOn(Date, "now").mockReturnValue(t);
+}

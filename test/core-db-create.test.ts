@@ -21,7 +21,7 @@ import { createOrReuseDraft, DRAFT_TTL, resetParticipants } from "../src/polls/c
 import { ChoicesBody, FixBody, PatchPollBody, SessionBody, SlotsBody, AnswersBody, ParticipantsBody } from "../src/api/schemas";
 import { getRecentTimes, mergeRanges, parseRanges, rangesFromSlots, saveRecentTimesStatement } from "../src/guilds/recent-times";
 import worker, { publicOrigin, SECURITY_HEADERS } from "../src/index";
-import { ALICE, call, getReq, GUILD, jsonReq, mockDiscord, ORGANIZER, ORIGIN, seedPoll, testEnv } from "./helpers";
+import { ALICE, BOB, call, freezeMidWindow, getReq, GUILD, jsonReq, mockDiscord, ORGANIZER, ORIGIN, seedPoll, testEnv } from "./helpers";
 
 const db = () => (env as unknown as Env).DB;
 afterEach(() => vi.restoreAllMocks());
@@ -187,14 +187,14 @@ describe("調整の作成", () => {
   });
 
   it("作成は 1 人 1 時間に 10 件まで。超えたら残りの分数を案内する", async () => {
+    freezeMidWindow();
     await fresh();
     guildMock();
     for (let i = 0; i < 10; i++) expect((await createOrReuseDraft(testEnv(), opts({ title: `t${i}` }))).ok).toBe(true);
     const r = await createOrReuseDraft(testEnv(), opts({ title: "x" }));
     expect(r.ok).toBe(false);
-    const now = Math.floor(Date.now() / 1000);
-    const min = Math.ceil((3600 - (now % 3600)) / 60);
-    expect((r as { message: string }).message).toMatch(new RegExp(`^作成数の上限（1 時間に 10 件）に達しました。(${min}|${min - 1}) 分後に再度お試しください。$`));
+    // 時計は毎時 25 分に止めてあるので、残りは 35 分
+    expect((r as { message: string }).message).toBe("作成数の上限（1 時間に 10 件）に達しました。35 分後に再度お試しください。");
   });
 
   it("サーバー全体では 1 日 100 件まで", async () => {
@@ -280,9 +280,9 @@ describe("調整の作成", () => {
   it("下書きの参加者の決め方を変えると、回答と参加者を入れ直す", async () => {
     await fresh();
     guildMock();
-    const { pollId, slotIds, choiceIds } = await seedPoll({ status: "draft", participants: [BOB_ID] });
+    const { pollId, slotIds, choiceIds } = await seedPoll({ status: "draft", participants: [BOB] });
     await db().prepare("UPDATE polls SET channel_id = ? WHERE id = ?").bind(CH, pollId).run();
-    await db().prepare("INSERT INTO answers (poll_id, slot_id, user_id, choice_id, updated_at) VALUES (?, ?, ?, ?, 1)").bind(pollId, slotIds[0], BOB_ID, choiceIds[0]).run();
+    await db().prepare("INSERT INTO answers (poll_id, slot_id, user_id, choice_id, updated_at) VALUES (?, ?, ?, ?, 1)").bind(pollId, slotIds[0], BOB, choiceIds[0]).run();
     const poll = (await row(pollId)) as unknown as Parameters<typeof resetParticipants>[1];
     expect(await resetParticipants(testEnv(), poll, "auto", null)).toEqual({ notice: null, targetType: "channel" });
     expect(await people(pollId)).toEqual([ORGANIZER, ALICE].sort());
@@ -296,7 +296,6 @@ describe("調整の作成", () => {
     expect(await people(pollId)).toEqual([]);
   });
 });
-const BOB_ID = "400000000000000003";
 
 describe("入力スキーマ", () => {
   const ok = (s: v.GenericSchema, x: unknown) => v.safeParse(s, x).success;

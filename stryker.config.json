@@ -9,7 +9,6 @@
   "htmlReporter": { "fileName": "reports/mutation/mutation.html" },
   "jsonReporter": { "fileName": "reports/mutation/mutation.json" },
   "coverageAnalysis": "perTest",
-  "concurrency": 4,
   "timeoutMS": 20000,
   "tempDirName": ".stryker-tmp",
   "cleanTempDir": "always"
