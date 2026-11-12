@@ -4,7 +4,7 @@ import type { Env } from "../src/core/env";
 import { runCron } from "../src/jobs/cron";
 import { DAY_REMINDER_MAX_PER_RUN, REMINDER_CRON } from "../src/jobs/day-reminder";
 import { reminderAt } from "../src/shared/model";
-import { CHANNEL, mockDiscord, seedPoll, testEnv } from "./helpers";
+import { CHANNEL, jst, mockDiscord, seedPoll, testEnv } from "./helpers";
 
 const db = () => (env as unknown as Env).DB;
 afterEach(() => vi.restoreAllMocks());
@@ -13,8 +13,6 @@ beforeEach(async () => {
   await db().prepare("DELETE FROM polls").run();
 });
 
-/** 日本時間の日時（"2026-11-06T18:00"）を UNIX 秒にする */
-const jst = (local: string) => Math.floor(Date.parse(`${local}:00+09:00`) / 1000);
 /** 日本時間の日時に、予定のリマインドの Cron を動かす */
 const remindAt = (local: string) => runCron(testEnv(), jst(local) * 1000, REMINDER_CRON);
 

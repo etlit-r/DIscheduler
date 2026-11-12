@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/core/env";
-import { ALICE, call, CHANNEL, GUILD, mockDiscord, ORGANIZER, ORIGIN, OUTSIDER, seedPoll, testEnv } from "./helpers";
+import { ALICE, call, CHANNEL, GUILD, member, mockDiscord, ORGANIZER, ORIGIN, OUTSIDER, seedPoll, testEnv, toHex } from "./helpers";
 
 let keys: CryptoKeyPair;
 let publicHex: string;
@@ -9,7 +9,7 @@ let publicHex: string;
 beforeAll(async () => {
   keys = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as CryptoKeyPair;
   const raw = new Uint8Array((await crypto.subtle.exportKey("raw", keys.publicKey)) as ArrayBuffer);
-  publicHex = Array.from(raw, (b) => b.toString(16).padStart(2, "0")).join("");
+  publicHex = toHex(raw);
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -17,7 +17,7 @@ async function signed(body: unknown, opts: { tamper?: boolean; ts?: number } = {
   const text = JSON.stringify(body);
   const ts = String(opts.ts ?? Math.floor(Date.now() / 1000));
   const sig = new Uint8Array(await crypto.subtle.sign("Ed25519", keys.privateKey, new TextEncoder().encode(ts + text)));
-  const hex = Array.from(sig, (b) => b.toString(16).padStart(2, "0")).join("");
+  const hex = toHex(sig);
   return new Request(`${ORIGIN}/discord/interactions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Signature-Ed25519": hex, "X-Signature-Timestamp": ts },
@@ -26,7 +26,6 @@ async function signed(body: unknown, opts: { tamper?: boolean; ts?: number } = {
 }
 
 const e = () => testEnv({ DISCORD_PUBLIC_KEY: publicHex });
-const member = (id: string, permissions = "1024") => ({ user: { id, username: `u${id.slice(-2)}` }, roles: [], permissions });
 
 describe("署名検証（security-design S-1）", () => {
   it("正しい署名の PING に応答する", async () => {

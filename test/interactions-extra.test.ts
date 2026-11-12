@@ -5,7 +5,7 @@ import type { Env } from "../src/core/env";
 import { DAY, nowSec } from "../src/core/lib";
 import { handleInteraction, helpText } from "../src/discord/interactions";
 import { PERM } from "../src/discord/permissions";
-import { ALICE, BOB, CHANNEL, GUILD, freezeMidWindow, mockDiscord, ORGANIZER, ORIGIN, OUTSIDER, seedPoll, testEnv, type DiscordCall } from "./helpers";
+import { ALICE, BOB, CHANNEL, GUILD, freezeMidWindow, member, mockDiscord, ORGANIZER, ORIGIN, OUTSIDER, seedPoll, testEnv, type DiscordCall } from "./helpers";
 
 type Interaction = Parameters<typeof handleInteraction>[2];
 const db = () => (env as unknown as Env).DB;
@@ -22,7 +22,6 @@ async function run(i: Partial<Interaction> & { member?: unknown }, e: Env = test
   await Promise.all(pending);
   return (await res.json()) as { type: number; data?: Record<string, unknown> };
 }
-const member = (id: string, permissions = VIEW) => ({ user: { id, username: `u${id.slice(-2)}` }, roles: [], permissions });
 const button = (custom_id: string, user = ALICE, permissions = VIEW, values?: string[]) =>
   ({ type: 3, guild_id: GUILD, channel_id: CHANNEL, member: member(user, permissions), data: { custom_id, values } }) as Partial<Interaction>;
 const edited = (calls: DiscordCall[]) => calls.filter((c) => c.path === "/webhooks/100000000000000001/tok/messages/@original").map((c) => c.body as { content: string; components: unknown[]; allowed_mentions: unknown });

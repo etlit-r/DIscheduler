@@ -39,11 +39,12 @@ describe("共通の前処理", () => {
     expect((await errorOf(await call(jsonReq("POST", "/api/session", { token: "x" }, { contentType: "Application/JSON; charset=utf-8" })))).code).toBe("invalid");
   });
 
-  it("Content-Length が上限を超えたら 413。ちょうど上限なら通す", async () => {
-    const mk = (len: number) =>
-      call(new Request(`${ORIGIN}/api/session`, { method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json", "Content-Length": String(len) }, body: "{}" }));
+  it("本文が上限（32 KiB）を超えたら 413。ちょうど上限なら通す", async () => {
+    // 本文の長さどおりの Content-Length が付く。{"token":"…"} の 12 文字を除いた分をトークンにする
+    const mk = (bytes: number) => call(jsonReq("POST", "/api/session", { token: "a".repeat(bytes - 12) }));
     expect((await errorOf(await mk(32 * 1024 + 1))).code).toBe("too_large");
-    expect((await errorOf(await mk(32 * 1024))).code).not.toBe("too_large");
+    // 長さの検査は通り、トークンの形式の検証で 400 になる
+    expect((await errorOf(await mk(32 * 1024))).code).toBe("invalid");
   });
 
   it("本文そのものが上限を超えたら 413", async () => {
