@@ -4,6 +4,10 @@
 #   DISCORD_APPLICATION_ID  必須。招待リンクの client_id（数字 17〜20 桁）
 #   DONATION_URL            任意。寄付リンクの URL（https://...）。Ko-fi のときは、リンクの近くに日本語の説明（__DONATION_NOTE__）を入れる
 #   ADMAX_ID                任意。忍者AdMax の広告枠の ID（英小文字と数字の 32 文字）。LP とセキュリティ方針ページの広告の枠
+#   PUBLIC_ORIGIN           任意。正式な公開アドレス（https://...。末尾の / なし）。LP の正規 URL（canonical）と構造化データ
+#
+# 正式な公開アドレスの表示切り替え:
+#   <!-- origin:start --> ... <!-- origin:end -->  PUBLIC_ORIGIN があるときだけ残し、__PUBLIC_ORIGIN__ を置き換える
 #
 # 寄付リンクの表示切り替え:
 #   <!-- donation:start --> ... <!-- donation:end -->        寄付リンクがあるときだけ残す
@@ -42,6 +46,12 @@ if [[ -n "$donation_url" ]]; then
     || fail "DONATION_URL の形式が正しくありません（https:// で始まる URL を指定してください）"
 fi
 
+# --- 正式な公開アドレス ---
+public_origin="${PUBLIC_ORIGIN:-}"
+if [[ -n "$public_origin" ]]; then
+  [[ "$public_origin" =~ ^https://[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || fail "PUBLIC_ORIGIN の形式が正しくありません（例: https://discheduler.pages.dev。末尾の / なし）"
+fi
+
 # --- 広告 ---
 donation_note=""
 if [[ "$donation_url" =~ ^https://(www\.)?ko-fi\.com(/|$) ]]; then
@@ -76,8 +86,15 @@ for f in "${files[@]}"; do
     perl -0pi -e 's/<!-- ad:start -->.*?<!-- ad:end -->//gs; s/<!-- no-ad:(start|end) -->//g' "$f"
   fi
 
+  if [[ -n "$public_origin" ]]; then
+    perl -0pi -e 's/<!-- origin:(start|end) -->//g' "$f"
+    sed -i "s#__PUBLIC_ORIGIN__#${public_origin}#g" "$f"
+  else
+    perl -0pi -e 's/<!-- origin:start -->.*?<!-- origin:end -->//gs' "$f"
+  fi
+
   # 置き換え漏れ・目印の残りがあれば止める
-  if grep -qE "__DISCORD_APPLICATION_ID__|__DONATION_URL__|__DONATION_NOTE__|__ADMAX_ID__|<!-- (no-)?(donation|ad):" "$f"; then
+  if grep -qE "__DISCORD_APPLICATION_ID__|__DONATION_URL__|__DONATION_NOTE__|__ADMAX_ID__|__PUBLIC_ORIGIN__|<!-- (no-)?(donation|ad|origin):" "$f"; then
     fail "$f の置き換えに失敗しました"
   fi
 done
