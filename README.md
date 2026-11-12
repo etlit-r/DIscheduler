@@ -39,6 +39,14 @@ npm test
 npm run build
 ```
 
+ミューテーションテスト（[Stryker Mutator](https://stryker-mutator.io/)）は次で実行します。`src/` 全体で 40 分ほどかかります。結果は `reports/mutation/mutation.html` に出ます。
+
+```bash
+npm run test:mutation
+```
+
+`stryker.config.json` の `tsconfigFile` は、わざと存在しないファイルを指しています。TypeScript 7 には Stryker が tsconfig を書き換えるときに使う JS API がないため、書き換えを止めています（型検査は Stryker では行いません）。
+
 ローカルで動かすときは、`.dev.vars`（Git には含めない）に `DISCORD_PUBLIC_KEY`・`DISCORD_APPLICATION_ID`・`DISCORD_BOT_TOKEN` を書き、次を実行します。
 
 ```bash

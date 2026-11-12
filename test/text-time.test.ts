@@ -8,6 +8,7 @@ import {
   hasControlCharsExceptNewline,
   isSafeChoiceText,
   isValidDonationUrl,
+  KOFI_DONATION_NOTE,
   sanitizeDisplayName,
   sanitizeLine,
 } from "../src/shared/text";
@@ -41,7 +42,7 @@ describe("寄付リンクの URL", () => {
     expect(isValidDonationUrl(undefined)).toBe(false);
   });
   it("Ko-fi かどうかはドメインの区切りまで見る", () => {
-    expect(donationNote("https://ko-fi.com")).not.toBe("");
+    expect(donationNote("https://ko-fi.com")).toBe(KOFI_DONATION_NOTE);
     expect(donationNote("http://ko-fi.com/x")).toBe("");
     expect(donationNote("https://xko-fi.com/x")).toBe("");
     expect(donationNote("https://ko-fixcom/x")).toBe("");

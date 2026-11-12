@@ -144,7 +144,7 @@ describe("サーバーの既定値", () => {
     expect(m.content.split("\n").slice(3)).toEqual(["現在: 自動: 指定したロールのメンバー（<@&700>）", "最終変更: <@u1>（<t:1800000000:f>）", "", "保存しました"]);
     // ロールが未選択なら、ロールの表記を付けない
     expect(buildSettingsMessage({ mode: "role", roleId: null, updatedBy: "u1", updatedAt: null }, null).content.split("\n")).toHaveLength(4);
-    expect(buildSettingsMessage({ mode: "role", roleId: null, updatedBy: null, updatedAt: null }, null).content).toContain("現在: 自動: 指定したロールのメンバー\n".trimEnd());
+    expect(buildSettingsMessage({ mode: "role", roleId: null, updatedBy: null, updatedAt: null }, null).content.split("\n")[3]).toBe("現在: 自動: 指定したロールのメンバー");
     expect(buildSettingsMessage({ mode: "manual", roleId: "700", updatedBy: null, updatedAt: 1 }, null).content.split("\n")[3]).toBe("現在: 手動: 主催者が選ぶ");
     expect(buildSettingsMessage({ mode: "manual", roleId: null, updatedBy: null, updatedAt: null }, null).content.split("\n")).toHaveLength(4);
   });
