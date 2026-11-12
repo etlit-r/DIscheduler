@@ -2,7 +2,7 @@
 import { loadPoll, request, type PollData } from "../lib/api";
 import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, statusBanner, viewerTimeZone, errorText } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
-import { bestSlotId, canAnswer, tally } from "../../../src/shared/model";
+import { canAnswer, tally } from "../../../src/shared/model";
 import { formatDate, formatSlotTime, zoneAbbr } from "../../../src/shared/time";
 
 export async function answerPage(pollId: string): Promise<void> {
@@ -47,7 +47,6 @@ export async function answerPage(pollId: string): Promise<void> {
     const saved = d.answers.map((a) => ({ slotId: a.slotId, userId: a.userId, choiceId: a.choiceId }));
     const slots = d.slots.map((s) => ({ id: s.id, startAt: s.startAt }));
     const t = tally(slots, d.choices, saved);
-    const best = bestSlotId(slots, t);
     const answeredUsers = new Set(d.answers.map((a) => a.userId));
     const nameOf = new Map(d.participants.map((p) => [p.userId, p.displayName]));
     // 候補ごとの回答の索引（描画のたびに全回答を探し直さない）
@@ -123,7 +122,8 @@ export async function answerPage(pollId: string): Promise<void> {
             h(
               "div",
               { class: "slot-head" },
-              isFixed ? h("span", { class: "badge badge-fixed" }, "確定") : s.id === best ? h("span", { class: "star", aria: { label: "最有力候補" } }, "★") : null,
+              // 最有力候補（★）は回答画面には出さない（集計画面だけで出す）
+              isFixed ? h("span", { class: "badge badge-fixed" }, "確定") : null,
               h("span", { class: "slot-main" }, time),
             ),
             st.sub ? h("span", { class: "slot-sub" }, st.sub) : null,
