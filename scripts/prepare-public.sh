@@ -45,7 +45,7 @@ fi
 # --- 広告 ---
 donation_note=""
 if [[ "$donation_url" =~ ^https://(www\.)?ko-fi\.com(/|$) ]]; then
-  donation_note="支援は Ko-fi（海外の支援サービス）で受け付けています。画面は英語ですが、金額を選んで、クレジットカードか PayPal で支払えます。"
+  donation_note="支援は Ko-fi（海外の支援サービス）で受け付けています。画面は英語ですが、金額を選んで、PayPal で支払えます。"
 fi
 
 admax_id="${ADMAX_ID:-}"
