@@ -202,6 +202,41 @@ export function slotText(slot: SlotTime, pollTz: string, viewerTz: string): { ma
   };
 }
 
+/**
+ * メンバー別の回答の表（行がメンバー、列が候補。保存済みの回答を出す）。畳んだ状態で置き、開くと表を見られる。
+ * 集計画面（［メンバー別に表示］）と回答画面（［みんなの回答］）で使う。
+ * open・onToggle で、画面を描き直しても開いた状態を保てる
+ */
+export function memberMatrix(d: PollData, tz: string, label: string, open = false, onToggle?: (open: boolean) => void): HTMLElement {
+  const choiceById = new Map(d.choices.map((c) => [c.id, c]));
+  // 「候補:メンバー」→ 回答。表の各マスで毎回探さないよう、先に索引を作る
+  const answerAt = new Map(d.answers.map((a) => [`${a.slotId}:${a.userId}`, a]));
+  const head = h("tr", {}, h("th", { scope: "col" }, "メンバー"), ...d.slots.map((s) => h("th", { scope: "col" }, slotText(s, d.poll.timezone, tz).main)));
+  const body = h("tbody");
+  for (const p of d.participants) {
+    body.appendChild(
+      h(
+        "tr",
+        { class: p.userId === d.me.userId ? "is-me" : "" },
+        h("th", { scope: "row" }, p.displayName, p.comment ? h("span", { class: "slot-sub" }, p.comment) : null),
+        ...d.slots.map((s) => {
+          const a = answerAt.get(`${s.id}:${p.userId}`);
+          const c = a ? choiceById.get(a.choiceId) : undefined;
+          return h("td", { class: "num" }, c ? choiceMark(c) : h("span", { class: "muted" }, "—"));
+        }),
+      ),
+    );
+  }
+  const details = h(
+    "details",
+    { class: "card", open },
+    h("summary", {}, label),
+    h("div", { class: "table-wrap matrix" }, h("table", { class: "data" }, h("thead", {}, head), body)),
+  );
+  if (onToggle) details.addEventListener("toggle", () => onToggle(details.open));
+  return details;
+}
+
 export function dateTimeText(epoch: number, tz: string): string {
   return `${formatDateTime(epoch, tz)} ${zoneAbbr(epoch, tz)}`;
 }
