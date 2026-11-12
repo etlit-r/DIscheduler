@@ -312,6 +312,10 @@ table.perm tbody td:nth-child(2) { white-space: nowrap; }
 .lp .site-footer { background: #08090d; border-top: 1px solid var(--border-soft); padding: 48px 0; font-size: 0.8rem; color: var(--text-muted); }
 .lp .site-footer .container { flex-direction: column; align-items: center; gap: 24px; }
 @media (min-width: 768px) { .lp .site-footer .container { flex-direction: row; justify-content: space-between; } }
+.footer-brand-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+@media (min-width: 768px) { .footer-brand-wrap { align-items: flex-start; } }
+/* 名前の由来。目立たせない */
+.footer-origin { margin: 0; font-size: 0.72rem; color: var(--text-muted); }
 .footer-brand { display: inline-flex; align-items: center; gap: 12px; color: var(--text-strong) !important; font-weight: 700; font-size: 1rem; text-decoration: none; }
 .brand-mark-sm { width: 28px; height: 28px; }
 .lp .site-footer ul { justify-content: center; gap: 8px 24px; font-weight: 500; }
