@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { bestSlotId, effectiveStatus, tally } from "../src/shared/model";
 import { donationNote, isSafeChoiceText, KOFI_DONATION_NOTE, sanitizeDisplayName, sanitizeLine } from "../src/shared/text";
-import { epochToZoned, nextCronAt, zonedToEpoch } from "../src/shared/time";
+import { epochToZoned, formatSlot, formatSlotTime, nextCronAt, zonedToEpoch } from "../src/shared/time";
 import { canViewChannel } from "../src/discord/members";
 import { escapeMarkdown } from "../src/discord/messages";
 
@@ -116,5 +116,19 @@ describe("寄付リンクの説明（§6.10）", () => {
     expect(donationNote("https://www.ko-fi.com/example")).toBe(KOFI_DONATION_NOTE);
     expect(donationNote("https://github.com/sponsors/example")).toBe("");
     expect(donationNote("https://ko-fi.com.example.com/x")).toBe("");
+  });
+});
+
+describe("formatSlotTime（日付を見出しにまとめるときの時間帯）", () => {
+  const tz = "Asia/Tokyo";
+  const at = (y: number, mo: number, d: number, h: number, mi = 0) => zonedToEpoch(y, mo, d, h, mi, tz);
+  it("日付を除いた時間帯を返す", () => {
+    expect(formatSlot({ startAt: at(2026, 11, 12, 20), endAt: at(2026, 11, 12, 22), allDay: false }, tz)).toBe("11/12(木) 20:00–22:00");
+    expect(formatSlotTime({ startAt: at(2026, 11, 12, 20), endAt: at(2026, 11, 12, 22), allDay: false }, tz)).toBe("20:00–22:00");
+    expect(formatSlotTime({ startAt: at(2026, 11, 12, 20), endAt: null, allDay: false }, tz)).toBe("20:00〜");
+    expect(formatSlotTime({ startAt: at(2026, 11, 12, 0), endAt: null, allDay: true }, tz)).toBe("終日");
+  });
+  it("日付をまたぐ候補は、終わりの日付を残す", () => {
+    expect(formatSlotTime({ startAt: at(2026, 11, 12, 23), endAt: at(2026, 11, 13, 1), allDay: false }, tz)).toBe("23:00–11/13(金) 01:00");
   });
 });
