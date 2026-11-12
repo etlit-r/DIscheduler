@@ -2,7 +2,8 @@
 import { loadPoll, request, type PollData } from "../lib/api";
 import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, statusBanner, viewerTimeZone, errorText } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
-import { bestSlotId, canAnswer, tally } from "../../../src/shared/model";
+import { canAnswer, tally } from "../../../src/shared/model";
+import { formatDate, formatSlotTime, zoneAbbr } from "../../../src/shared/time";
 
 export async function answerPage(pollId: string): Promise<void> {
   const app = document.getElementById("app")!;
@@ -23,6 +24,9 @@ export async function answerPage(pollId: string): Promise<void> {
   for (const a of data.answers) if (a.userId === data.me.userId) draft.set(a.slotId, a.choiceId);
   let comment = data.me.comment ?? "";
   let message: HTMLElement | null = null;
+  // 描き直しても、押したボタンのフォーカスと、開いた［みんなの回答］を保つ（画面全体を作り直すため）
+  let focusKey: string | null = null;
+  const openWho = new Set<string>();
 
   const reload = async (msg?: HTMLElement) => {
     try {
@@ -46,7 +50,6 @@ export async function answerPage(pollId: string): Promise<void> {
     const saved = d.answers.map((a) => ({ slotId: a.slotId, userId: a.userId, choiceId: a.choiceId }));
     const slots = d.slots.map((s) => ({ id: s.id, startAt: s.startAt }));
     const t = tally(slots, d.choices, saved);
-    const best = bestSlotId(slots, t);
     const answeredUsers = new Set(d.answers.map((a) => a.userId));
     const nameOf = new Map(d.participants.map((p) => [p.userId, p.displayName]));
     // 候補ごとの回答の索引（描画のたびに全回答を探し直さない）
@@ -60,9 +63,25 @@ export async function answerPage(pollId: string): Promise<void> {
     const first = d.choices[0];
     const last = d.choices[d.choices.length - 1];
 
-    const list = h("ol", { class: "answer-list" });
-    for (const s of d.slots) {
+    // 同じ日に候補が 2 つ以上ある調整だけ、日付を見出しにまとめ、行には時間帯だけを書く。
+    // どの日も候補が 1 つなら、見出しを付けず、行に日付と時間帯を書く（日付は調整のタイムゾーンで決める。候補は日時の順に並んでいる）
+    const dates = d.slots.map((s) => formatDate(s.startAt, d.poll.timezone));
+    const byDate = new Set(dates).size < dates.length;
+    const list = h("div", { class: "answer-list" });
+    let day: HTMLElement | null = byDate ? null : list.appendChild(h("ol", { class: "answer-day" }));
+    let dayLabel = "";
+    d.slots.forEach((s, i) => {
       const st = slotText(s, d.poll.timezone, tz);
+      const label = dates[i]!;
+      if (byDate && (!day || label !== dayLabel)) {
+        dayLabel = label;
+        // 一覧の名前は見出しから取る（日付を 2 回読み上げないように）
+        const headingId = `answer-date-${i}`;
+        day = h("ol", { class: "answer-day", aria: { labelledby: headingId } });
+        list.append(h("h2", { class: "answer-date", id: headingId }, label), day);
+      }
+      // 閲覧者のタイムゾーンが違うときだけ、略号（JST など）を付ける（slotText と同じ決まり）
+      const time = byDate ? formatSlotTime(s, d.poll.timezone) + (st.sub ? ` ${zoneAbbr(s.startAt, d.poll.timezone)}` : "") : st.main;
       const tt = t.get(s.id)!;
       const isFixed = s.fixedAt !== null;
       const group = h("div", { class: "choice-group", role: "radiogroup", aria: { label: `${st.main} の回答` } });
@@ -73,64 +92,68 @@ export async function answerPage(pollId: string): Promise<void> {
             "button",
             {
               type: "button",
-              class: `choice-btn choice-${c.color}${selected ? " is-selected" : ""}`,
+              // 1 行に収めるため、ボタンには記号だけを出す。名前は読み上げとマウスを乗せたときの表示、表の上の凡例で伝える
+              class: `choice-btn choice-btn-compact choice-${c.color}${selected ? " is-selected" : ""}`,
               role: "radio",
-              aria: { checked: String(selected) },
+              title: c.label,
+              aria: { checked: String(selected), label: `${c.symbol} ${c.label}` },
+              data: { choiceKey: `${s.id}:${c.id}` },
               disabled: !editable,
               onClick: () => {
                 draft.set(s.id, c.id);
+                focusKey = `${s.id}:${c.id}`;
                 draw();
               },
             },
             h("span", { class: "choice-symbol", aria: { hidden: "true" } }, c.symbol),
-            h("span", {}, c.label),
           ),
         );
       }
-      const bar = h("div", { class: "bar", aria: { hidden: "true" } });
-      const total = Math.max(d.participants.length, 1);
-      for (const kind of ["ok", "maybe", "ng"] as const) {
-        const seg = h("span", { class: `bar-seg bar-${kind}` });
-        seg.style.width = `${(tt[kind] / total) * 100}%`;
-        bar.appendChild(seg);
-      }
-      const who = h("details", { class: "who" }, h("summary", {}, "みんなの回答"));
-      const whoList = h("ul", { class: "who-list" });
-      const slotAnswers = bySlot.get(s.id) ?? [];
-      const answeredHere = new Set(slotAnswers.map((a) => a.userId));
-      for (const c of d.choices) {
-        const names = slotAnswers.filter((a) => a.choiceId === c.id).map((a) => nameOf.get(a.userId) ?? "?");
-        if (names.length) whoList.appendChild(h("li", {}, choiceMark(c), " ", names.join("、")));
-      }
-      const notAnswered = d.participants.filter((p) => !answeredHere.has(p.userId)).map((p) => p.displayName);
-      if (notAnswered.length) whoList.appendChild(h("li", {}, h("span", { class: "muted" }, "未回答"), " ", notAnswered.join("、")));
-      who.appendChild(whoList);
+      // ［みんなの回答］は、その候補に回答があるときだけ作る
+      const whoDetails = (): HTMLElement => {
+        const whoList = h("ul", { class: "who-list" });
+        const slotAnswers = bySlot.get(s.id) ?? [];
+        const answeredHere = new Set(slotAnswers.map((a) => a.userId));
+        for (const c of d.choices) {
+          const names = slotAnswers.filter((a) => a.choiceId === c.id).map((a) => nameOf.get(a.userId) ?? "?");
+          if (names.length) whoList.appendChild(h("li", {}, choiceMark(c), " ", names.join("、")));
+        }
+        const notAnswered = d.participants.filter((p) => !answeredHere.has(p.userId)).map((p) => p.displayName);
+        if (notAnswered.length) whoList.appendChild(h("li", {}, h("span", { class: "muted" }, "未回答"), " ", notAnswered.join("、")));
+        const details = h("details", { class: "who", open: openWho.has(s.id) }, h("summary", {}, "みんなの回答"), whoList);
+        details.addEventListener("toggle", () => (details.open ? openWho.add(s.id) : openWho.delete(s.id)));
+        return details;
+      };
 
-      list.appendChild(
+      // 1 件を 1 行にまとめる: 左に日時と集計（人数だけ）、右に選択ボタン。狭い画面でボタンが入らなければ、ボタンだけ次の行に回る
+      day!.appendChild(
         h(
           "li",
-          { class: `answer-item${isFixed ? " is-fixed" : ""}` },
+          { class: `answer-row${isFixed ? " is-fixed" : ""}` },
           h(
             "div",
-            { class: "slot-head" },
-            isFixed ? h("span", { class: "badge badge-fixed" }, "確定") : s.id === best ? h("span", { class: "star", aria: { label: "最有力候補" } }, "★") : null,
-            h("span", { class: "slot-main" }, st.main),
+            { class: "answer-when" },
+            h(
+              "div",
+              { class: "slot-head" },
+              // 最有力候補（★）は回答画面には出さない（集計画面だけで出す）
+              isFixed ? h("span", { class: "badge badge-fixed" }, "確定") : null,
+              h("span", { class: "slot-main" }, time),
+            ),
             st.sub ? h("span", { class: "slot-sub" }, st.sub) : null,
+            h(
+              "div",
+              { class: "tally-line" },
+              h("span", { class: "visually-hidden" }, "いまの回答: "),
+              ...d.choices.map((c) => h("span", { class: "tally-item" }, choiceMark(c, "mark-tiny"), String(tt.byChoice[c.id] ?? 0))),
+              h("span", { class: "tally-item muted" }, `未回答 ${d.participants.length - tt.answered}`),
+              tt.answered ? whoDetails() : null,
+            ),
           ),
-          tt.answered === 0
-            ? h("p", { class: "tally muted" }, "まだ回答がありません")
-            : h(
-                "div",
-                { class: "tally" },
-                h("span", { class: "muted" }, "いまの回答: "),
-                ...d.choices.map((c) => h("span", { class: "tally-item" }, choiceMark(c, "mark-small"), String(tt.byChoice[c.id] ?? 0))),
-                bar,
-                who,
-              ),
           group,
         ),
       );
-    }
+    });
 
     const commentInput = h("input", {
       id: "comment",
@@ -165,6 +188,11 @@ export async function answerPage(pollId: string): Promise<void> {
           }
         },
       },
+      h(
+        "p",
+        { class: "choice-legend muted small" },
+        ...d.choices.flatMap((c, i) => [i ? "　" : "", choiceMark(c, "mark-tiny"), ` ${c.label}`]),
+      ),
       list,
       editable && first && last
         ? h(
@@ -229,6 +257,11 @@ export async function answerPage(pollId: string): Promise<void> {
         form,
       ),
     );
+    if (focusKey) {
+      const btn = Array.from(document.querySelectorAll<HTMLElement>("[data-choice-key]")).find((el) => el.dataset.choiceKey === focusKey);
+      btn?.focus();
+      focusKey = null;
+    }
   }
 
   draw();
