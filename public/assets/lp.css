@@ -58,12 +58,9 @@ body.lp {
 }
 .lp .site-header .container { min-height: 64px; }
 .lp .brand { gap: 12px; color: var(--text-strong); }
-.brand-mark {
-  display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 12px;
-  background: rgb(88 101 242 / 20%); border: 1px solid rgb(88 101 242 / 40%); color: var(--accent-text);
-  transition: transform .15s;
-}
-.brand-mark .ic { width: 20px; height: 20px; }
+/* ロゴ。ファビコン（/favicon.svg）と同じ画像を使う */
+.brand-mark { display: inline-block; width: 36px; height: 36px; flex: none; transition: transform .15s; }
+.brand-mark img { display: block; width: 100%; height: 100%; }
 .lp .brand:hover .brand-mark { transform: scale(1.05); }
 .brand-name { display: inline-flex; align-items: center; gap: 6px; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; }
 .brand-badge {
@@ -316,8 +313,7 @@ table.perm tbody td:nth-child(2) { white-space: nowrap; }
 .lp .site-footer .container { flex-direction: column; align-items: center; gap: 24px; }
 @media (min-width: 768px) { .lp .site-footer .container { flex-direction: row; justify-content: space-between; } }
 .footer-brand { display: inline-flex; align-items: center; gap: 12px; color: var(--text-strong) !important; font-weight: 700; font-size: 1rem; text-decoration: none; }
-.brand-mark-sm { width: 28px; height: 28px; border-radius: 8px; }
-.brand-mark-sm .ic { width: 16px; height: 16px; }
+.brand-mark-sm { width: 28px; height: 28px; }
 .lp .site-footer ul { justify-content: center; gap: 8px 24px; font-weight: 500; }
 .lp .site-footer ul a { display: inline-flex; align-items: center; gap: 4px; color: var(--text-muted); text-decoration: none; }
 .lp .site-footer ul a:hover { color: var(--text-strong); }
