@@ -44,16 +44,26 @@ type TzEntry = { id: string; name: string; offset: string; haystack: string };
 let tzEntries: TzEntry[] | null = null;
 
 /** タイムゾーンの一覧に、日本語の名前と UTC からの差を添える（検索に使う。最初に開いたときに 1 回だけ作る） */
+/** タイムゾーンの名前（style に合わせて「日本標準時」「GMT+9」など）。取れなければ空文字 */
+function zonePart(tz: string, style: Intl.DateTimeFormatOptions["timeZoneName"], at: Date): string {
+  try {
+    return new Intl.DateTimeFormat("ja-JP", { timeZone: tz, timeZoneName: style }).formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** 画面に出すタイムゾーンの説明。例: 日本標準時（UTC+9）。名前が取れなければ IANA 名（例: Asia/Tokyo（UTC+9）） */
+export function timeZoneLabel(tz: string, at = new Date()): string {
+  const name = zonePart(tz, "longGeneric", at) || zonePart(tz, "long", at) || tz;
+  const offset = zonePart(tz, "shortOffset", at).replace(/^GMT/, "UTC") || "UTC";
+  return `${name}（${offset}）`;
+}
+
 function timeZoneEntries(): TzEntry[] {
   if (tzEntries) return tzEntries;
   const now = new Date();
-  const part = (tz: string, style: Intl.DateTimeFormatOptions["timeZoneName"]): string => {
-    try {
-      return new Intl.DateTimeFormat("ja-JP", { timeZone: tz, timeZoneName: style }).formatToParts(now).find((p) => p.type === "timeZoneName")?.value ?? "";
-    } catch {
-      return "";
-    }
-  };
+  const part = (tz: string, style: Intl.DateTimeFormatOptions["timeZoneName"]): string => zonePart(tz, style, now);
   tzEntries = allTimeZones().map((id) => {
     const name = part(id, "longGeneric") || part(id, "long");
     const gmt = part(id, "shortOffset"); // 例: GMT+9、GMT-3:30、GMT
