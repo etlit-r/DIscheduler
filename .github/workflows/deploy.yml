@@ -60,6 +60,7 @@ jobs:
           DISCORD_APPLICATION_ID: ${{ vars.DISCORD_APPLICATION_ID }}
           DONATION_URL: ${{ vars.DONATION_URL }}
           ADMAX_ID: ${{ vars.ADMAX_ID }}
+          PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN }}
         run: bash scripts/prepare-public.sh public
 
       # 設定値の形式を確かめてから、Pages（本体）と Worker（Cron・旧アドレスの転送）の設定ファイルに埋め込む。
