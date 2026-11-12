@@ -62,15 +62,14 @@ export async function answerPage(pollId: string): Promise<void> {
 
     // 同じ日に候補が 2 つ以上ある調整だけ、日付を見出しにまとめ、行には時間帯だけを書く。
     // どの日も候補が 1 つなら、見出しを付けず、行に日付と時間帯を書く（日付は調整のタイムゾーンで決める。候補は日時の順に並んでいる）
-    const dateOf = (s: (typeof d.slots)[number]) => formatDate(s.startAt, d.poll.timezone);
-    const dates = d.slots.map(dateOf);
+    const dates = d.slots.map((s) => formatDate(s.startAt, d.poll.timezone));
     const byDate = new Set(dates).size < dates.length;
     const list = h("div", { class: "answer-list" });
     let day: HTMLElement | null = byDate ? null : list.appendChild(h("ol", { class: "answer-day" }));
     let dayLabel = "";
-    for (const s of d.slots) {
+    d.slots.forEach((s, i) => {
       const st = slotText(s, d.poll.timezone, tz);
-      const label = dateOf(s);
+      const label = dates[i]!;
       if (byDate && (!day || label !== dayLabel)) {
         dayLabel = label;
         day = h("ol", { class: "answer-day", aria: { label } });
@@ -103,17 +102,19 @@ export async function answerPage(pollId: string): Promise<void> {
           ),
         );
       }
-      const who = h("details", { class: "who" }, h("summary", {}, "みんなの回答"));
-      const whoList = h("ul", { class: "who-list" });
-      const slotAnswers = bySlot.get(s.id) ?? [];
-      const answeredHere = new Set(slotAnswers.map((a) => a.userId));
-      for (const c of d.choices) {
-        const names = slotAnswers.filter((a) => a.choiceId === c.id).map((a) => nameOf.get(a.userId) ?? "?");
-        if (names.length) whoList.appendChild(h("li", {}, choiceMark(c), " ", names.join("、")));
-      }
-      const notAnswered = d.participants.filter((p) => !answeredHere.has(p.userId)).map((p) => p.displayName);
-      if (notAnswered.length) whoList.appendChild(h("li", {}, h("span", { class: "muted" }, "未回答"), " ", notAnswered.join("、")));
-      who.appendChild(whoList);
+      // ［みんなの回答］は、その候補に回答があるときだけ作る
+      const whoDetails = (): HTMLElement => {
+        const whoList = h("ul", { class: "who-list" });
+        const slotAnswers = bySlot.get(s.id) ?? [];
+        const answeredHere = new Set(slotAnswers.map((a) => a.userId));
+        for (const c of d.choices) {
+          const names = slotAnswers.filter((a) => a.choiceId === c.id).map((a) => nameOf.get(a.userId) ?? "?");
+          if (names.length) whoList.appendChild(h("li", {}, choiceMark(c), " ", names.join("、")));
+        }
+        const notAnswered = d.participants.filter((p) => !answeredHere.has(p.userId)).map((p) => p.displayName);
+        if (notAnswered.length) whoList.appendChild(h("li", {}, h("span", { class: "muted" }, "未回答"), " ", notAnswered.join("、")));
+        return h("details", { class: "who" }, h("summary", {}, "みんなの回答"), whoList);
+      };
 
       // 1 件を 1 行にまとめる: 左に日時と集計（人数だけ）、右に選択ボタン。狭い画面でボタンが入らなければ、ボタンだけ次の行に回る
       day!.appendChild(
@@ -137,13 +138,13 @@ export async function answerPage(pollId: string): Promise<void> {
               h("span", { class: "visually-hidden" }, "いまの回答: "),
               ...d.choices.map((c) => h("span", { class: "tally-item" }, choiceMark(c, "mark-tiny"), String(tt.byChoice[c.id] ?? 0))),
               h("span", { class: "tally-item muted" }, `未回答 ${d.participants.length - tt.answered}`),
-              tt.answered ? who : null,
+              tt.answered ? whoDetails() : null,
             ),
           ),
           group,
         ),
       );
-    }
+    });
 
     const commentInput = h("input", {
       id: "comment",

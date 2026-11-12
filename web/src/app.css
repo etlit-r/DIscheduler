@@ -142,7 +142,6 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 
 /* 選択肢の色 */
 .mark { display: inline-grid; place-items: center; min-width: 28px; height: 28px; padding: 0 4px; border-radius: 8px; font-weight: 700; }
-.mark-small { min-width: 22px; height: 22px; font-size: 0.85rem; }
 .mark-green, .choice-green { color: var(--c-green); background: var(--c-green-soft); }
 .mark-teal, .choice-teal { color: var(--c-teal); background: var(--c-teal-soft); }
 .mark-yellow, .choice-yellow { color: var(--c-yellow); background: var(--c-yellow-soft); }
@@ -153,7 +152,6 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 /* S3 回答 */
 .slot-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; font-weight: 700; }
 .slot-sub { display: block; font-weight: 400; font-size: 0.82rem; color: var(--text-muted); }
-.tally { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 8px 0; font-size: 0.92rem; }
 .tally-item { display: inline-flex; align-items: center; gap: 4px; }
 .who summary { cursor: pointer; color: var(--accent); }
 .who-list { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 4px; }

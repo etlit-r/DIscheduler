@@ -102,18 +102,17 @@ export interface SlotTime {
 
 /** 例: 11/12(水) 20:00–22:00 / 11/12(水) 終日 */
 export function formatSlot(slot: SlotTime, tz: string): string {
-  const date = formatDate(slot.startAt, tz);
-  if (slot.allDay) return `${date} 終日`;
-  const start = formatTime(slot.startAt, tz);
-  if (slot.endAt === null) return `${date} ${start}〜`;
-  const endDate = formatDate(slot.endAt, tz);
-  const end = formatTime(slot.endAt, tz);
-  return endDate === date ? `${date} ${start}–${end}` : `${date} ${start}–${endDate} ${end}`;
+  return `${formatDate(slot.startAt, tz)} ${formatSlotTime(slot, tz)}`;
 }
 
-/** 日付を除いた時間帯。例: 20:00–22:00 / 終日 / 23:00–11/13(木) 01:00（日付を見出しにまとめて表示するとき） */
+/** 日付を除いた時間帯。例: 20:00–22:00 / 終日 / 23:00–11/13(金) 01:00（日付を見出しにまとめて表示するとき。日付をまたぐときは終わりの日付を残す） */
 export function formatSlotTime(slot: SlotTime, tz: string): string {
-  return formatSlot(slot, tz).slice(formatDate(slot.startAt, tz).length + 1);
+  if (slot.allDay) return "終日";
+  const start = formatTime(slot.startAt, tz);
+  if (slot.endAt === null) return `${start}〜`;
+  const end = formatTime(slot.endAt, tz);
+  const endDate = formatDate(slot.endAt, tz);
+  return endDate === formatDate(slot.startAt, tz) ? `${start}–${end}` : `${start}–${endDate} ${end}`;
 }
 
 /** 例: 11/12(水) 20:00 */
