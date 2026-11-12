@@ -1,6 +1,6 @@
 // S3: 回答入力（各候補の集計つき。docs/design.md §6.4）
 import { loadPoll, request, type PollData } from "../lib/api";
-import { choiceMark, dateTimeText, memberMatrix, mountViewerTzSwitch, rememberDonation, showError, slotText, statusBanner, viewerTimeZone, errorText } from "../ui/common";
+import { choiceMark, dateTimeText, memberMatrix, mountViewerTzSwitch, timeZoneLabel, rememberDonation, showError, slotText, statusBanner, viewerTimeZone, errorText } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
 import { canAnswer, tally } from "../../../src/shared/model";
 import { formatDate, formatSlotTime, zoneAbbr } from "../../../src/shared/time";
@@ -167,6 +167,14 @@ export async function answerPage(pollId: string): Promise<void> {
         "p",
         { class: "choice-legend muted small" },
         ...d.choices.flatMap((c, i) => [i ? "　" : "", choiceMark(c, "mark-tiny"), ` ${c.label}`]),
+      ),
+      // 候補の行にはタイムゾーンを書かないので（閲覧者と同じとき）、ここで一度だけ書く
+      h(
+        "p",
+        { class: "tz-note small" },
+        ...(tz === d.poll.timezone
+          ? ["日時はすべて", h("strong", {}, timeZoneLabel(d.poll.timezone)), "で表示しています。"]
+          : ["候補の日時は", h("strong", {}, timeZoneLabel(d.poll.timezone)), "（調整のタイムゾーン）、「あなたの時刻」は", h("strong", {}, timeZoneLabel(tz)), "で表示しています。"]),
       ),
       list,
       editable && first && last
