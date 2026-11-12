@@ -312,7 +312,7 @@ function announcePanel(d: PollData, done: (m: HTMLElement) => void): HTMLElement
         status.textContent = "投稿しています…";
         try {
           const r = await request<{ warnings: string[] }>("POST", `/api/polls/${d.poll.id}/announce`, { mention: mention.checked });
-          done(notice(r.warnings.length ? "warn" : "ok", "確定のお知らせをチャンネルに投稿しました。", ...r.warnings.map((w) => ` ${w}`), donationLine(d.donationUrl)));
+          done(h("div", {}, notice(r.warnings.length ? "warn" : "ok", "確定のお知らせをチャンネルに投稿しました。", ...r.warnings.map((w) => ` ${w}`)), donationLine(d.donationUrl)));
         } catch (e) {
           status.textContent = errorText(e, "summary", "お知らせを投稿できませんでした。");
           btn.disabled = false;
