@@ -3,6 +3,7 @@ import { loadPoll, request, type PollData } from "../lib/api";
 import { choiceMark, dateTimeText, mountViewerTzSwitch, rememberDonation, showError, slotText, statusBanner, viewerTimeZone, errorText } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
 import { bestSlotId, canAnswer, tally } from "../../../src/shared/model";
+import { formatDate, formatSlotTime, zoneAbbr } from "../../../src/shared/time";
 
 export async function answerPage(pollId: string): Promise<void> {
   const app = document.getElementById("app")!;
@@ -60,9 +61,20 @@ export async function answerPage(pollId: string): Promise<void> {
     const first = d.choices[0];
     const last = d.choices[d.choices.length - 1];
 
-    const list = h("ol", { class: "answer-list" });
+    // 日付を見出しにまとめ、行には時間帯だけを書く（日付は調整のタイムゾーンで決める。候補は日時の順に並んでいる）
+    const list = h("div", { class: "answer-list" });
+    let day: HTMLElement | null = null;
+    let dayLabel = "";
     for (const s of d.slots) {
       const st = slotText(s, d.poll.timezone, tz);
+      const label = formatDate(s.startAt, d.poll.timezone);
+      if (!day || label !== dayLabel) {
+        dayLabel = label;
+        day = h("ol", { class: "answer-day", aria: { label } });
+        list.append(h("h2", { class: "answer-date" }, label), day);
+      }
+      // 閲覧者のタイムゾーンが違うときだけ、略号（JST など）を付ける（slotText と同じ決まり）
+      const time = formatSlotTime(s, d.poll.timezone) + (st.sub ? ` ${zoneAbbr(s.startAt, d.poll.timezone)}` : "");
       const tt = t.get(s.id)!;
       const isFixed = s.fixedAt !== null;
       const group = h("div", { class: "choice-group", role: "radiogroup", aria: { label: `${st.main} の回答` } });
@@ -101,7 +113,7 @@ export async function answerPage(pollId: string): Promise<void> {
       who.appendChild(whoList);
 
       // 1 件を 1 行にまとめる: 左に日時と集計（人数だけ）、右に選択ボタン。狭い画面でボタンが入らなければ、ボタンだけ次の行に回る
-      list.appendChild(
+      day.appendChild(
         h(
           "li",
           { class: `answer-row${isFixed ? " is-fixed" : ""}` },
@@ -112,7 +124,7 @@ export async function answerPage(pollId: string): Promise<void> {
               "div",
               { class: "slot-head" },
               isFixed ? h("span", { class: "badge badge-fixed" }, "確定") : s.id === best ? h("span", { class: "star", aria: { label: "最有力候補" } }, "★") : null,
-              h("span", { class: "slot-main" }, st.main),
+              h("span", { class: "slot-main" }, time),
             ),
             st.sub ? h("span", { class: "slot-sub" }, st.sub) : null,
             h(

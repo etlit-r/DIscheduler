@@ -111,6 +111,11 @@ export function formatSlot(slot: SlotTime, tz: string): string {
   return endDate === date ? `${date} ${start}–${end}` : `${date} ${start}–${endDate} ${end}`;
 }
 
+/** 日付を除いた時間帯。例: 20:00–22:00 / 終日 / 23:00–11/13(木) 01:00（日付を見出しにまとめて表示するとき） */
+export function formatSlotTime(slot: SlotTime, tz: string): string {
+  return formatSlot(slot, tz).slice(formatDate(slot.startAt, tz).length + 1);
+}
+
 /** 例: 11/12(水) 20:00 */
 export function formatDateTime(epochSec: number, tz: string): string {
   return `${formatDate(epochSec, tz)} ${formatTime(epochSec, tz)}`;
