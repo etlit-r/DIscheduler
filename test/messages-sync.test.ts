@@ -9,7 +9,7 @@ import {
   buildDayReminderMessage,
   buildDeletedMessage,
   buildFixedMessage,
-  buildMentionMessage,
+  buildMentionMessages,
   buildPollMessage,
   escapeMarkdown,
   messageLink,
@@ -149,13 +149,31 @@ describe("募集メッセージの組み立て", () => {
     expect(buildDeletedMessage(null).embeds[0]!.title).toBe("日程調整");
   });
 
-  it("ユーザーへのメンションは 100 人まで、本文は 2000 文字まで", () => {
-    const ids = Array.from({ length: 120 }, (_, i) => String(i));
-    const m = buildMentionMessage("本文", ids);
-    expect(m.allowed_mentions).toEqual({ parse: [], users: ids.slice(0, 100) });
-    expect(m.content.startsWith("本文\n<@0> <@1> ")).toBe(true);
-    expect(m.content).not.toContain("<@100>");
-    expect(buildMentionMessage("x".repeat(3000), ["1"]).content).toHaveLength(2000);
+  it("メンションは、本文 2000 文字・100 人の上限に収まるよう分け、途中で切らない", () => {
+    // 19 桁の ID は 1 人 22 文字。90 人だと 1 通に入りきらない
+    const ids = Array.from({ length: 90 }, (_, i) => String(1000000000000000000n + BigInt(i)));
+    const ms = buildMentionMessages("本文", ids);
+    expect(ms.length).toBe(2);
+    for (const m of ms) {
+      expect(m.content.length).toBeLessThanOrEqual(2000);
+      // メンションの数と allowed_mentions の人数がそろっている（途中で切れたメンションがない）
+      expect(m.content.match(/<@\d+>/g)).toEqual(m.allowed_mentions.users.map((id) => `<@${id}>`));
+      expect(m.allowed_mentions.parse).toEqual([]);
+    }
+    expect(ms[0]!.content.startsWith(`本文\n<@${ids[0]}> <@${ids[1]}>`)).toBe(true);
+    expect(ms[1]!.content.startsWith("<@")).toBe(true);
+    expect(ms.flatMap((m) => m.allowed_mentions.users)).toEqual(ids);
+  });
+
+  it("1 通のメンションは 100 人まで。文が長くても 1 人分は後ろに入れる", () => {
+    const ids = Array.from({ length: 150 }, (_, i) => String(i));
+    const ms = buildMentionMessages("本文", ids);
+    expect(ms.map((m) => m.allowed_mentions.users.length)).toEqual([100, 50]);
+    const long = buildMentionMessages("x".repeat(3000), ["1000000000000000000"]);
+    expect(long).toHaveLength(1);
+    expect(long[0]!.content.length).toBeLessThanOrEqual(2000);
+    expect(long[0]!.content.endsWith("\n<@1000000000000000000>")).toBe(true);
+    expect(buildMentionMessages("本文", [])).toEqual([{ content: "本文", allowed_mentions: { parse: [], users: [] } }]);
   });
 
   it("公開のお知らせ: ロールの調整はロール、それ以外は @everyone。募集メッセージへの返信にする", () => {

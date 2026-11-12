@@ -5,8 +5,9 @@ import { issueLink, issueListLink } from "../auth";
 import { getParticipant, getPoll, hitRateLimit } from "../db";
 import { AppError, isQuotaError, nowSec, QUOTA_MESSAGE } from "../core/lib";
 import { createOrReuseDraft } from "../polls/create";
+import { syncAfterAnswer } from "../polls/sync";
 import { buildSettingsMessage, canManageGuild, getGuildSettings, saveGuildSettings, type DefaultMode } from "../guilds/settings";
-import { canAnswer, effectiveStatus } from "../shared/model";
+import { canAnswer, effectiveStatus, LIMITS } from "../shared/model";
 import { sanitizeDisplayName, sanitizeLine } from "../shared/text";
 import { syncCommands } from "./commands";
 import { hasPermission, PERM } from "./permissions";
@@ -228,12 +229,24 @@ async function handlePollButton(
   }
   const isOrganizer = poll.organizer_id === userId;
   let participant = await getParticipant(env.DB, poll.id, userId);
+  let joined = false;
   if (!participant && !isOrganizer) {
     const canView = hasPermission(i.member?.permissions, PERM.VIEW_CHANNEL);
     if (kind === "answer" && poll.join_policy === "open" && canView) {
-      const name = sanitizeDisplayName(memberDisplayName(i.member!), 64);
-      await env.DB.prepare("INSERT OR IGNORE INTO participants (poll_id, user_id, display_name) VALUES (?, ?, ?)").bind(poll.id, userId, name).run();
+      const name = sanitizeDisplayName(memberDisplayName(i.member!), LIMITS.displayNameMax);
+      // 参加者の上限（主催者が追加するときと同じ 100 人）を超えないよう、数えてから入れる（同時に押されても超えない）
+      const r = await env.DB.prepare(
+        "INSERT OR IGNORE INTO participants (poll_id, user_id, display_name) " +
+          "SELECT ?1, ?2, ?3 WHERE (SELECT COUNT(*) FROM participants WHERE poll_id = ?1) < ?4",
+      )
+        .bind(poll.id, userId, name, LIMITS.participantsMax)
+        .run();
+      joined = r.meta.changes === 1;
       participant = await getParticipant(env.DB, poll.id, userId);
+      if (!participant) {
+        await editOriginal(env, i, `この調整の参加者が上限（${LIMITS.participantsMax} 人）に達しているため、参加できません。主催者に連絡してください。`);
+        return;
+      }
     } else {
       await editOriginal(env, i, "この調整の参加者ではないため、回答・閲覧できません。参加したい場合は主催者に追加を依頼してください。");
       return;
@@ -265,6 +278,8 @@ async function handlePollButton(
     [{ type: 1, components: [linkButton(label, url)] }],
     userId,
   );
+  // 参加者が増えたので、募集メッセージの「回答: x/N 名」を更新する（回答の保存と同じく、連続した更新はまとめる）
+  if (joined) await syncAfterAnswer(env, poll.id);
 }
 
 async function handleList(env: Env, i: Interaction, guildId: string, channelId: string): Promise<void> {

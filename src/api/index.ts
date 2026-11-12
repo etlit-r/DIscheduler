@@ -37,7 +37,7 @@ import {
   type SessionRow,
 } from "../db";
 import { fetchMember, searchMembers } from "../discord/members";
-import { buildAnnounceMessage, buildDeletedMessage, buildFixedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink } from "../discord/messages";
+import { buildAnnounceMessage, buildDeletedMessage, buildFixedMessage, buildMentionMessages, buildPollMessage, escapeMarkdown, messageLink } from "../discord/messages";
 import { discord, DiscordError, type DiscordChannel, type DiscordRole } from "../discord/rest";
 import { AppError, DAY, floorToMinute, nowSec, randomId, timingSafeEqual } from "../core/lib";
 import { DEFAULT_DEADLINE_DAYS, resetParticipants, RETENTION } from "../polls/create";
@@ -744,8 +744,9 @@ polls.post("/:id/announce", async (c) => {
   const fixed = slots.filter((s) => s.fixed_at !== null);
   const cancelled = slots.filter((s) => s.fixed_at === null && s.announced_fixed === 1);
   if (!fixed.length && !cancelled.length) throw new AppError(409, "nothing", "お知らせする確定日・取り消しがありません。");
-  // チャンネルへの投稿が続かないよう、1 つの調整につき 1 時間に 10 回まで
-  if (!(await hitRateLimit(db, `announce:${poll.id}`, 10, 3600, now))) throw new AppError(429, "rate_limited", "確定のお知らせは 1 時間に 10 回までです。");
+  // チャンネルへの投稿が続かないよう、1 つの調整につき 1 時間に 10 回まで（投稿できたときだけ数える）
+  const ANNOUNCE_KEY = `announce:${poll.id}`;
+  if (!(await rateLimitAllows(db, ANNOUNCE_KEY, 10, 3600, now))) throw new AppError(429, "rate_limited", "確定のお知らせは 1 時間に 10 回までです。");
 
   const warnings: string[] = [];
   // メンションは公開時のお知らせと同じ（ロールの調整はそのロール、それ以外は @everyone。§5.5）。
@@ -779,6 +780,7 @@ polls.post("/:id/announce", async (c) => {
     // お知らせした内容を覚える（次のお知らせで、取り消した日時を知らせるため）
     db.prepare("UPDATE slots SET announced_fixed = CASE WHEN fixed_at IS NULL THEN 0 ELSE 1 END WHERE poll_id = ?").bind(poll.id),
     ...late.map((s) => db.prepare("UPDATE slots SET day_reminded_at = ? WHERE id = ?").bind(s.start_at, s.id)),
+    hitRateLimitStatement(db, ANNOUNCE_KEY, 3600, now),
   ];
   if (mention) stmts.push(hitRateLimitStatement(db, MENTION_KEY, 3600, now));
   await db.batch(stmts);
@@ -863,20 +865,30 @@ polls.post("/:id/remind", async (c) => {
     .bind(poll.id)
     .all<{ user_id: string }>();
   if (rows.results.length === 0) return c.json({ ok: true, count: 0 });
+  // 同時に押されても 1 回だけ送るよう、先に送った時刻を記録する（送れなかったら元に戻す）
   const r = await db.prepare("UPDATE polls SET last_reminded_at = ? WHERE id = ? AND (last_reminded_at IS NULL OR last_reminded_at <= ?)").bind(now, poll.id, now - 12 * 3600).run();
   if (r.meta.changes !== 1) throw new AppError(429, "rate_limited", "リマインドは 12 時間に 1 回までです。");
   const link = poll.message_id ? `\n${messageLink(poll.guild_id, poll.channel_id, poll.message_id)}` : "";
   const deadline = poll.deadline_at ? `（締切 <t:${poll.deadline_at}:f>）` : "";
-  await discord(
-    c.env,
-    "POST",
-    `/channels/${poll.channel_id}/messages`,
-    {
-      ...buildMentionMessage(`**${escapeMarkdown(poll.title ?? "日程調整")}** の回答をお願いします${deadline}。募集メッセージの［回答する］から入力できます。${link}`, rows.results.map((x) => x.user_id)),
-      // 募集メッセージと同じ［回答する］。押したときの確認（参加者か・チャンネルが同じか）も同じ処理で行う
-      components: [{ type: 1, components: [{ type: 2, style: 1, label: "回答する", custom_id: `answer:${poll.id}` }] }],
-    },
+  const messages = buildMentionMessages(
+    `**${escapeMarkdown(poll.title ?? "日程調整")}** の回答をお願いします${deadline}。募集メッセージの［回答する］から入力できます。${link}`,
+    rows.results.map((x) => x.user_id),
   );
+  let sent = 0;
+  try {
+    for (const [i, m] of messages.entries()) {
+      // 募集メッセージと同じ［回答する］を最後のメッセージに付ける。押したときの確認（参加者か・チャンネルが同じか）も同じ処理で行う
+      const components = i === messages.length - 1 ? [{ type: 1, components: [{ type: 2, style: 1, label: "回答する", custom_id: `answer:${poll.id}` }] }] : [];
+      await discord(c.env, "POST", `/channels/${poll.channel_id}/messages`, { ...m, components });
+      sent++;
+    }
+  } catch {
+    // 1 通も送れなかったときだけ、すぐにやり直せるよう記録を戻す（一部を送れたときは、同じ人に重ねて送らないよう残す）
+    if (sent === 0) {
+      await db.prepare("UPDATE polls SET last_reminded_at = ? WHERE id = ? AND last_reminded_at = ?").bind(poll.last_reminded_at, poll.id, now).run();
+    }
+    throw new AppError(502, "discord_failed", "リマインドを投稿できませんでした。Bot がこのチャンネルに投稿できるか確認してください。");
+  }
   return c.json({ ok: true, count: rows.results.length });
 });
 

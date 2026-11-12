@@ -91,13 +91,34 @@ export function buildDeletedMessage(title: string | null) {
   };
 }
 
-/** ユーザーへのメンション付きのお知らせ（メンションは指定したユーザーだけに限る。security-design E-3） */
-export function buildMentionMessage(text: string, userIds: string[]) {
-  const ids = userIds.slice(0, 100);
-  return {
-    content: `${text}\n${ids.map((id) => `<@${id}>`).join(" ")}`.slice(0, 2000),
-    allowed_mentions: { parse: [] as string[], users: ids },
-  };
+/** Discord のメッセージの本文の上限（文字数） */
+export const MESSAGE_MAX = 2000;
+/** 1 つのメッセージの allowed_mentions.users に入れられる人数の上限 */
+const MENTION_USERS_MAX = 100;
+
+/**
+ * ユーザーへのメンション付きのお知らせ（メンションは指定したユーザーだけに限る。security-design E-3）。
+ * 本文の文字数（2000）とメンションの人数（100）の上限に収まるよう、メンションを複数のメッセージに分ける。
+ * 1 通目は文の後ろに、2 通目以降はメンションだけを並べる（メンションを途中で切らない）
+ */
+export function buildMentionMessages(text: string, userIds: readonly string[]) {
+  const messages: { content: string; allowed_mentions: { parse: string[]; users: string[] } }[] = [];
+  // 文は、少なくとも 1 人分のメンション（最長 24 文字）を後ろに置ける長さまでにする
+  let content = text.slice(0, MESSAGE_MAX - 25);
+  let users: string[] = [];
+  for (const id of userIds) {
+    const mention = `<@${id}>`;
+    if (users.length >= MENTION_USERS_MAX || content.length + 1 + mention.length > MESSAGE_MAX) {
+      messages.push({ content, allowed_mentions: { parse: [], users } });
+      content = "";
+      users = [];
+    }
+    // 文の後ろは改行、メンションどうしは空白で区切る
+    content = content === "" ? mention : `${content}${users.length ? " " : "\n"}${mention}`;
+    users.push(id);
+  }
+  messages.push({ content, allowed_mentions: { parse: [], users } });
+  return messages;
 }
 
 /**
