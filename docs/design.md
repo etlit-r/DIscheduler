@@ -430,6 +430,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 | S8 | マニュアル（項目ごとに 1 ページ） | `/manual/`、`/manual/{項目}` | 公開 |
 
 - S0・S3a・S6・S8 は静的ページ（`public/index.html`、`public/answered.html`、`public/security.html`、`public/manual/*.html`）として Cloudflare Pages から配信する。JavaScript は使わず、アプリと同じ CSP を `public/_headers` で付与する。
+- **検索結果での表示（S0）**: LP の `<title>` と `og:title` を「DIscheduler（Discord の日程調整 Bot）」、`og:site_name` と構造化データ（`WebSite` の `name`）を「DIscheduler」にする。正規 URL（`<link rel="canonical">`・`og:url`）と構造化データの `url` は、正式な公開アドレス（`PUBLIC_ORIGIN`）を `scripts/prepare-public.sh` がデプロイ時に埋め込む（Pages のデプロイごとの別名のアドレスが、検索結果に別のページとして出ないようにするため）。構造化データは実行されないデータなので、CSP（`script-src 'self'`）の対象にならない。Google は検索結果のタイトルを書き換えることがあるため、表示は保証されない。
 - S8 のマニュアルは、項目（はじめに、サーバーに追加する、使えるチャンネルを決める、調整を作る、候補日時を入れる、回答の選択肢を変える、参加者を決める、公開する、回答する、集計を見て確定する、募集メッセージの更新、調整を管理・削除する、困ったときは）ごとに 1 ページとし、全ページに同じ目次（広い画面では左のサイドバー、狭い画面では本文の下。本文の上に「目次へ」のリンク）と、前後のページへのリンクを置く。ヘッダー・フッター・LP の「使い方」の下と、Discord の［使い方］からリンクする。項目を足すときは、全ページの目次と前後のリンクを直す。
 - **利用者向けのセキュリティ方針は S6（`public/security.html`）を基準とする。** リポジトリの `SECURITY.md` は S6 へのリンクと脆弱性の報告窓口だけを載せる。
 - LP の「サーバーに追加する」リンクの `client_id` は `__DISCORD_APPLICATION_ID__` と書いておき、デプロイ時に `scripts/prepare-public.sh` が環境変数 `DISCORD_APPLICATION_ID` の値に置き換える（§14.2）。
