@@ -43,7 +43,6 @@ export function allTimeZones(): string[] {
 type TzEntry = { id: string; name: string; offset: string; haystack: string };
 let tzEntries: TzEntry[] | null = null;
 
-/** タイムゾーンの一覧に、日本語の名前と UTC からの差を添える（検索に使う。最初に開いたときに 1 回だけ作る） */
 /** タイムゾーンの名前（style に合わせて「日本標準時」「GMT+9」など）。取れなければ空文字 */
 function zonePart(tz: string, style: Intl.DateTimeFormatOptions["timeZoneName"], at: Date): string {
   try {
@@ -53,13 +52,18 @@ function zonePart(tz: string, style: Intl.DateTimeFormatOptions["timeZoneName"],
   }
 }
 
-/** 画面に出すタイムゾーンの説明。例: 日本標準時（UTC+9）。名前が取れなければ IANA 名（例: Asia/Tokyo（UTC+9）） */
-export function timeZoneLabel(tz: string, at = new Date()): string {
-  const name = zonePart(tz, "longGeneric", at) || zonePart(tz, "long", at) || tz;
-  const offset = zonePart(tz, "shortOffset", at).replace(/^GMT/, "UTC") || "UTC";
-  return `${name}（${offset}）`;
+/**
+ * 画面に出すタイムゾーンの説明。例: 日本標準時（UTC+9）。名前が取れなければ IANA 名（例: Asia/Tokyo（UTC+9））。
+ * UTC からの差は、表示する日時（at）の時点のもの。夏時間をまたいで差が変わるときは、差を書かず名前だけにする
+ */
+export function timeZoneLabel(tz: string, at: readonly number[]): string {
+  const dates = (at.length ? at : [Math.floor(Date.now() / 1000)]).map((sec) => new Date(sec * 1000));
+  const name = zonePart(tz, "longGeneric", dates[0]!) || zonePart(tz, "long", dates[0]!) || tz;
+  const offsets = new Set(dates.map((d) => zonePart(tz, "shortOffset", d).replace(/^GMT/, "UTC") || "UTC"));
+  return offsets.size === 1 ? `${name}（${[...offsets][0]}）` : name;
 }
 
+/** タイムゾーンの一覧に、日本語の名前と UTC からの差を添える（検索に使う。最初に開いたときに 1 回だけ作る） */
 function timeZoneEntries(): TzEntry[] {
   if (tzEntries) return tzEntries;
   const now = new Date();
