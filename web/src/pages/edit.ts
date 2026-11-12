@@ -737,9 +737,10 @@ export async function editPage(pollId: string): Promise<void> {
           h("div", { class: "field" }, h("label", { for: "desc" }, "説明（任意・1000 文字まで）"), descIn),
           h("div", { class: "field" }, h("label", { for: "poll-tz" }, "タイムゾーン（候補日時を入力する基準）"), tzSel),
         ),
+        // 参加者は、タイトル・説明・タイムゾーンのすぐ下で決める（ロールの選び方で、公開時のお知らせのメンション先も変わるため）
+        participantSection(),
         slotSection(),
         choiceSection(),
-        participantSection(),
         h(
           "section",
           { class: "card" },
