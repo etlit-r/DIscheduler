@@ -5,7 +5,7 @@ import type { Env } from "../src/core/env";
 import { resetCommandsCache } from "../src/discord/commands";
 import { parseWebhookUrl, runCron } from "../src/jobs/cron";
 import { DAY_REMINDER_MAX_PER_RUN, isReminderDue, REMINDER_CRON } from "../src/jobs/day-reminder";
-import { ALICE, CHANNEL, GUILD, mockDiscord, seedPoll, testEnv } from "./helpers";
+import { ALICE, CHANNEL, GUILD, jst, mockDiscord, seedPoll, testEnv } from "./helpers";
 
 const db = () => (env as unknown as Env).DB;
 const NOON = Date.parse("2026-11-06T04:00:00Z");
@@ -54,8 +54,8 @@ describe("Cron の募集メッセージの更新", () => {
     await runCron(testEnv(), NOON);
     expect(calls.filter((c) => c.method === "PUT" && c.path.endsWith("/commands"))).toHaveLength(1);
 
-    vi.restoreAllMocks();
-    err = vi.spyOn(console, "error").mockImplementation(() => {});
+    // fetch の差し替えだけを戻す（console の差し替えは残す）
+    vi.mocked(globalThis.fetch).mockRestore();
     mockDiscord((c) => (c.path.endsWith("/commands") ? new Response("{}", { status: 500 }) : {}));
     await db().prepare("UPDATE meta SET value = 'old' WHERE key = 'commands_version'").run();
     await runCron(testEnv(), NOON);
@@ -188,7 +188,6 @@ describe("サーバーの数の通知", () => {
 });
 
 describe("予定のリマインド", () => {
-  const jst = (local: string) => Math.floor(Date.parse(`${local}:00+09:00`) / 1000);
   const t = (start: string, opts: { allDay?: boolean; offset?: number; hour?: number } = {}) => ({
     start_at: jst(start),
     all_day: opts.allDay ? 1 : 0,

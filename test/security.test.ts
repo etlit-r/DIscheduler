@@ -22,7 +22,7 @@ import { hasPermission, PERM } from "../src/discord/permissions";
 import { verifyDiscordRequest } from "../src/discord/verify";
 import { nowSec } from "../src/core/lib";
 import type { Env } from "../src/core/env";
-import { GUILD, ORGANIZER, ORIGIN, seedPoll, tokenFromUrl } from "./helpers";
+import { GUILD, ORGANIZER, ORIGIN, seedPoll, toHex, tokenFromUrl } from "./helpers";
 
 const db = () => (env as unknown as Env).DB;
 
@@ -48,7 +48,6 @@ describe("権限の判定", () => {
 });
 
 describe("Discord の署名検証", () => {
-  const toHex = (b: ArrayBuffer) => Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join("");
 
   async function keyPair() {
     const kp = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as CryptoKeyPair;

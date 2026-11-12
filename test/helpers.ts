@@ -129,3 +129,18 @@ export function freezeMidWindow(): void {
   const t = Math.floor(Date.now() / 3_600_000) * 3_600_000 + 25 * 60_000;
   vi.spyOn(Date, "now").mockReturnValue(t);
 }
+
+/** Discord のメンバー（テスト用。権限の既定は「チャンネルを見る」） */
+export function member(id: string, permissions = "1024") {
+  return { user: { id, username: `u${id.slice(-2)}` }, roles: [] as string[], permissions };
+}
+
+/** 日本時間の日時（"2026-11-06T18:00"）を UNIX 秒にする */
+export function jst(local: string): number {
+  return Math.floor(Date.parse(`${local}:00+09:00`) / 1000);
+}
+
+/** バイト列を 16 進数の文字列にする */
+export function toHex(b: ArrayBuffer | Uint8Array): string {
+  return Array.from(b instanceof Uint8Array ? b : new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join("");
+}
