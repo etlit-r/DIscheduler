@@ -166,9 +166,12 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .choice-btn.is-preview { filter: none; opacity: 1; cursor: default; min-height: 32px; padding: 4px 10px; margin: 2px; }
 .choice-symbol { font-size: 1.15rem; }
 /* 回答画面: 1 件を 1 行に（日時・人数・記号だけのボタン）。カードの枠はやめ、区切り線で並べる */
-.answer-list { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.answer-list { margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.answer-day { list-style: none; margin: 0; padding: 0; }
+/* 日付の見出し。行には時間帯だけを書く */
+.answer-date { margin: 0; padding: 6px 12px; font-size: 0.85rem; font-weight: 700; color: var(--text-muted); background: var(--surface-2); border-top: 1px solid var(--border); }
+.answer-date:first-child { border-top: 0; }
 .answer-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; border-top: 1px solid var(--border); }
-.answer-row:first-child { border-top: 0; }
 .answer-row.is-fixed { background: var(--c-green-soft); }
 .answer-when { flex: 1 1 11em; min-width: 0; }
 .answer-when .slot-head { display: block; font-size: 0.95rem; }
