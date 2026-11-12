@@ -3,8 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DIscheduler｜Discord の日程調整 Bot</title>
+  <title>DIscheduler（Discord の日程調整 Bot）</title>
   <meta name="description" content="Discord のチャンネルやロールのメンバーで日程調整ができる Bot。候補日時の入力、○△×での回答、確定日時の Discord イベント登録まで、Discord の中で完結します。">
+  <!-- 検索結果・リンクの表示（docs/design.md §6.2）。サイト名は DIscheduler、ページのタイトルは「DIscheduler（Discord の日程調整 Bot）」 -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="DIscheduler">
+  <meta property="og:title" content="DIscheduler（Discord の日程調整 Bot）">
+  <meta property="og:description" content="Discord のチャンネルやロールのメンバーで日程調整ができる Bot。候補日時の入力、○△×での回答、確定日時の Discord イベント登録まで、Discord の中で完結します。">
+  <!-- origin:start -->
+  <link rel="canonical" href="__PUBLIC_ORIGIN__/">
+  <meta property="og:url" content="__PUBLIC_ORIGIN__/">
+  <!-- 構造化データ（実行されないデータで、CSP の対象外）。Google の検索結果のサイト名に使われる -->
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"DIscheduler","alternateName":"DIscheduler（Discord の日程調整 Bot）","url":"__PUBLIC_ORIGIN__/"}</script>
+  <!-- origin:end -->
   <!-- Google AdSense のサイトの所有確認（パブリッシャー ID。公開してよい値。docs/design.md §6.10.1） -->
   <meta name="google-adsense-account" content="ca-pub-7698368408631991">
   <meta name="color-scheme" content="dark">
@@ -19,7 +30,7 @@
   <header class="site-header">
     <div class="container">
       <a class="brand" href="/">
-        <span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg></span>
+        <span class="brand-mark"><img src="/favicon.svg" alt="" width="36" height="36"></span>
         <span class="brand-name">DIscheduler<span class="brand-badge">Bot</span></span>
       </a>
       <nav class="site-nav" aria-label="メインメニュー">
@@ -304,7 +315,11 @@
 
   <footer class="site-footer">
     <div class="container">
-      <a class="footer-brand" href="/"><span class="brand-mark brand-mark-sm"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg></span>DIscheduler</a>
+      <div class="footer-brand-wrap">
+        <a class="footer-brand" href="/"><span class="brand-mark brand-mark-sm"><img src="/favicon.svg" alt="" width="28" height="28"></span>DIscheduler</a>
+        <!-- 名前の由来（ひっそり） -->
+        <p class="footer-origin"><span lang="en">DI = Date Integrator</span>（みんなの予定を、ひとつにまとめる）</p>
+      </div>
       <ul>
         <li><a href="/manual/">マニュアル</a></li>
         <li><a href="/security">セキュリティ方針</a></li>
