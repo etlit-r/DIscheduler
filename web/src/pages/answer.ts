@@ -58,6 +58,7 @@ export async function answerPage(pollId: string): Promise<void> {
     // 同じ日に候補が 2 つ以上ある調整だけ、同じ日付の候補を 1 つの枠で囲み、日付は枠の最初の行の時間帯の上にだけ書く（枠の中は区切り線を引かない）。
     // どの日も候補が 1 つなら、1 つの枠に区切り線で並べ、行に日付と時間帯を書く（日付は調整のタイムゾーンで決める。候補は日時の順に並んでいる）
     const dates = d.slots.map((s) => formatDate(s.startAt, d.poll.timezone));
+    const slotStarts = d.slots.map((s) => s.startAt);
     const byDate = new Set(dates).size < dates.length;
     const list = h("div", { class: `answer-list${byDate ? " is-grouped" : ""}` });
     let day: HTMLElement | null = byDate ? null : list.appendChild(h("ol", { class: "answer-day" }));
@@ -172,9 +173,10 @@ export async function answerPage(pollId: string): Promise<void> {
       h(
         "p",
         { class: "tz-note small" },
+        // UTC からの差は、候補の日時の時点のもの（夏時間で変わるため）
         ...(tz === d.poll.timezone
-          ? ["日時はすべて", h("strong", {}, timeZoneLabel(d.poll.timezone)), "で表示しています。"]
-          : ["候補の日時は", h("strong", {}, timeZoneLabel(d.poll.timezone)), "（調整のタイムゾーン）、「あなたの時刻」は", h("strong", {}, timeZoneLabel(tz)), "で表示しています。"]),
+          ? ["日時はすべて", h("strong", {}, timeZoneLabel(d.poll.timezone, slotStarts)), "で表示しています。"]
+          : ["候補の日時は調整のタイムゾーンの", h("strong", {}, timeZoneLabel(d.poll.timezone, slotStarts)), "、「あなたの時刻」は", h("strong", {}, timeZoneLabel(tz, slotStarts)), "で表示しています。"]),
       ),
       list,
       editable && first && last
