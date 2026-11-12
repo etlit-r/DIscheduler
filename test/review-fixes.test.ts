@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/core/env";
 import { handleInteraction } from "../src/discord/interactions";
 import { runCron } from "../src/jobs/cron";
-import { CHANNEL, errorOf, GUILD, jsonReq, call, login, member, mockDiscord, ORGANIZER, ORIGIN, pollRow, seedPoll, testEnv, type DiscordCall } from "./helpers";
+import { CHANNEL, errorOf, freezeMidWindow, GUILD, jsonReq, call, login, member, mockDiscord, ORGANIZER, ORIGIN, pollRow, seedPoll, testEnv, type DiscordCall } from "./helpers";
 
 const db = () => (env as unknown as Env).DB;
 const ids = (n: number, base = 600000000000000000n) => Array.from({ length: n }, (_, i) => String(base + BigInt(i)));
@@ -152,5 +152,56 @@ describe("Cron の締切後の更新", () => {
     await db().prepare("UPDATE polls SET last_synced_at = 1000 WHERE id = ?").bind(p.pollId).run();
     await runCron(testEnv(), Date.parse("2026-11-06T04:00:00Z"));
     expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
+  });
+});
+
+describe("以前の［作成した調整を管理］の選択メニュー", () => {
+  it("ほかのリンクの発行と同じく、1 時間に 20 回まで", async () => {
+    freezeMidWindow();
+    mockDiscord();
+    const user = "400000000000000088";
+    const { pollId } = await seedPoll();
+    await db().prepare("UPDATE polls SET organizer_id = ? WHERE id = ?").bind(user, pollId).run();
+    const select = async () => {
+      const res = await handleInteraction(
+        testEnv(),
+        { waitUntil: () => undefined },
+        { id: "9", application_id: "100000000000000001", token: "tok", type: 3, guild_id: GUILD, channel_id: CHANNEL, member: member(user), data: { custom_id: "manage_select", values: [pollId] } } as unknown as Parameters<typeof handleInteraction>[2],
+        ORIGIN,
+      );
+      return ((await res.json()) as { data: { content: string } }).data.content;
+    };
+    for (let i = 0; i < 20; i++) expect(await select()).toContain("の管理リンクです");
+    expect(await select()).toBe("リンクの発行回数の上限（1 時間に 20 回）に達しました。しばらくしてからお試しください。");
+  });
+});
+
+describe("本文の大きさの上限", () => {
+  /** Content-Length を付けずに（少しずつ）送る */
+  const streamed = (text: string) => {
+    const bytes = new TextEncoder().encode(text);
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let i = 0; i < bytes.length; i += 4096) controller.enqueue(bytes.slice(i, i + 4096));
+        controller.close();
+      },
+    });
+    const req = new Request(`${ORIGIN}/api/session`, { method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json" }, body });
+    expect(req.headers.get("Content-Length")).toBeNull();
+    return call(req);
+  };
+
+  it("文字数ではなくバイト数で数える（日本語は 1 文字 3 バイト）", async () => {
+    mockDiscord();
+    // 11000 文字・33000 バイト。文字数では上限（32768）に収まるが、バイト数では超える
+    const res = await streamed(JSON.stringify({ token: "あ".repeat(11000) }));
+    expect(res.status).toBe(413);
+    expect((await errorOf(res)).code).toBe("too_large");
+  });
+
+  it("上限ちょうどのバイト数なら、少しずつ送られても読める", async () => {
+    mockDiscord();
+    const res = await streamed(JSON.stringify({ token: "a".repeat(32 * 1024 - 12) }));
+    expect((await errorOf(res)).code).toBe("invalid");
   });
 });

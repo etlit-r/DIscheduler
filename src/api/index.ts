@@ -69,9 +69,36 @@ api.use("*", async (c, next) => {
   await next();
 });
 
+/**
+ * 本文を上限（バイト数）まで読む。上限を超えたら、残りは読まずに 413 にする
+ * （Content-Length のない送信でも、大きな本文をすべて読み込まないように。文字数ではなくバイト数で数える）
+ */
+async function readBodyLimited(req: Request, max: number): Promise<string> {
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel().catch(() => undefined);
+      throw new AppError(413, "too_large", "送信する内容が大きすぎます。");
+    }
+    chunks.push(value);
+  }
+  const buf = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    buf.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(buf);
+}
+
 async function readJson<T extends v.GenericSchema>(c: C | Context<{ Bindings: Env }>, schema: T): Promise<v.InferOutput<T>> {
-  const text = await c.req.text();
-  if (text.length > LIMITS.bodyBytesMax) throw new AppError(413, "too_large", "送信する内容が大きすぎます。");
+  const text = await readBodyLimited(c.req.raw, LIMITS.bodyBytesMax);
   let data: unknown;
   try {
     data = JSON.parse(text);
@@ -643,6 +670,16 @@ polls.put("/:id/answers/me", async (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * 確定・取り消しのあとに募集メッセージを更新し、更新できなければ警告を足す。
+ * syncNow は失敗しても例外を投げず false を返すので、戻り値で判断する（募集メッセージがない調整は更新しないので警告しない）
+ */
+async function syncMessageOrWarn(env: Env, poll: PollRow, warnings: string[]): Promise<void> {
+  if (!poll.message_id) return;
+  const ok = await syncNow(env, poll.id).catch(() => false);
+  if (!ok) warnings.push("募集メッセージを更新できませんでした。");
+}
+
 /** 確定した候補の日時の表示（Discord のメッセージ用） */
 function slotWhen(slot: { start_at: number; all_day: number }): string {
   return slot.all_day ? `<t:${slot.start_at}:D>（終日）` : `<t:${slot.start_at}:F>`;
@@ -699,7 +736,7 @@ polls.post("/:id/fix", async (c) => {
     refreshFixedStatement(db, poll, now),
   ]);
   const warnings: string[] = [];
-  await syncNow(c.env, poll.id).catch(() => warnings.push("募集メッセージを更新できませんでした。"));
+  await syncMessageOrWarn(c.env, poll, warnings);
   if (body.event) {
     const err = await upsertEvent(c.env, poll, slot, body.event);
     if (err) warnings.push(err);
@@ -728,7 +765,7 @@ polls.delete("/:id/fix/:slotId", async (c) => {
     db.prepare("UPDATE slots SET fixed_at = NULL, day_reminded_at = NULL WHERE id = ?").bind(slot.id),
     refreshFixedStatement(db, poll, now),
   ]);
-  await syncNow(c.env, poll.id).catch(() => warnings.push("募集メッセージを更新できませんでした。"));
+  await syncMessageOrWarn(c.env, poll, warnings);
   return c.json({ ok: true, warnings });
 });
 

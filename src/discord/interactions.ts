@@ -38,6 +38,7 @@ type Ctx = { waitUntil(p: Promise<unknown>): void };
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
 const ephemeral = (content: string, components: unknown[] = []) =>
   json({ type: 4, data: { content, components, flags: EPHEMERAL, allowed_mentions: NO_MENTIONS } });
+const LINK_LIMIT_MESSAGE = "リンクの発行回数の上限（1 時間に 20 回）に達しました。しばらくしてからお試しください。";
 const deferred = () => json({ type: 5, data: { flags: EPHEMERAL } });
 
 function linkButton(label: string, url: string) {
@@ -106,6 +107,10 @@ export async function handleInteraction(env: Env, ctx: Ctx, i: Interaction, orig
       const poll = await getPoll(env.DB, pollId);
       if (!poll || poll.organizer_id !== userId || poll.guild_id !== guildId) {
         return json({ type: 7, data: { content: "この調整は見つかりませんでした。", components: [] } });
+      }
+      // ほかのリンクの発行と同じく、1 人 1 時間に 20 回まで
+      if (!(await hitRateLimit(env.DB, `link:${userId}`, 20, 3600, nowSec()))) {
+        return json({ type: 7, data: { content: LINK_LIMIT_MESSAGE, components: [] } });
       }
       const url = await issueLink(env.DB, origin, poll.id, userId, "organizer", "edit");
       return json({
@@ -224,7 +229,7 @@ async function handlePollButton(
     return;
   }
   if (!(await hitRateLimit(env.DB, `link:${userId}`, 20, 3600, nowSec()))) {
-    await editOriginal(env, i, "リンクの発行回数の上限（1 時間に 20 回）に達しました。しばらくしてからお試しください。");
+    await editOriginal(env, i, LINK_LIMIT_MESSAGE);
     return;
   }
   const isOrganizer = poll.organizer_id === userId;
@@ -312,7 +317,7 @@ async function handleManage(env: Env, i: Interaction, origin: string, guildId: s
     return;
   }
   if (!(await hitRateLimit(env.DB, `link:${userId}`, 20, 3600, nowSec()))) {
-    await editOriginal(env, i, "リンクの発行回数の上限（1 時間に 20 回）に達しました。しばらくしてからお試しください。");
+    await editOriginal(env, i, LINK_LIMIT_MESSAGE);
     return;
   }
   const url = await issueListLink(env.DB, origin, guildId, userId);
