@@ -24,6 +24,9 @@ export async function answerPage(pollId: string): Promise<void> {
   for (const a of data.answers) if (a.userId === data.me.userId) draft.set(a.slotId, a.choiceId);
   let comment = data.me.comment ?? "";
   let message: HTMLElement | null = null;
+  // 描き直しても、押したボタンのフォーカスと、開いた［みんなの回答］を保つ（画面全体を作り直すため）
+  let focusKey: string | null = null;
+  const openWho = new Set<string>();
 
   const reload = async (msg?: HTMLElement) => {
     try {
@@ -72,8 +75,10 @@ export async function answerPage(pollId: string): Promise<void> {
       const label = dates[i]!;
       if (byDate && (!day || label !== dayLabel)) {
         dayLabel = label;
-        day = h("ol", { class: "answer-day", aria: { label } });
-        list.append(h("h2", { class: "answer-date" }, label), day);
+        // 一覧の名前は見出しから取る（日付を 2 回読み上げないように）
+        const headingId = `answer-date-${i}`;
+        day = h("ol", { class: "answer-day", aria: { labelledby: headingId } });
+        list.append(h("h2", { class: "answer-date", id: headingId }, label), day);
       }
       // 閲覧者のタイムゾーンが違うときだけ、略号（JST など）を付ける（slotText と同じ決まり）
       const time = byDate ? formatSlotTime(s, d.poll.timezone) + (st.sub ? ` ${zoneAbbr(s.startAt, d.poll.timezone)}` : "") : st.main;
@@ -92,9 +97,11 @@ export async function answerPage(pollId: string): Promise<void> {
               role: "radio",
               title: c.label,
               aria: { checked: String(selected), label: `${c.symbol} ${c.label}` },
+              data: { choiceKey: `${s.id}:${c.id}` },
               disabled: !editable,
               onClick: () => {
                 draft.set(s.id, c.id);
+                focusKey = `${s.id}:${c.id}`;
                 draw();
               },
             },
@@ -113,7 +120,9 @@ export async function answerPage(pollId: string): Promise<void> {
         }
         const notAnswered = d.participants.filter((p) => !answeredHere.has(p.userId)).map((p) => p.displayName);
         if (notAnswered.length) whoList.appendChild(h("li", {}, h("span", { class: "muted" }, "未回答"), " ", notAnswered.join("、")));
-        return h("details", { class: "who" }, h("summary", {}, "みんなの回答"), whoList);
+        const details = h("details", { class: "who", open: openWho.has(s.id) }, h("summary", {}, "みんなの回答"), whoList);
+        details.addEventListener("toggle", () => (details.open ? openWho.add(s.id) : openWho.delete(s.id)));
+        return details;
       };
 
       // 1 件を 1 行にまとめる: 左に日時と集計（人数だけ）、右に選択ボタン。狭い画面でボタンが入らなければ、ボタンだけ次の行に回る
@@ -248,6 +257,11 @@ export async function answerPage(pollId: string): Promise<void> {
         form,
       ),
     );
+    if (focusKey) {
+      const btn = Array.from(document.querySelectorAll<HTMLElement>("[data-choice-key]")).find((el) => el.dataset.choiceKey === focusKey);
+      btn?.focus();
+      focusKey = null;
+    }
   }
 
   draw();
