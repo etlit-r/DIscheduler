@@ -43,13 +43,22 @@ export function allTimeZones(): string[] {
 type TzEntry = { id: string; name: string; offset: string; haystack: string };
 let tzEntries: TzEntry[] | null = null;
 
+/** タイムゾーン・名前の書き方ごとの Intl.DateTimeFormat（作るのに時間がかかるので使い回す。作れなければ null） */
+const zoneFormatters = new Map<string, Intl.DateTimeFormat | null>();
+
 /** タイムゾーンの名前（style に合わせて「日本標準時」「GMT+9」など）。取れなければ空文字 */
 function zonePart(tz: string, style: Intl.DateTimeFormatOptions["timeZoneName"], at: Date): string {
-  try {
-    return new Intl.DateTimeFormat("ja-JP", { timeZone: tz, timeZoneName: style }).formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? "";
-  } catch {
-    return "";
+  const key = `${tz}|${style}`;
+  let f = zoneFormatters.get(key);
+  if (f === undefined) {
+    try {
+      f = new Intl.DateTimeFormat("ja-JP", { timeZone: tz, timeZoneName: style });
+    } catch {
+      f = null;
+    }
+    zoneFormatters.set(key, f);
   }
+  return f?.formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? "";
 }
 
 /**
