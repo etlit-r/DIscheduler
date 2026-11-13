@@ -1192,7 +1192,7 @@ DIscheduler/
 ├── wrangler.jsonc            # Cloudflare Workers の設定
 ├── vite.config.ts / vitest.config.ts
 └── .github/
-    ├── workflows/deploy.yml  # テスト（PR・main）と main マージ時のデプロイ（承認制）
+    ├── workflows/deploy.yml  # テスト（PR・main）と main マージ時のデプロイ（承認制。承認はいちばん新しいマージだけでよい）
     └── dependabot.yml        # Action と npm の更新
 ```
 
@@ -1250,13 +1250,18 @@ GitHub Actions から Cloudflare にデプロイする（`.github/workflows/depl
 ```mermaid
 flowchart LR
   M[main にマージ] --> T[test: 監査・型検査・テスト・ビルド]
-  T --> A{production 環境の<br/>承認}
-  A -- 承認 --> R[設定値を埋め込む<br/>静的ページ・Pages・Worker]
+  T --> A{approve:<br/>production-approval 環境の承認}
+  A -- 承認 --> R[deploy: 設定値を埋め込む<br/>静的ページ・Pages・Worker]
   R --> MG[D1 マイグレーション]
   MG --> AD[広告の枠の Worker<br/>ADMAX_ID があるとき]
   AD --> P[(Cloudflare Pages<br/>*.pages.dev)]
   P --> W[(Cloudflare Workers<br/>Cron・転送)]
 ```
+
+- **承認はいちばん新しいマージだけでよい**：承認だけを行う `approve` ジョブ（`production-approval` 環境。secret を置かない）を、実際のデプロイの `deploy` ジョブ（`production` 環境）の前に置く。
+  - `approve` は `concurrency`（`approve-production`）で `cancel-in-progress: true` にする。承認待ちの間に次のマージがあると、古い承認待ちは取り消され、新しいほうだけが承認待ちになる。デプロイはその実行のコミット（その時点の `main`。それまでのマージをすべて含む）で行うので、いちばん新しいものを承認すれば全部デプロイされる。
+  - `deploy` は `concurrency`（`deploy-production`）で `cancel-in-progress: false` のまま。途中で止めると Pages と Worker の版やマイグレーションがずれるため、実行中のデプロイは取り消さず、順に流す（待っている間に来た新しいものは、古い待ちを置き換える）。
+  - 承認者を求めるのは `production-approval` だけにし、`production` には求めない（2 回承認しなくて済むように）。秘密の値は `production` にだけ置き、どちらの環境も `main` からしか使えないようにする。
 
 ### 14.1 初回の準備
 
@@ -1279,11 +1284,20 @@ flowchart LR
 2. 「Bot」で Server Members Intent をオンにする（参加者の自動設定に必要）。
 3. 「General Information」の「App Icon」と、「Bot」の「Icon」に `branding/app-icon.png`（1024×1024。ファビコンと同じデザイン）を設定する。コマンドの入力欄の横や Bot のアバターに表示される。Discord は円形に切り抜くので、元の `branding/app-icon.svg` は背景を正方形いっぱいにし、カレンダーを中央に小さめに置いている。
 
-**GitHub**（リポジトリの Settings → Environments → `production`）
+**GitHub**（リポジトリの Settings → Environments）
+
+`production-approval`（承認だけ。secret・variable は置かない）
 
 | 種類 | 名前 | 値 |
 |------|------|----|
 | 保護ルール | Required reviewers | 承認者（自分） |
+| 保護ルール | Deployment branches | `main` のみ |
+
+`production`（デプロイ。承認は `production-approval` で済ませるので、ここでは求めない）
+
+| 種類 | 名前 | 値 |
+|------|------|----|
+| 保護ルール | Required reviewers | なし |
 | 保護ルール | Deployment branches | `main` のみ |
 | Environment secret | `CLOUDFLARE_API_TOKEN` | 上で作った API トークン |
 | Environment secret | `CLOUDFLARE_ACCOUNT_ID` | Account ID |
