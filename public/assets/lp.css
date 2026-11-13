@@ -108,8 +108,8 @@ body.lp {
 .hero-copy { text-align: center; }
 @media (min-width: 1024px) { .hero-copy { text-align: left; } }
 .eyebrow {
-  display: inline-flex; align-items: center; gap: 8px; margin: 0 0 24px; padding: 6px 12px; border-radius: 999px;
-  font-size: 0.75rem; font-weight: 600; color: var(--accent-text);
+  display: inline-flex; align-items: center; gap: 8px; margin: 0 0 24px; padding: 7px 14px; border-radius: 999px;
+  font-size: 0.875rem; font-weight: 600; color: var(--accent-text);
   background: rgb(88 101 242 / 10%); border: 1px solid rgb(88 101 242 / 30%);
 }
 .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite; }
