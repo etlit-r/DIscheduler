@@ -1,6 +1,6 @@
 # DIscheduler
 
-Discord のチャンネル／ロールのメンバーで日程調整を行う Bot。Cloudflare（Pages・Workers・D1）の無料枠のみで動作するサーバーレス構成です。
+DIscheduler（ディーアイスケジューラー）は、Discord のチャンネル／ロールのメンバーで日程調整を行う Bot です。Cloudflare（Pages・Workers・D1）の無料枠のみで動作するサーバーレス構成です。
 
 
 ## ドキュメント

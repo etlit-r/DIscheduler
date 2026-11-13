@@ -1,6 +1,6 @@
 // S3: 回答入力（各候補の集計つき。docs/design.md §6.4）
 import { loadPoll, request, type PollData } from "../lib/api";
-import { choiceMark, dateTimeText, memberMatrix, mountViewerTzSwitch, rememberDonation, showError, slotText, statusBanner, viewerTimeZone, errorText } from "../ui/common";
+import { choiceMark, dateTimeText, memberMatrix, mountViewerTzSwitch, timeZoneLabel, rememberDonation, showError, slotText, statusBanner, viewerTimeZone, errorText } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
 import { canAnswer, tally } from "../../../src/shared/model";
 import { formatDate, formatSlotTime, zoneAbbr } from "../../../src/shared/time";
@@ -58,6 +58,7 @@ export async function answerPage(pollId: string): Promise<void> {
     // 同じ日に候補が 2 つ以上ある調整だけ、同じ日付の候補を 1 つの枠で囲み、日付は枠の最初の行の時間帯の上にだけ書く（枠の中は区切り線を引かない）。
     // どの日も候補が 1 つなら、1 つの枠に区切り線で並べ、行に日付と時間帯を書く（日付は調整のタイムゾーンで決める。候補は日時の順に並んでいる）
     const dates = d.slots.map((s) => formatDate(s.startAt, d.poll.timezone));
+    const slotStarts = d.slots.map((s) => s.startAt);
     const byDate = new Set(dates).size < dates.length;
     const list = h("div", { class: `answer-list${byDate ? " is-grouped" : ""}` });
     let day: HTMLElement | null = byDate ? null : list.appendChild(h("ol", { class: "answer-day" }));
@@ -167,6 +168,16 @@ export async function answerPage(pollId: string): Promise<void> {
         "p",
         { class: "choice-legend muted small" },
         ...d.choices.flatMap((c, i) => [i ? "　" : "", choiceMark(c, "mark-tiny"), ` ${c.label}`]),
+      ),
+      // 候補の行にはタイムゾーンを書かないので（閲覧者と同じとき）、ここで一度だけ書く
+      h(
+        "p",
+        { class: "tz-note small" },
+        // UTC からの差は、候補の日時の時点のもの（夏時間で変わるため）
+        // 「あなたの時刻」は時刻のある候補にだけ出るので、終日の候補だけなら調整のタイムゾーンだけを書く
+        ...(tz === d.poll.timezone || d.slots.every((s) => s.allDay)
+          ? ["日時はすべて", h("strong", {}, timeZoneLabel(d.poll.timezone, slotStarts)), "で表示しています。"]
+          : ["候補の日時は調整のタイムゾーンの", h("strong", {}, timeZoneLabel(d.poll.timezone, slotStarts)), "、「あなたの時刻」は", h("strong", {}, timeZoneLabel(tz, slotStarts)), "で表示しています。"]),
       ),
       list,
       editable && first && last

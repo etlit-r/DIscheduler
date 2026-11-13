@@ -43,17 +43,40 @@ export function allTimeZones(): string[] {
 type TzEntry = { id: string; name: string; offset: string; haystack: string };
 let tzEntries: TzEntry[] | null = null;
 
+/** タイムゾーン・名前の書き方ごとの Intl.DateTimeFormat（作るのに時間がかかるので使い回す。作れなければ null） */
+const zoneFormatters = new Map<string, Intl.DateTimeFormat | null>();
+
+/** タイムゾーンの名前（style に合わせて「日本標準時」「GMT+9」など）。取れなければ空文字 */
+function zonePart(tz: string, style: Intl.DateTimeFormatOptions["timeZoneName"], at: Date): string {
+  const key = `${tz}|${style}`;
+  let f = zoneFormatters.get(key);
+  if (f === undefined) {
+    try {
+      f = new Intl.DateTimeFormat("ja-JP", { timeZone: tz, timeZoneName: style });
+    } catch {
+      f = null;
+    }
+    zoneFormatters.set(key, f);
+  }
+  return f?.formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? "";
+}
+
+/**
+ * 画面に出すタイムゾーンの説明。例: 日本標準時（UTC+9）。名前が取れなければ IANA 名（例: Asia/Tokyo（UTC+9））。
+ * UTC からの差は、表示する日時（at）の時点のもの。夏時間をまたいで差が変わるときは、差を書かず名前だけにする
+ */
+export function timeZoneLabel(tz: string, at: readonly number[]): string {
+  const dates = (at.length ? at : [Math.floor(Date.now() / 1000)]).map((sec) => new Date(sec * 1000));
+  const name = zonePart(tz, "longGeneric", dates[0]!) || zonePart(tz, "long", dates[0]!) || tz;
+  const offsets = new Set(dates.map((d) => zonePart(tz, "shortOffset", d).replace(/^GMT/, "UTC") || "UTC"));
+  return offsets.size === 1 ? `${name}（${[...offsets][0]}）` : name;
+}
+
 /** タイムゾーンの一覧に、日本語の名前と UTC からの差を添える（検索に使う。最初に開いたときに 1 回だけ作る） */
 function timeZoneEntries(): TzEntry[] {
   if (tzEntries) return tzEntries;
   const now = new Date();
-  const part = (tz: string, style: Intl.DateTimeFormatOptions["timeZoneName"]): string => {
-    try {
-      return new Intl.DateTimeFormat("ja-JP", { timeZone: tz, timeZoneName: style }).formatToParts(now).find((p) => p.type === "timeZoneName")?.value ?? "";
-    } catch {
-      return "";
-    }
-  };
+  const part = (tz: string, style: Intl.DateTimeFormatOptions["timeZoneName"]): string => zonePart(tz, style, now);
   tzEntries = allTimeZones().map((id) => {
     const name = part(id, "longGeneric") || part(id, "long");
     const gmt = part(id, "shortOffset"); // 例: GMT+9、GMT-3:30、GMT
