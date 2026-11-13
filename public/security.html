@@ -20,7 +20,7 @@
     <div class="container">
       <a class="brand" href="/">
         <span class="brand-mark"><img src="/favicon.svg" alt="" width="36" height="36"></span>
-        <span class="brand-name">DIscheduler<span class="brand-badge">Bot</span></span>
+        <span class="brand-name">DIscheduler</span>
       </a>
       <nav class="site-nav" aria-label="メインメニュー">
         <ul>
@@ -53,7 +53,7 @@
 
       <article class="doc-body">
         <h1>セキュリティ方針</h1>
-        <p class="doc-meta">最終更新: <!-- ad:start -->2026年11月11日<!-- ad:end --><!-- no-ad:start -->2026年11月10日<!-- no-ad:end --></p>
+        <p class="doc-meta">最終更新: 2026年11月13日</p>
 
         <p>DIscheduler は Discord サーバー内の日程調整 Bot です。参加者の予定という個人に関わる情報を扱うため、セキュリティとプライバシーを最優先に設計しています。</p>
         <p>仕組みを隠すことで守る設計はとらず、対策の内容はすべて公開しています。秘密にしているのは、鍵とトークンだけです。設計の詳細（脅威モデル・対策・残存リスク）は、<a href="https://github.com/etlit-r/DIscheduler/blob/main/docs/security-design.md" rel="noopener noreferrer">セキュリティ設計書</a>で公開しています。</p>
@@ -73,6 +73,7 @@
           <li>Discord のパスワード入力や OAuth ログインを求めません</li>
           <li>管理者（Administrator）権限を要求しません</li>
           <li>メッセージ本文を読みません（Message Content Intent 不使用）</li>
+          <li>Bot を追加する前のメッセージ履歴も読みません（「メッセージ履歴を読む」権限を求めず、チャンネルのメッセージを取得する処理もありません）</li>
           <li>メールアドレス・IP アドレス・アバター画像を保存しません</li>
           <li><code>@everyone</code> / <code>@here</code> / ロールへのメンションをしません</li>
           <!-- no-ad:start --><li>外部の解析ツール・広告・CDN を読み込みません</li><!-- no-ad:end -->
@@ -180,6 +181,7 @@
           <table class="data">
             <thead><tr><th scope="col">日付</th><th scope="col">内容</th></tr></thead>
             <tbody>
+              <tr><td>2026年11月13日</td><td>Bot を追加する前のメッセージ履歴を読まないことを追記</td></tr>
               <!-- ad:start --><tr><td>2026年11月11日</td><td>回答の完了画面への広告の表示について追記</td></tr><!-- ad:end -->
               <tr><td>2026年11月10日</td><td>主催者の「作成した調整の一覧」と、そのためのセッションについて追記</td></tr>
               <!-- ad:start --><tr><td>2026年11月9日</td><td>トップページとこのページへの広告の表示について追記</td></tr><!-- ad:end -->
