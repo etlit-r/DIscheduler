@@ -174,7 +174,8 @@ export async function answerPage(pollId: string): Promise<void> {
         "p",
         { class: "tz-note small" },
         // UTC からの差は、候補の日時の時点のもの（夏時間で変わるため）
-        ...(tz === d.poll.timezone
+        // 「あなたの時刻」は時刻のある候補にだけ出るので、終日の候補だけなら調整のタイムゾーンだけを書く
+        ...(tz === d.poll.timezone || d.slots.every((s) => s.allDay)
           ? ["日時はすべて", h("strong", {}, timeZoneLabel(d.poll.timezone, slotStarts)), "で表示しています。"]
           : ["候補の日時は調整のタイムゾーンの", h("strong", {}, timeZoneLabel(d.poll.timezone, slotStarts)), "、「あなたの時刻」は", h("strong", {}, timeZoneLabel(tz, slotStarts)), "で表示しています。"]),
       ),
