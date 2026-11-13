@@ -204,7 +204,7 @@ stateDiagram-v2
 | `ALERT_WEBHOOK_URL` | Cloudflare Secrets（Worker `discheduler` のみ。任意） | 漏えい疑い時に Webhook を削除して作り直す。URL を知っていればそのチャンネルに投稿できるため、リポジトリ・ログに出さない（ログでは Webhook のトークンを伏せる） |
 | `DISCORD_PUBLIC_KEY` | Cloudflare 環境変数（公開値） | アプリ再作成時 |
 | `DISCORD_APPLICATION_ID` | Cloudflare 環境変数（公開値） | — |
-| `CLOUDFLARE_API_TOKEN` | GitHub Actions Environment Secret（`production` 環境・承認必須） | 年 1 回。権限は対象 Worker / D1 の編集のみに限定 |
+| `CLOUDFLARE_API_TOKEN` | GitHub Actions Environment Secret（`production` 環境。`main` からだけ使える。使う前に `production-approval` 環境での承認が必須） | 年 1 回。権限は対象 Worker / D1 の編集のみに限定 |
 
 - ローカル開発は `.dev.vars`（`.gitignore` 済み）を使い、本番とは別の Discord アプリ・別の D1 を使用する。
 
@@ -220,7 +220,7 @@ stateDiagram-v2
 | 静的解析 | GitHub CodeQL、ESLint（セキュリティルール）、TypeScript `strict` |
 | GitHub Actions | サードパーティ Action は **コミット SHA で固定**。`permissions:` を最小化（既定 `contents: read`） |
 | ブランチ保護 | `main` への直接 push 禁止、PR レビュー必須、CI 成功必須 |
-| デプロイ | `main` マージ時のみ GitHub Actions からデプロイ。手動承認付きの `production` Environment を使用 |
+| デプロイ | `main` マージ時のみ GitHub Actions からデプロイ。手動承認付きの `production-approval` Environment で承認してから、`main` からだけ使える `production` Environment の secret でデプロイする（承認待ちの間に次のマージがあれば、古い承認待ちは取り消す） |
 | シークレット検出 | GitHub Secret scanning ＋ Push protection |
 
 ---

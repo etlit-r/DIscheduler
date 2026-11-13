@@ -1,6 +1,8 @@
 # テストと、main へのマージ時のデプロイ（docs/design.md §14）
 # - プルリクエストでは test だけを実行する
-# - deploy は production Environment の承認者が承認するまで実行されない
+# - デプロイの前に approve（production-approval Environment の承認）を通す。承認するまで deploy は実行されない
+# - 承認待ちの間に次のマージがあったら、古い承認待ちは取り消す。いちばん新しいマージを承認すれば、
+#   その時点の main（それまでのマージをすべて含む）がデプロイされる
 # - サードパーティの Action はコミット SHA で固定（更新は Dependabot）
 name: Deploy
 
@@ -34,8 +36,23 @@ jobs:
       - name: Web 画面のビルド
         run: npm run build
 
-  deploy:
+  # 承認だけを行う。秘密の値は使わない（production-approval Environment には secret を置かない）。
+  # 承認待ちの間に新しいマージがあれば、この承認待ちは取り消され、新しいほうだけが承認待ちになる
+  approve:
     needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: approve-production
+      cancel-in-progress: true
+    environment:
+      name: production-approval
+    steps:
+      - run: echo "承認されました（${{ github.sha }}）"
+
+  # 実際のデプロイ。途中で止めると Pages と Worker の版がずれるため、実行中のデプロイは取り消さず、順に流す
+  deploy:
+    needs: approve
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency:
