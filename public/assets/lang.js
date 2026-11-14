@@ -19,32 +19,62 @@
   if (!link) return;
   const base = link.getAttribute("href");
   // # の後ろ（回答の完了画面の #p=、ページ内の見出し）は、もう一方の言語のページでも保つ。
-  // ページ内の見出しへ移ったあとでも保てるよう、押したときの # を使う
+  // ページ内の見出しへ移ったあとでも保てるよう、今の # を使う
   const withHash = (path) => path + location.hash;
-  link.setAttribute("href", withHash(base));
+  const withLang = (path, lang) => `${path}${path.includes("?") ? "&" : "?"}lang=${lang}`;
+  const sync = () => link.setAttribute("href", withHash(base));
+  sync();
+  // 新しいタブで開くとき（クリックの処理を通らない）も、今の # を使う
+  window.addEventListener("hashchange", sync);
   link.addEventListener("click", () => {
     const lang = link.getAttribute("data-lang");
-    // 保存できないブラウザでは ?lang= で選んだ言語を伝える（移った先で、ブラウザの言語のページへ戻されないように）
-    link.setAttribute("href", store(lang) ? withHash(base) : withHash(`${base}?lang=${lang}`));
+    if (store(lang)) {
+      sync();
+      return;
+    }
+    // 保存できないブラウザでは ?lang= で選んだ言語を伝える（移った先で、ブラウザの言語のページへ戻されないように）。
+    // 戻るでこのページへ戻ったときも、このページの言語のままにする
+    try {
+      const here = new URL(location.href);
+      here.searchParams.set("lang", page);
+      history.replaceState(history.state, "", here.href);
+    } catch {
+      // 書き換えられなくても、移る先には言語を伝える
+    }
+    link.setAttribute("href", withHash(withLang(base, lang)));
   });
 
-  // ?lang= で言語を選んで来たときは、そのページのまま
-  if (new URLSearchParams(location.search).get("lang") === page) return;
-  let saved = null;
-  try {
-    saved = localStorage.getItem(KEY);
-  } catch {
-    saved = null;
+  // URL の ?lang= ＞ このブラウザで選んだ言語 ＞ ブラウザの言語（Web 画面と同じ）
+  const q = new URLSearchParams(location.search).get("lang");
+  const fromUrl = q === "ja" || q === "en" ? q : null;
+  if (fromUrl && !store(fromUrl)) {
+    // 保存できないブラウザでは、同じサイトの中のリンクにも ?lang= を付けて、次のページでも言語を保つ
+    for (const a of document.querySelectorAll('a[href^="/"]:not([href^="//"]):not([data-lang])')) {
+      const href = a.getAttribute("href");
+      const i = href.indexOf("#");
+      const path = i < 0 ? href : href.slice(0, i);
+      const hash = i < 0 ? "" : href.slice(i);
+      if (!/[?&]lang=/.test(path)) a.setAttribute("href", withLang(path, fromUrl) + hash);
+    }
   }
   let want;
-  if (saved === "ja" || saved === "en") want = saved;
+  if (fromUrl) want = fromUrl;
   else {
-    if (navigator.webdriver || /bot|crawl|spider|slurp|preview/i.test(navigator.userAgent)) return;
-    const first = (navigator.languages && navigator.languages[0]) || navigator.language || "";
-    want = /^ja(\b|-|_|$)/i.test(first) ? "ja" : "en";
+    let saved = null;
+    try {
+      saved = localStorage.getItem(KEY);
+    } catch {
+      saved = null;
+    }
+    if (saved === "ja" || saved === "en") want = saved;
+    else {
+      if (navigator.webdriver || /bot|crawl|spider|slurp|preview/i.test(navigator.userAgent)) return;
+      const first = (navigator.languages && navigator.languages[0]) || navigator.language || "";
+      want = /^ja(\b|-|_|$)/i.test(first) ? "ja" : "en";
+    }
   }
   if (want === page) return;
   // もう一方の言語のページへ移る（# の後ろはそのまま保つ。回答の完了画面の #p= など）
   document.documentElement.setAttribute("data-lang-redirect", "");
-  location.replace(withHash(base));
+  location.replace(withHash(fromUrl ? withLang(base, fromUrl) : base));
 })();
