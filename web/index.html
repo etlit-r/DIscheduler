@@ -9,11 +9,14 @@
   <script type="module" src="./src/main.ts"></script>
 </head>
 <body>
-  <a class="skip-link" href="#main">本文へ移動</a>
+  <a class="skip-link" href="#main" id="skip-link">本文へ移動</a>
   <header class="site-header">
     <div class="container">
       <a class="brand" href="/">DIscheduler</a>
-      <div id="header-tools"></div>
+      <div class="header-actions">
+        <div id="header-tools"></div>
+        <button type="button" id="lang-switch" class="btn btn-secondary btn-small lang-switch" hidden></button>
+      </div>
     </div>
   </header>
   <main id="main" class="app-main">
@@ -25,7 +28,7 @@
     <div class="container">
       <p>DIscheduler</p>
       <ul>
-        <li><a href="/security">セキュリティ方針</a></li>
+        <li><a href="/security" id="footer-security">セキュリティ方針</a></li>
       </ul>
     </div>
   </footer>
