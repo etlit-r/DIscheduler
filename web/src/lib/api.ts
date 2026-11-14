@@ -37,6 +37,8 @@ export interface PollData {
   recentTimes: { start: string; end: string }[];
   /** サーバーの既定値の、Discord イベントの場所（主催者にだけ返る。null なら「Discord」） */
   defaultEventLocation: string | null;
+  /** サーバーの既定値の、Discord イベントのボイスチャンネル（主催者にだけ返る）。入っていれば確定の画面で最初から選ぶ */
+  defaultEventChannelId: string | null;
 }
 
 export class ApiError extends Error {

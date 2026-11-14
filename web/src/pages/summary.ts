@@ -205,8 +205,10 @@ function fixPanel(d: PollData, slotId: string, cancel: () => void, done: (m: HTM
   const tz = viewerTimeZone();
   const otherFixed = d.slots.filter((s) => s.fixedAt !== null && s.id !== slotId).length;
   const useEvent = h("input", { type: "checkbox", id: "fix-event" });
-  const typeVoice = h("input", { type: "radio", name: "ev-type", id: "ev-voice", value: "voice" });
-  const typeExternal = h("input", { type: "radio", name: "ev-type", id: "ev-external", value: "external", checked: true });
+  // サーバーの既定値（§5.3.1）でボイスチャンネルを決めていれば、「ボイスチャンネル」を最初から選ぶ
+  const defaultChannel = d.defaultEventChannelId;
+  const typeVoice = h("input", { type: "radio", name: "ev-type", id: "ev-voice", value: "voice", checked: !!defaultChannel });
+  const typeExternal = h("input", { type: "radio", name: "ev-type", id: "ev-external", value: "external", checked: !defaultChannel });
   const voiceSel = h("select", { id: "ev-channel" }, h("option", { value: "" }, "読み込み中…"));
   // 最初に入れておく場所は、サーバーの既定値（§5.3.1）。決めていなければ「Discord」
   const location = h("input", { type: "text", id: "ev-location", maxLength: 100, value: d.defaultEventLocation ?? "Discord", autocomplete: "off" });
@@ -218,11 +220,16 @@ function fixPanel(d: PollData, slotId: string, cancel: () => void, done: (m: HTM
     try {
       const r = await request<{ channels: { id: string; name: string }[] }>("GET", `/api/polls/${d.poll.id}/voice-channels`);
       render(voiceSel, h("option", { value: "" }, "選んでください"), ...r.channels.map((c) => h("option", { value: c.id }, c.name)));
+      if (defaultChannel && r.channels.some((c) => c.id === defaultChannel)) voiceSel.value = defaultChannel;
+      // 既定のチャンネルが消えていたら、「場所を入力」に戻す（選ばないまま確定するとイベントを登録できないため）
+      else if (defaultChannel && typeVoice.checked) typeExternal.checked = true;
     } catch {
       render(voiceSel, h("option", { value: "" }, "読み込めませんでした"));
+      if (defaultChannel && typeVoice.checked) typeExternal.checked = true;
     }
   };
   typeVoice.addEventListener("change", () => void loadVoice());
+  if (defaultChannel) void loadVoice();
   const label = slotText(slot, d.poll.timezone, tz).main;
   const submit = h(
     "button",
