@@ -253,6 +253,33 @@ describe("サーバーの既定値: イベントの場所（§5.3.1）", () => {
     expect(await db().prepare("SELECT mode, role_id, event_location FROM guild_settings WHERE guild_id = ?").bind(GUILD).first()).toEqual({ mode: "channel", role_id: null, event_location: "オンライン" });
   });
 
+  const channelPick = (perms: string, id: string, type: number) =>
+    signed({
+      type: 3, id: "9", application_id: "1", token: "tok", guild_id: GUILD, channel_id: CHANNEL, member: member(ORGANIZER, perms),
+      data: { custom_id: "settings_channel", component_type: 8, values: [id], resolved: { channels: { [id]: { id, type } } } },
+    });
+  const VOICE = "300000000000000777";
+
+  it("ボイスチャンネルを選ぶと既定になり、文字で場所を保存すると「場所を入力」に戻る（文字の場所は残す）", async () => {
+    mockDiscord();
+    await call(await modalSubmit(ADMIN, "第2会議室"), e());
+    const res = await call(await channelPick(ADMIN, VOICE, 2), e());
+    const body = (await res.json()) as { type: number; data: { content: string } };
+    expect(body.type).toBe(7);
+    expect(body.data.content).toContain(`<#${VOICE}>`);
+    expect(body.data.content).toContain("第2会議室");
+    expect(await db().prepare("SELECT event_location, event_channel_id FROM guild_settings WHERE guild_id = ?").bind(GUILD).first()).toEqual({ event_location: "第2会議室", event_channel_id: VOICE });
+    await call(await modalSubmit(ADMIN, "オンライン"), e());
+    expect(await db().prepare("SELECT event_location, event_channel_id FROM guild_settings WHERE guild_id = ?").bind(GUILD).first()).toEqual({ event_location: "オンライン", event_channel_id: null });
+  });
+
+  it("ボイスチャンネル以外と、権限のない人の選択は保存しない", async () => {
+    mockDiscord();
+    expect(JSON.stringify(await (await call(await channelPick(ADMIN, VOICE, 0), e())).json())).toContain("ボイスチャンネルを選んでください");
+    expect(JSON.stringify(await (await call(await channelPick("1024", VOICE, 2), e())).json())).toContain("サーバー管理");
+    expect(await db().prepare("SELECT * FROM guild_settings WHERE guild_id = ?").bind(GUILD).first()).toBeNull();
+  });
+
   it("権限のない人の送信と、長すぎる・見えない文字を含む場所は保存しない", async () => {
     mockDiscord();
     expect(JSON.stringify(await (await call(await modalSubmit("1024", "A"), e())).json())).toContain("サーバー管理");

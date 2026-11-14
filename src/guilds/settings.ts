@@ -14,11 +14,13 @@ export interface GuildSettings {
   roleId: string | null;
   /** Discord イベントの場所の既定値。null なら「Discord」 */
   eventLocation: string | null;
+  /** Discord イベントのボイスチャンネルの既定値。入っていれば「場所を入力」より優先して選ぶ */
+  eventChannelId: string | null;
   updatedBy: string | null;
   updatedAt: number | null;
 }
 
-export const DEFAULT_SETTINGS: GuildSettings = { mode: "channel", roleId: null, eventLocation: null, updatedBy: null, updatedAt: null };
+export const DEFAULT_SETTINGS: GuildSettings = { mode: "channel", roleId: null, eventLocation: null, eventChannelId: null, updatedBy: null, updatedAt: null };
 
 /** 「サーバー管理」権限（MANAGE_GUILD）または管理者権限 */
 export function canManageGuild(permissions: string | undefined): boolean {
@@ -27,27 +29,44 @@ export function canManageGuild(permissions: string | undefined): boolean {
 
 export async function getGuildSettings(db: D1Database, guildId: string): Promise<GuildSettings> {
   const row = await db
-    .prepare("SELECT mode, role_id, event_location, updated_by, updated_at FROM guild_settings WHERE guild_id = ?")
+    .prepare("SELECT mode, role_id, event_location, event_channel_id, updated_by, updated_at FROM guild_settings WHERE guild_id = ?")
     .bind(guildId)
-    .first<{ mode: DefaultMode; role_id: string | null; event_location: string | null; updated_by: string; updated_at: number }>();
+    .first<{ mode: DefaultMode; role_id: string | null; event_location: string | null; event_channel_id: string | null; updated_by: string; updated_at: number }>();
   if (!row) return DEFAULT_SETTINGS;
-  return { mode: row.mode, roleId: row.role_id, eventLocation: row.event_location, updatedBy: row.updated_by, updatedAt: row.updated_at };
+  return { mode: row.mode, roleId: row.role_id, eventLocation: row.event_location, eventChannelId: row.event_channel_id, updatedBy: row.updated_by, updatedAt: row.updated_at };
 }
 
-/** イベントの場所の既定値だけを読む（集計画面を開いた主催者に返す） */
-export async function getDefaultEventLocation(db: D1Database, guildId: string): Promise<string | null> {
-  const row = await db.prepare("SELECT event_location FROM guild_settings WHERE guild_id = ?").bind(guildId).first<{ event_location: string | null }>();
-  return row?.event_location ?? null;
+/** Discord イベントの場所の既定値だけを読む（集計画面を開いた主催者に返す） */
+export async function getEventDefaults(db: D1Database, guildId: string): Promise<{ location: string | null; channelId: string | null }> {
+  const row = await db
+    .prepare("SELECT event_location, event_channel_id FROM guild_settings WHERE guild_id = ?")
+    .bind(guildId)
+    .first<{ event_location: string | null; event_channel_id: string | null }>();
+  return { location: row?.event_location ?? null, channelId: row?.event_channel_id ?? null };
 }
 
-/** イベントの場所の既定値を保存する（null で「Discord」に戻す）。参加者の決め方はそのまま */
+/**
+ * 文字で入力する場所の既定値を保存する（null で「Discord」に戻す）。参加者の決め方はそのまま。
+ * 文字で決めたら「場所を入力」を既定にするので、ボイスチャンネルの既定は外す
+ */
 export async function saveDefaultEventLocation(db: D1Database, guildId: string, location: string | null, userId: string): Promise<void> {
   await db
     .prepare(
       "INSERT INTO guild_settings (guild_id, event_location, updated_by, updated_at) VALUES (?, ?, ?, ?) " +
-        "ON CONFLICT(guild_id) DO UPDATE SET event_location = excluded.event_location, updated_by = excluded.updated_by, updated_at = excluded.updated_at",
+        "ON CONFLICT(guild_id) DO UPDATE SET event_location = excluded.event_location, event_channel_id = NULL, updated_by = excluded.updated_by, updated_at = excluded.updated_at",
     )
     .bind(guildId, location, userId, nowSec())
+    .run();
+}
+
+/** ボイスチャンネルの既定値を保存する。文字の場所の既定値は、「場所を入力」に切り替えたときのために残す */
+export async function saveDefaultEventChannel(db: D1Database, guildId: string, channelId: string, userId: string): Promise<void> {
+  await db
+    .prepare(
+      "INSERT INTO guild_settings (guild_id, event_channel_id, updated_by, updated_at) VALUES (?, ?, ?, ?) " +
+        "ON CONFLICT(guild_id) DO UPDATE SET event_channel_id = excluded.event_channel_id, updated_by = excluded.updated_by, updated_at = excluded.updated_at",
+    )
+    .bind(guildId, channelId, userId, nowSec())
     .run();
 }
 
@@ -69,18 +88,28 @@ const MODE_LABEL: Record<DefaultMode, string> = {
 
 /** 既定値の設定メッセージ（本人にだけ表示） */
 export function buildSettingsMessage(s: GuildSettings, note: string | null) {
-  const current =
-    s.mode === "role" && s.roleId ? `${MODE_LABEL.role}（<@&${s.roleId}>）` : MODE_LABEL[s.mode];
+  // 「自動: 」「手動: 」のあとの、いま選ばれている値を太字と下線で目立たせる（Discord の __**…**__）
+  const [kind, value] = MODE_LABEL[s.mode].split(": ") as [string, string];
+  const mode = s.mode === "role" && s.roleId ? `${value}（<@&${s.roleId}>）` : value;
+  const location = s.eventLocation ? escapeMarkdown(s.eventLocation) : "Discord（初期値）";
+  // ボイスチャンネルを既定にしているときは、そのチャンネルを出す（チャンネル名の表示は Discord がする）
+  const place = s.eventChannelId
+    ? [
+        `○イベントの場所: ボイスチャンネル __**<#${s.eventChannelId}>**__`,
+        "日時を確定して Discord イベントに登録するとき、このボイスチャンネルが最初から選ばれます",
+        `（「場所を入力」に切り替えたときは、「${location}」が入ります）`,
+      ]
+    : [`○イベントの場所: __**${location}**__`, "日時を確定して Discord イベントに登録するとき、「場所を入力」の欄に最初から入ります"];
   const lines = [
     "**このサーバーの既定値**",
     "主催者は調整ごとに変更できます。",
     "",
-    `参加者の決め方: ${current}`,
-    "（`/schedule`（`/di`）でオプションを指定しなかったときに使われます）",
-    `イベントの場所: ${s.eventLocation ? escapeMarkdown(s.eventLocation) : "Discord（初期値）"}`,
-    "（日時を確定して Discord イベントに登録するとき、「場所を入力」の欄に最初から入ります）",
+    `○参加者の決め方: ${kind}: __**${mode}**__`,
+    "`/schedule`（`/di`）でオプションを指定しなかったときに使われます",
+    "",
+    ...place,
   ];
-  if (s.updatedBy && s.updatedAt) lines.push(`最終変更: <@${s.updatedBy}>（<t:${s.updatedAt}:f>）`);
+  if (s.updatedBy && s.updatedAt) lines.push("", `（最終変更: <@${s.updatedBy}>：<t:${s.updatedAt}:f>）`);
   if (note) lines.push("", note);
   return {
     content: lines.join("\n"),
@@ -111,7 +140,21 @@ export function buildSettingsMessage(s: GuildSettings, note: string | null) {
           },
         ],
       },
-      { type: 1, components: [{ type: 2, style: 2, label: "イベントの場所を変更", custom_id: "settings_location" }] },
+      {
+        type: 1,
+        components: [
+          {
+            type: 8, // チャンネルの選択
+            custom_id: "settings_channel",
+            placeholder: "イベントの場所をボイスチャンネルにする",
+            channel_types: [2, 13], // ボイス・ステージ（確定の画面の一覧と同じ）
+            min_values: 1,
+            max_values: 1,
+            // 保存済みのチャンネルは本文に表示し、選んだ状態にしない（ロールと同じ理由）
+          },
+        ],
+      },
+      { type: 1, components: [{ type: 2, style: 2, label: "イベントの場所を文字で入力", custom_id: "settings_location" }] },
     ],
   };
 }
@@ -120,7 +163,7 @@ export function buildSettingsMessage(s: GuildSettings, note: string | null) {
 export function buildLocationModal(current: string | null) {
   return {
     custom_id: "settings_location_modal",
-    title: "イベントの場所の既定値",
+    title: "イベントの場所（文字で入力）",
     components: [
       {
         type: 1,
