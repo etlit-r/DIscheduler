@@ -69,18 +69,21 @@ const MODE_LABEL: Record<DefaultMode, string> = {
 
 /** 既定値の設定メッセージ（本人にだけ表示） */
 export function buildSettingsMessage(s: GuildSettings, note: string | null) {
-  const current =
-    s.mode === "role" && s.roleId ? `${MODE_LABEL.role}（<@&${s.roleId}>）` : MODE_LABEL[s.mode];
+  // 「自動: 」「手動: 」のあとの、いま選ばれている値を太字と下線で目立たせる（Discord の __**…**__）
+  const [kind, value] = MODE_LABEL[s.mode].split(": ") as [string, string];
+  const mode = s.mode === "role" && s.roleId ? `${value}（<@&${s.roleId}>）` : value;
+  const location = s.eventLocation ? escapeMarkdown(s.eventLocation) : "Discord（初期値）";
   const lines = [
     "**このサーバーの既定値**",
     "主催者は調整ごとに変更できます。",
     "",
-    `参加者の決め方: ${current}`,
-    "（`/schedule`（`/di`）でオプションを指定しなかったときに使われます）",
-    `イベントの場所: ${s.eventLocation ? escapeMarkdown(s.eventLocation) : "Discord（初期値）"}`,
-    "（日時を確定して Discord イベントに登録するとき、「場所を入力」の欄に最初から入ります）",
+    `○参加者の決め方: ${kind}: __**${mode}**__`,
+    "`/schedule`（`/di`）でオプションを指定しなかったときに使われます",
+    "",
+    `○イベントの場所: __**${location}**__`,
+    "日時を確定して Discord イベントに登録するとき、「場所を入力」の欄に最初から入ります",
   ];
-  if (s.updatedBy && s.updatedAt) lines.push(`最終変更: <@${s.updatedBy}>（<t:${s.updatedAt}:f>）`);
+  if (s.updatedBy && s.updatedAt) lines.push("", `（最終変更: <@${s.updatedBy}>：<t:${s.updatedAt}:f>）`);
   if (note) lines.push("", note);
   return {
     content: lines.join("\n"),
