@@ -75,7 +75,8 @@ export function timeZoneLabel(tz: string, at: readonly number[]): string {
 
 /**
  * タイムゾーンの一覧に、名前と UTC からの差を添える（検索に使う。最初に開いたときに 1 回だけ作る）。
- * 名前は画面の言語で表示し、検索は日本語と英語のどちらの名前でもできるようにする（例: 日本、Japan）
+ * 名前は画面の言語で表示する。日本語の画面では英語の名前でも探せる（例: Japan）。
+ * 英語の画面で日本語の名前で探せるのは、日本（Asia/Tokyo。例: 日本）だけ
  */
 function timeZoneEntries(): TzEntry[] {
   if (tzEntries) return tzEntries;
@@ -84,7 +85,7 @@ function timeZoneEntries(): TzEntry[] {
   tzEntries = allTimeZones().map((id) => {
     const name = part(id, "longGeneric") || part(id, "long");
     const other: "ja" | "en" = LANG === "en" ? "ja" : "en";
-    const otherName = zonePart(id, "longGeneric", now, other) || zonePart(id, "long", now, other);
+    const otherName = LANG === "ja" || id === DEFAULT_TIMEZONE ? zonePart(id, "longGeneric", now, other) || zonePart(id, "long", now, other) : "";
     const gmt = part(id, "shortOffset"); // 例: GMT+9、GMT-3:30、GMT
     const offset = gmt.replace(/^GMT/, "UTC") || "UTC";
     const haystack = normalizeTzQuery([id, id.replace(/_/g, " "), name, otherName, offset, gmt, offset.replace(/^UTC/, "")].join(" "));
