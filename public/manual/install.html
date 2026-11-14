@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>サーバーに追加する｜マニュアル｜DIscheduler</title>
-  <meta name="description" content="DIscheduler を Discord のサーバーに追加する方法と、Bot に渡す権限。">
+  <meta name="description" content="DIscheduler を Discord のサーバーに追加する方法と、Bot に渡す権限、サーバーから外す方法。">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <meta name="color-scheme" content="dark">
   <link rel="stylesheet" href="/assets/site.css">
@@ -88,8 +88,23 @@
           <li>Bot が募集メッセージを投稿するチャンネルでは、Bot に「チャンネルを見る」「メッセージを送信」「埋め込みリンク」が許可されている必要があります。チャンネルごとに権限を絞っている場合は、Bot のロールにも許可を付けてください。</li>
         </ul>
 
-        <h2 id="remove">サーバーから外すと</h2>
-        <p>Bot をサーバーから外すと、毎日 1 時（日本時間）の自動処理で、そのサーバーの調整や設定のデータが削除されます。</p>
+        <h2 id="remove">サーバーから外す</h2>
+        <p>DIscheduler を使わなくなったときは、Bot をサーバーから外します。外せるのは、そのサーバーで「メンバーをキック」か「サーバー管理」の権限を持っている人です。</p>
+        <h3>外す前に</h3>
+        <p>Bot を外すと、Bot はチャンネルのメッセージや Discord イベントを変更できなくなります。募集メッセージを「削除されました」に変えたり、Bot が登録した Discord イベントを消したりしたい場合は、外す前に、主催者が <a href="/manual/manage">調整を管理・削除する</a> の手順で調整を削除してください。</p>
+        <h3>手順</h3>
+        <ol>
+          <li>サーバーのメンバー一覧で、DIscheduler の Bot を右クリックします（スマートフォンでは長押しします）。</li>
+          <li>「DIscheduler をキック」を選び、確認の画面でキックします。</li>
+        </ol>
+        <p>「サーバー設定」→「連携サービス」で DIscheduler を開き、そこから外すこともできます。</p>
+        <h3>外したあと</h3>
+        <ul>
+          <li><code>/schedule</code>（<code>/di</code>）のコマンドは、そのサーバーで使えなくなります。</li>
+          <li>そのサーバーの調整、回答、サーバーの既定値などのデータは、毎日 1 時（日本時間）の自動処理で削除されます。削除したデータは元に戻せません。</li>
+          <li>チャンネルに投稿済みの募集メッセージやお知らせ、Bot が登録した Discord イベントは、Bot からは消せないため残ります。不要なら、サーバーの管理者が Discord で削除してください。</li>
+          <li>データが削除されたあとにもう一度追加したときは、初めて追加したときと同じ状態から始まります（サーバーの既定値も初期値に戻ります）。</li>
+        </ul>
 
         <nav class="pager" aria-label="前後のページ">
           <a class="prev" href="/manual/"><small>前へ</small><span>はじめに</span></a>
