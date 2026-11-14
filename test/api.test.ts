@@ -790,6 +790,16 @@ describe("8 回目のレビューのあとの確認", () => {
 });
 
 
+describe("エラーの言語（§6.12）", () => {
+  it("X-DI-Lang: en なら英語、なければ日本語で返す", async () => {
+    const s = await seedPoll({ participants: [ALICE] });
+    const res = await call(new Request(`${ORIGIN}/api/polls/${s.pollId}`, { headers: { "X-DI-Lang": "en" } }));
+    expect(((await res.json()) as { error: { message: string } }).error.message).toMatch(/expired/);
+    const ja = await call(getReq(`/api/polls/${s.pollId}`));
+    expect(((await ja.json()) as { error: { message: string } }).error.message).toMatch(/有効期限/);
+  });
+});
+
 describe("イベントの場所の既定値（§5.3.1）", () => {
   it("主催者にだけ、サーバーの既定値を返す", async () => {
     const s = await seedPoll({ participants: [ALICE] });
