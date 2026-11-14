@@ -4,6 +4,7 @@ import { h, lineIcon, notice, render } from "../lib/dom";
 import { donationNote } from "../../../src/shared/text";
 import { DEFAULT_TIMEZONE, formatDateTime, formatSlot, isValidTimeZone, zoneAbbr, type SlotTime } from "../lib/time";
 import { tr, LANG } from "../lib/i18n";
+import type { Lang } from "../../../src/shared/i18n";
 
 const TZ_KEY = "dis.viewerTz";
 
@@ -48,7 +49,7 @@ let tzEntries: TzEntry[] | null = null;
 const zoneFormatters = new Map<string, Intl.DateTimeFormat | null>();
 
 /** タイムゾーンの名前（style に合わせて「日本標準時」「GMT+9」など）。言語を渡さなければ画面の言語。取れなければ空文字 */
-function zonePart(tz: string, style: Intl.DateTimeFormatOptions["timeZoneName"], at: Date, lang: "ja" | "en" = LANG): string {
+function zonePart(tz: string, style: Intl.DateTimeFormatOptions["timeZoneName"], at: Date, lang: Lang = LANG): string {
   const key = `${tz}|${style}|${lang}`;
   let f = zoneFormatters.get(key);
   if (f === undefined) {
@@ -84,7 +85,7 @@ function timeZoneEntries(): TzEntry[] {
   const part = (tz: string, style: Intl.DateTimeFormatOptions["timeZoneName"]): string => zonePart(tz, style, now);
   tzEntries = allTimeZones().map((id) => {
     const name = part(id, "longGeneric") || part(id, "long");
-    const other: "ja" | "en" = LANG === "en" ? "ja" : "en";
+    const other: Lang = LANG === "en" ? "ja" : "en";
     const otherName = LANG === "ja" || id === DEFAULT_TIMEZONE ? zonePart(id, "longGeneric", now, other) || zonePart(id, "long", now, other) : "";
     const gmt = part(id, "shortOffset"); // 例: GMT+9、GMT-3:30、GMT
     const offset = gmt.replace(/^GMT/, "UTC") || "UTC";

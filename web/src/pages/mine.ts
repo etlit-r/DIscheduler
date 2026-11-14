@@ -2,7 +2,7 @@
 // Discord の［作成した調整を管理］から開く。このサーバーで自分が主催した調整だけを表示し、編集・集計・削除ができる。
 import { ApiError, request, setCsrf } from "../lib/api";
 import { h, notice, render, setTitle } from "../lib/dom";
-import { dateTimeText, showError, viewerTimeZone } from "../ui/common";
+import { dateTimeText, showError, STATUS_LABEL, viewerTimeZone } from "../ui/common";
 import { formatSlot } from "../lib/time";
 import type { PollStatus } from "../../../src/shared/model";
 import { tr } from "../lib/i18n";
@@ -22,13 +22,10 @@ interface MinePoll {
 }
 
 type Filter = "all" | "draft" | "open" | "closed" | "fixed";
-const STATUS_LABEL: Record<string, string> = { draft: tr("下書き", "Draft"), open: tr("募集中", "Open"), closed: tr("締切後", "Closed"), fixed: tr("確定", "Confirmed") };
+// 状態の名前は、集計画面と同じもの（ui/common の STATUS_LABEL）を使う
 const FILTERS: [Filter, string][] = [
   ["all", tr("すべて", "All")],
-  ["draft", tr("下書き", "Draft")],
-  ["open", tr("募集中", "Open")],
-  ["closed", tr("締切後", "Closed")],
-  ["fixed", tr("確定", "Confirmed")],
+  ...(["draft", "open", "closed", "fixed"] as const).map((f): [Filter, string] => [f, STATUS_LABEL[f]!]),
 ];
 
 export async function minePage(guildId: string): Promise<void> {
