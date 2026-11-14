@@ -3,7 +3,8 @@ import { loadPoll, request, type PollData } from "../lib/api";
 import { choiceMark, dateTimeText, memberMatrix, mountViewerTzSwitch, timeZoneLabel, rememberDonation, showError, slotText, statusBanner, viewerTimeZone, errorText } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
 import { canAnswer, tally } from "../../../src/shared/model";
-import { formatDate, formatSlotTime, zoneAbbr } from "../../../src/shared/time";
+import { formatDate, formatSlotTime, zoneAbbr } from "../lib/time";
+import { tr } from "../lib/i18n";
 
 export async function answerPage(pollId: string): Promise<void> {
   const app = document.getElementById("app")!;
@@ -46,7 +47,7 @@ export async function answerPage(pollId: string): Promise<void> {
   function draw(): void {
     const d = data;
     const tz = viewerTimeZone();
-    setTitle(d.poll.title ?? "回答");
+    setTitle(d.poll.title ?? tr("回答", "Answer"));
     const saved = d.answers.map((a) => ({ slotId: a.slotId, userId: a.userId, choiceId: a.choiceId }));
     const slots = d.slots.map((s) => ({ id: s.id, startAt: s.startAt }));
     const t = tally(slots, d.choices, saved);
@@ -75,7 +76,7 @@ export async function answerPage(pollId: string): Promise<void> {
       const time = byDate ? formatSlotTime(s, d.poll.timezone) + (st.sub ? ` ${zoneAbbr(s.startAt, d.poll.timezone)}` : "") : st.main;
       const tt = t.get(s.id)!;
       const isFixed = s.fixedAt !== null;
-      const group = h("div", { class: "choice-group", role: "radiogroup", aria: { label: `${st.main} の回答` } });
+      const group = h("div", { class: "choice-group", role: "radiogroup", aria: { label: tr(`${st.main} の回答`, `Answer for ${st.main}`) } });
       for (const c of d.choices) {
         const selected = draft.get(s.id) === c.id;
         group.appendChild(
@@ -114,16 +115,16 @@ export async function answerPage(pollId: string): Promise<void> {
               // 日付は、その日の枠の最初の行にだけ、時間帯の上に書く（読み上げは一覧の名前で伝える）
               firstOfDay ? h("span", { class: "answer-date", aria: { hidden: "true" } }, label) : null,
               // 最有力候補（★）は回答画面には出さない（集計画面だけで出す）
-              isFixed ? h("span", { class: "badge badge-fixed" }, "確定") : null,
+              isFixed ? h("span", { class: "badge badge-fixed" }, tr("確定", "Confirmed")) : null,
               h("span", { class: "slot-main" }, time),
             ),
             st.sub ? h("span", { class: "slot-sub" }, st.sub) : null,
             h(
               "div",
               { class: "tally-line" },
-              h("span", { class: "visually-hidden" }, "いまの回答: "),
+              h("span", { class: "visually-hidden" }, tr("いまの回答: ", "Current answers: ")),
               ...d.choices.map((c) => h("span", { class: "tally-item" }, choiceMark(c, "mark-tiny"), String(tt.byChoice[c.id] ?? 0))),
-              h("span", { class: "tally-item muted" }, `未回答 ${d.participants.length - tt.answered}`),
+              h("span", { class: "tally-item muted" }, tr(`未回答 ${d.participants.length - tt.answered}`, `No answer ${d.participants.length - tt.answered}`)),
             ),
           ),
           group,
@@ -140,7 +141,7 @@ export async function answerPage(pollId: string): Promise<void> {
       autocomplete: "off",
       onInput: () => (comment = commentInput.value),
     });
-    const saveBtn = h("button", { type: "submit", class: "btn btn-primary", disabled: !editable }, "保存する");
+    const saveBtn = h("button", { type: "submit", class: "btn btn-primary", disabled: !editable }, tr("保存する", "Save"));
     const form = h(
       "form",
       {
@@ -158,7 +159,7 @@ export async function answerPage(pollId: string): Promise<void> {
             // 調整の ID は # の後ろに置き、サーバーのログにも広告の枠にも送らない
             location.assign(`/answered#p=${pollId}`);
           } catch (err) {
-            message = notice("error", err instanceof Error ? err.message : "保存できませんでした。");
+            message = notice("error", err instanceof Error ? err.message : tr("保存できませんでした。", "Couldn't save."));
             saveBtn.disabled = false;
             draw();
           }
@@ -176,21 +177,21 @@ export async function answerPage(pollId: string): Promise<void> {
         // UTC からの差は、候補の日時の時点のもの（夏時間で変わるため）
         // 「あなたの時刻」は時刻のある候補にだけ出るので、終日の候補だけなら調整のタイムゾーンだけを書く
         ...(tz === d.poll.timezone || d.slots.every((s) => s.allDay)
-          ? ["日時はすべて", h("strong", {}, timeZoneLabel(d.poll.timezone, slotStarts)), "で表示しています。"]
-          : ["候補の日時は調整のタイムゾーンの", h("strong", {}, timeZoneLabel(d.poll.timezone, slotStarts)), "、「あなたの時刻」は", h("strong", {}, timeZoneLabel(tz, slotStarts)), "で表示しています。"]),
+          ? [tr("日時はすべて", "All times are shown in "), h("strong", {}, timeZoneLabel(d.poll.timezone, slotStarts)), tr("で表示しています。", ".")]
+          : [tr("候補の日時は調整のタイムゾーンの", "Date options are shown in the poll's time zone, "), h("strong", {}, timeZoneLabel(d.poll.timezone, slotStarts)), tr("、「あなたの時刻」は", ", and \"Your time\" in "), h("strong", {}, timeZoneLabel(tz, slotStarts)), tr("で表示しています。", ".")]),
       ),
       list,
       editable && first && last
         ? h(
             "div",
             { class: "row" },
-            h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { for (const s of d.slots) draft.set(s.id, first.id); draw(); } }, `すべて${first.symbol}`),
-            h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { for (const s of d.slots) draft.set(s.id, last.id); draw(); } }, `すべて${last.symbol}`),
+            h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { for (const s of d.slots) draft.set(s.id, first.id); draw(); } }, tr(`すべて${first.symbol}`, `All ${first.symbol}`)),
+            h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { for (const s of d.slots) draft.set(s.id, last.id); draw(); } }, tr(`すべて${last.symbol}`, `All ${last.symbol}`)),
           )
         : null,
-      h("div", { class: "field" }, h("label", { for: "comment" }, "ひとこと（任意・100 文字まで）"), commentInput),
-      h("p", { class: "muted small" }, "あなたの回答とひとことは、この調整の参加者全員に表示されます。参加者以外には表示されません。"),
-      h("div", { class: "row row-end" }, h("a", { class: "btn btn-secondary", href: `/p/${pollId}` }, "集計表を見る"), saveBtn),
+      h("div", { class: "field" }, h("label", { for: "comment" }, tr("ひとこと（任意・100 文字まで）", "Comment (optional, up to 100 characters)")), commentInput),
+      h("p", { class: "muted small" }, tr("あなたの回答とひとことは、この調整の参加者全員に表示されます。参加者以外には表示されません。", "Your answers and comment are shown to all participants in this poll. They are not shown to anyone else.")),
+      h("div", { class: "row row-end" }, h("a", { class: "btn btn-secondary", href: `/p/${pollId}` }, tr("集計表を見る", "View results")), saveBtn),
     );
 
     render(
@@ -199,18 +200,18 @@ export async function answerPage(pollId: string): Promise<void> {
         "section",
         { class: "page" },
         // まだ誰も回答を保存していないときは、最初の回答者だと分かるようにする（§6.4）
-        editable && d.answers.length === 0 ? notice("info", "あなたが最初の入力者です。") : null,
-        h("h1", {}, d.poll.title ?? "日程調整"),
+        editable && d.answers.length === 0 ? notice("info", tr("あなたが最初の入力者です。", "You are the first to answer.")) : null,
+        h("h1", {}, d.poll.title ?? tr("日程調整", "Scheduling poll")),
         h(
           "p",
           { class: "meta" },
-          d.poll.deadlineAt ? `締切 ${dateTimeText(d.poll.deadlineAt, tz)}` : "",
+          d.poll.deadlineAt ? tr(`締切 ${dateTimeText(d.poll.deadlineAt, tz)}`, `Deadline ${dateTimeText(d.poll.deadlineAt, tz)}`) : "",
           h("span", { class: "sep" }, "／"),
-          `あなた: ${d.me.displayName ?? ""}`,
+          tr(`あなた: ${d.me.displayName ?? ""}`, `You: ${d.me.displayName ?? ""}`),
           h("span", { class: "sep" }, "／"),
-          `回答 ${answeredUsers.size}/${d.participants.length} 名`,
+          tr(`回答 ${answeredUsers.size}/${d.participants.length} 名`, `Answered ${answeredUsers.size}/${d.participants.length}`),
           " ",
-          h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => void reload() }, "↻ 更新"),
+          h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => void reload() }, tr("↻ 更新", "↻ Refresh")),
         ),
         d.poll.description ? h("p", { class: "description" }, d.poll.description) : null,
         statusBanner(d),
@@ -219,7 +220,7 @@ export async function answerPage(pollId: string): Promise<void> {
         d.me.needsChoicesAck && d.poll.choicesChangedAt
           ? notice(
               "warn",
-              `回答のあとで、主催者が選択肢を変更しました（${dateTimeText(d.poll.choicesChangedAt, tz)}）。あなたの回答の意味が変わっていないか確認してください。 `,
+              tr(`回答のあとで、主催者が選択肢を変更しました（${dateTimeText(d.poll.choicesChangedAt, tz)}）。あなたの回答の意味が変わっていないか確認してください。 `, `The organizer changed the answer choices after you answered (${dateTimeText(d.poll.choicesChangedAt, tz)}). Please check that your answers still mean what you intended. `),
               h(
                 "button",
                 {
@@ -230,19 +231,19 @@ export async function answerPage(pollId: string): Promise<void> {
                       await request("POST", `/api/polls/${pollId}/choices-ack`, {});
                       await reload();
                     } catch (e) {
-                      message = notice("error", errorText(e, "answer", "保存できませんでした。"));
+                      message = notice("error", errorText(e, "answer", tr("保存できませんでした。", "Couldn't save.")));
                       draw();
                     }
                   },
                 },
-                "確認しました",
+                tr("確認しました", "Checked"),
               ),
             )
           : null,
         message,
         form,
         // 誰がどう答えたかは、行ごとではなく、いちばん下にまとめた表で見る（畳んでおく）
-        d.answers.length ? memberMatrix(d, tz, "みんなの回答", whoOpen, (o) => (whoOpen = o)) : null,
+        d.answers.length ? memberMatrix(d, tz, tr("みんなの回答", "Everyone's answers"), whoOpen, (o) => (whoOpen = o)) : null,
       ),
     );
     if (focusKey) {

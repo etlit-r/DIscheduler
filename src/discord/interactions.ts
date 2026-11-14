@@ -171,7 +171,7 @@ async function handleCreate(env: Env, i: Interaction, origin: string, guildId: s
   if (result.targetType !== "role") {
     lines.push("", "💡 参加者はロールで決めるのがおすすめです。公開したときと予定のリマインドで、そのロールのメンバーにだけ通知が届きます（ロールがないと @everyone で通知します）。作成画面の「参加者」か、`/schedule` の `role` で選べます。");
   }
-  if (result.notice) lines.push("", `⚠️ ${result.notice}`);
+  if (result.notice) lines.push("", `⚠️ ${result.notice.ja}`);
   await editOriginal(env, i, lines.join("\n"), [
     { type: 1, components: [linkButton("調整を作成する", url)] },
     ...menuRow(isAdmin(i)),

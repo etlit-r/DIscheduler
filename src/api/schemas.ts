@@ -1,6 +1,7 @@
 // Web API の入力スキーマ（未知のキーは拒否する。docs/design.md §8.1）
 import * as v from "valibot";
 import { CHOICE_COLORS, CHOICE_KINDS, LIMITS } from "../shared/model";
+import { vmsg } from "../shared/i18n";
 import { charLength, graphemeLength, hasControlChars, hasControlCharsExceptNewline, isSafeChoiceText } from "../shared/text";
 
 const id = v.pipe(v.string(), v.regex(/^[A-Za-z0-9_-]{22}$/));
@@ -11,8 +12,8 @@ const singleLine = (max: number) =>
   v.pipe(
     v.string(),
     v.trim(),
-    v.check((s) => charLength(s) >= 1 && charLength(s) <= max, `1〜${max} 文字で入力してください`),
-    v.check((s) => !hasControlChars(s), "使えない文字が含まれています"),
+    v.check((s) => charLength(s) >= 1 && charLength(s) <= max, vmsg(`1〜${max} 文字で入力してください`, `Enter 1 to ${max} characters`)),
+    v.check((s) => !hasControlChars(s), vmsg("使えない文字が含まれています", "Contains characters that can't be used")),
   );
 
 export const SessionBody = v.strictObject({ token: v.pipe(v.string(), v.regex(/^[A-Za-z0-9_-]{43}$/)) });
@@ -27,8 +28,8 @@ export const PatchPollBody = v.strictObject({
     v.nullable(
       v.pipe(
         v.string(),
-        v.check((s) => charLength(s) <= LIMITS.descriptionMax, `${LIMITS.descriptionMax} 文字以内で入力してください`),
-        v.check((s) => !hasControlCharsExceptNewline(s), "使えない文字が含まれています"),
+        v.check((s) => charLength(s) <= LIMITS.descriptionMax, vmsg(`${LIMITS.descriptionMax} 文字以内で入力してください`, `Enter up to ${LIMITS.descriptionMax} characters`)),
+        v.check((s) => !hasControlCharsExceptNewline(s), vmsg("使えない文字が含まれています", "Contains characters that can't be used")),
       ),
     ),
   ),
@@ -54,7 +55,7 @@ export const SlotsBody = v.strictObject({
         allDay: v.boolean(),
       }),
     ),
-    v.maxLength(LIMITS.slotsMax, `候補は ${LIMITS.slotsMax} 件までです`),
+    v.maxLength(LIMITS.slotsMax, vmsg(`候補は ${LIMITS.slotsMax} 件までです`, `You can add up to ${LIMITS.slotsMax} date options`)),
   ),
 });
 
@@ -62,8 +63,8 @@ const choiceText = (maxGraphemes: number, maxChars: number) =>
   v.pipe(
     v.string(),
     v.trim(),
-    v.check((s) => graphemeLength(s) >= 1 && graphemeLength(s) <= maxGraphemes && charLength(s) <= maxChars, "長さが正しくありません"),
-    v.check(isSafeChoiceText, "使えない文字が含まれています"),
+    v.check((s) => graphemeLength(s) >= 1 && graphemeLength(s) <= maxGraphemes && charLength(s) <= maxChars, vmsg("長さが正しくありません", "The length is not valid")),
+    v.check(isSafeChoiceText, vmsg("使えない文字が含まれています", "Contains characters that can't be used")),
   );
 
 export const ChoicesBody = v.strictObject({
@@ -79,8 +80,8 @@ export const ChoicesBody = v.strictObject({
         color: v.picklist(CHOICE_COLORS as ["green", "teal", "yellow", "orange", "red", "gray"]),
       }),
     ),
-    v.minLength(LIMITS.choicesMin, `選択肢は ${LIMITS.choicesMin} 個以上にしてください`),
-    v.maxLength(LIMITS.choicesMax, `選択肢は ${LIMITS.choicesMax} 個までです`),
+    v.minLength(LIMITS.choicesMin, vmsg(`選択肢は ${LIMITS.choicesMin} 個以上にしてください`, `Add at least ${LIMITS.choicesMin} answer choices`)),
+    v.maxLength(LIMITS.choicesMax, vmsg(`選択肢は ${LIMITS.choicesMax} 個までです`, `You can add up to ${LIMITS.choicesMax} answer choices`)),
   ),
   reassign: v.pipe(v.array(v.strictObject({ from: id, to: id })), v.maxLength(LIMITS.choicesMax)),
 });
@@ -97,8 +98,8 @@ export const AnswersBody = v.strictObject({
     v.pipe(
       v.string(),
       v.trim(),
-      v.check((s) => charLength(s) <= LIMITS.commentMax, `${LIMITS.commentMax} 文字以内で入力してください`),
-      v.check((s) => !hasControlChars(s), "使えない文字が含まれています"),
+      v.check((s) => charLength(s) <= LIMITS.commentMax, vmsg(`${LIMITS.commentMax} 文字以内で入力してください`, `Enter up to ${LIMITS.commentMax} characters`)),
+      v.check((s) => !hasControlChars(s), vmsg("使えない文字が含まれています", "Contains characters that can't be used")),
     ),
   ),
 });

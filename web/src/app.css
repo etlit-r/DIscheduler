@@ -64,6 +64,10 @@
 .field { display: grid; gap: 4px; margin: 0 0 12px; }
 .field label { font-weight: 600; }
 .field-inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
+/* チェックボックス・ラジオボタンと名前だけの行は、名前が長くても折り返さずにボタンのすぐ隣で改行する */
+.field-check { flex-wrap: nowrap; align-items: flex-start; }
+.field-check > input { flex: none; margin-top: 0.2em; }
+.field-check > label { min-width: 0; }
 fieldset { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; margin: 10px 0; }
 legend { font-weight: 600; padding: 0 4px; }
 input[type="text"], input[type="search"], input[type="number"], input[type="time"], input[type="datetime-local"], textarea, select {
@@ -128,6 +132,10 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .tz-option[aria-selected="true"] .tz-id { font-weight: 700; }
 .tz-meta { font-size: 0.8rem; color: var(--text-muted); }
 .tz-empty { padding: 8px 10px; color: var(--text-muted); }
+.header-actions { display: flex; align-items: center; gap: 8px; }
+.lang-switch { white-space: nowrap; }
+/* .btn の display が hidden 属性より強いので、隠すときははっきり消す（リンク中継の画面と、読み込みの途中） */
+.lang-switch[hidden] { display: none; }
 .tz-switch { width: 180px; }
 .tz-switch input { min-height: 36px; padding: 4px 8px; font-size: 0.85rem; }
 
