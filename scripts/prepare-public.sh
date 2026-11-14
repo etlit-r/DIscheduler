@@ -49,7 +49,7 @@ fi
 # --- 正式な公開アドレス ---
 public_origin="${PUBLIC_ORIGIN:-}"
 if [[ -n "$public_origin" ]]; then
-  [[ "$public_origin" =~ ^https://[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || fail "PUBLIC_ORIGIN の形式が正しくありません（例: https://discheduler.pages.dev。末尾の / なし）"
+  [[ "$public_origin" =~ ^https://[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || fail "PUBLIC_ORIGIN の形式が正しくありません（例: https://discheduler.etlits.dev。末尾の / なし）"
 fi
 
 # --- 広告 ---

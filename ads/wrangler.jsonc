@@ -1,12 +1,15 @@
 // 広告の枠だけを配信する Worker（docs/design.md §6.10.1）
-// 本体（discheduler）とは別のオリジン（discheduler-ads.etlits.workers.dev）にすることで、
+// 本体（discheduler.etlits.dev）とは別のオリジン（ads.etlits.dev）にすることで、
 // 広告会社のスクリプトが自分の Cookie を使えるようにしつつ、本体のページ・Cookie・保存データには触れられないようにする。
 // 広告の ID（ADMAX_ID）が設定されているときだけ、GitHub Actions がデプロイする。
 {
   "name": "discheduler-ads",
   "compatibility_date": "2026-10-20",
-  "workers_dev": true,
+  // 独自ドメイン ads.etlits.dev だけで配信する（workers.dev のアドレスは使わない）。
+  // デプロイには、API トークンに etlits.dev の「Zone > Workers Routes > Edit」が要る（docs/design.md §14.1）
+  "workers_dev": false,
   "preview_urls": false,
+  "routes": [{ "pattern": "ads.etlits.dev", "custom_domain": true }],
   "assets": {
     "directory": "./public",
     "html_handling": "auto-trailing-slash",
