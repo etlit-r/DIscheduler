@@ -35,6 +35,8 @@ export interface PollData {
   answers: { slotId: string; userId: string; choiceId: string; prevChoiceId: string | null; updatedAt: number }[];
   /** サーバーで最近使った時間帯（新しい順・最大 3 件）。主催者にだけ返る */
   recentTimes: { start: string; end: string }[];
+  /** サーバーの既定値の、Discord イベントの場所（主催者にだけ返る。null なら「Discord」） */
+  defaultEventLocation: string | null;
 }
 
 export class ApiError extends Error {

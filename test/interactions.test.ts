@@ -214,6 +214,54 @@ describe("サーバーの既定値（§5.3.1）", () => {
   });
 });
 
+describe("サーバーの既定値: イベントの場所（§5.3.1）", () => {
+  const ADMIN = String(1n << 5n);
+  const db = () => (env as unknown as Env).DB;
+  const modalSubmit = (perms: string, value: string) =>
+    signed({
+      type: 5, id: "9", application_id: "1", token: "tok", guild_id: GUILD, channel_id: CHANNEL, member: member(ORGANIZER, perms),
+      data: { custom_id: "settings_location_modal", components: [{ type: 1, components: [{ type: 4, custom_id: "location", value }] }] },
+    });
+  beforeEach(async () => {
+    await db().prepare("DELETE FROM guild_settings").run();
+  });
+
+  it("［イベントの場所を変更］で、入力欄のあるフォームを開く（管理者だけ）", async () => {
+    mockDiscord();
+    const btn = (perms: string) => signed({ type: 3, id: "9", application_id: "1", token: "tok", guild_id: GUILD, channel_id: CHANNEL, member: member(ORGANIZER, perms), data: { custom_id: "settings_location" } });
+    const ok = (await (await call(await btn(ADMIN), e())).json()) as { type: number; data: { custom_id: string } };
+    expect(ok.type).toBe(9);
+    expect(ok.data.custom_id).toBe("settings_location_modal");
+    expect(JSON.stringify(await (await call(await btn("1024"), e())).json())).toContain("サーバー管理");
+  });
+
+  it("保存すると、参加者の決め方はそのままで、場所だけが変わる。空にすると「Discord」に戻る", async () => {
+    mockDiscord();
+    await db().prepare("INSERT INTO guild_settings (guild_id, mode, role_id, updated_by, updated_at) VALUES (?, 'manual', NULL, ?, 1)").bind(GUILD, ORGANIZER).run();
+    const res = await call(await modalSubmit(ADMIN, "  第2会議室  "), e());
+    const body = (await res.json()) as { type: number; data: { content: string } };
+    expect(body.type).toBe(7);
+    expect(body.data.content).toContain("第2会議室");
+    expect(await db().prepare("SELECT mode, event_location FROM guild_settings WHERE guild_id = ?").bind(GUILD).first()).toEqual({ mode: "manual", event_location: "第2会議室" });
+    await call(await modalSubmit(ADMIN, ""), e());
+    expect(await db().prepare("SELECT event_location FROM guild_settings WHERE guild_id = ?").bind(GUILD).first()).toEqual({ event_location: null });
+  });
+
+  it("設定がないサーバーでも保存でき、参加者の決め方は初期値（チャンネル）になる", async () => {
+    mockDiscord();
+    await call(await modalSubmit(ADMIN, "オンライン"), e());
+    expect(await db().prepare("SELECT mode, role_id, event_location FROM guild_settings WHERE guild_id = ?").bind(GUILD).first()).toEqual({ mode: "channel", role_id: null, event_location: "オンライン" });
+  });
+
+  it("権限のない人の送信と、長すぎる・見えない文字を含む場所は保存しない", async () => {
+    mockDiscord();
+    expect(JSON.stringify(await (await call(await modalSubmit("1024", "A"), e())).json())).toContain("サーバー管理");
+    await call(await modalSubmit(ADMIN, "あ".repeat(101)), e());
+    await call(await modalSubmit(ADMIN, "A\u200bB"), e());
+    expect(await db().prepare("SELECT * FROM guild_settings WHERE guild_id = ?").bind(GUILD).first()).toBeNull();
+  });
+});
+
 describe("6 回目のレビューの修正", () => {
   it("［サーバー既定値の設定］では、保存済みのロールを選択状態にしない（削除されていても開けるように）", async () => {
     mockDiscord();

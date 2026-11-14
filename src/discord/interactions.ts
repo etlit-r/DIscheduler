@@ -5,9 +5,9 @@ import { issueLink, issueListLink } from "../auth";
 import { getParticipant, getPoll, hitRateLimit } from "../db";
 import { AppError, isQuotaError, nowSec, QUOTA_MESSAGE } from "../core/lib";
 import { createOrReuseDraft } from "../polls/create";
-import { buildSettingsMessage, canManageGuild, getGuildSettings, saveGuildSettings, type DefaultMode } from "../guilds/settings";
+import { buildLocationModal, buildSettingsMessage, canManageGuild, EVENT_LOCATION_MAX, getGuildSettings, saveDefaultEventLocation, saveGuildSettings, type DefaultMode } from "../guilds/settings";
 import { canAnswer, effectiveStatus } from "../shared/model";
-import { sanitizeDisplayName, sanitizeLine } from "../shared/text";
+import { charLength, hasControlChars, sanitizeDisplayName, sanitizeLine } from "../shared/text";
 import { syncCommands } from "./commands";
 import { hasPermission, PERM } from "./permissions";
 import { escapeMarkdown, messageLink, NO_MENTIONS } from "./messages";
@@ -29,6 +29,8 @@ interface Interaction {
     custom_id?: string;
     values?: string[];
     options?: { name: string; type: number; value: string | number }[];
+    /** モーダルの送信（type 5）で届く入力欄の値 */
+    components?: { type: number; components?: { type: number; custom_id?: string; value?: string }[] }[];
   };
 }
 
@@ -84,10 +86,15 @@ export async function handleInteraction(env: Env, ctx: Ctx, i: Interaction, orig
     return deferred();
   }
 
+  // モーダルの送信（サーバー既定値の、イベントの場所）
+  if (i.type === 5 && i.data?.custom_id === "settings_location_modal") {
+    return handleSettings(env, i, "settings_location_modal", guildId, userId);
+  }
+
   if (i.type === 3) {
     const id = i.data?.custom_id ?? "";
     if (id === "help") return ephemeral(helpText(origin));
-    if (id === "settings" || id === "settings_mode" || id === "settings_role") {
+    if (id === "settings" || id === "settings_mode" || id === "settings_role" || id === "settings_location") {
       return handleSettings(env, i, id, guildId, userId);
     }
     // 以前の［このチャンネルの調整］ボタン（すでに送ったメッセージに残っている分）にも応える
@@ -188,6 +195,18 @@ async function handleSettings(env: Env, i: Interaction, id: string, guildId: str
   if (!isAdmin(i)) return ephemeral("サーバーの既定値を変更できるのは、「サーバー管理」の権限を持つメンバーだけです。");
   const current = await getGuildSettings(env.DB, guildId);
   if (id === "settings") return json({ type: 4, data: { ...buildSettingsMessage(current, null), flags: EPHEMERAL } });
+  // イベントの場所は、入力欄のあるフォーム（モーダル）で受け取る
+  if (id === "settings_location") return json({ type: 9, data: buildLocationModal(current.eventLocation) });
+  if (id === "settings_location_modal") {
+    const raw = i.data?.components?.flatMap((r) => r.components ?? []).find((c) => c.custom_id === "location")?.value ?? "";
+    const value = raw.normalize("NFC").trim();
+    if (charLength(value) > EVENT_LOCATION_MAX || hasControlChars(value)) {
+      return ephemeral(`場所は ${EVENT_LOCATION_MAX} 文字以内で、改行や見えない文字を含めずに入力してください。`);
+    }
+    await saveDefaultEventLocation(env.DB, guildId, value || null, userId);
+    const saved = await getGuildSettings(env.DB, guildId);
+    return json({ type: 7, data: buildSettingsMessage(saved, value ? "イベントの場所を保存しました。" : "イベントの場所を「Discord」に戻しました。") });
+  }
 
   let next: { mode: DefaultMode; roleId: string | null } = { mode: current.mode, roleId: current.roleId };
   let note: string | null = null;
@@ -320,7 +339,7 @@ export function helpText(origin: string): string {
     "・入力リンクは本人専用で、10 分有効・1 回限りです。他の人に渡さないでください。",
     "・回答はその調整の参加者同士で共有され、参加者以外には見えません。",
     "・サーバー管理者は「サーバー設定 → 連携サービス → DIscheduler」で、コマンドを使えるチャンネルを指定できます。",
-    "・サーバー管理者は `/schedule` の［サーバー既定値の設定］で、参加者の決め方（チャンネル・ロール・手動）の既定値を決められます。",
+    "・サーバー管理者は `/schedule` の［サーバー既定値の設定］で、参加者の決め方（チャンネル・ロール・手動）と、Discord イベントの場所の既定値を決められます。",
     "",
     `案内: ${origin}/`,
     `マニュアル: ${origin}/manual/`,
