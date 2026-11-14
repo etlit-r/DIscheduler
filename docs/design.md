@@ -432,7 +432,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 | S9 | 作成した調整の一覧（このサーバーで自分が主催した調整。§6.11） | `/g/{guildId}/polls` | 主催者 |
 | S8 | マニュアル（項目ごとに 1 ページ） | `/manual/`、`/manual/{項目}`（英語版 `/en/manual/`、`/en/manual/{項目}`） | 公開 |
 
-- S0・S3a・S6・S8 は静的ページ（`public/index.html`、`public/answered.html`、`public/security.html`、`public/manual/*.html`）として Cloudflare Pages から配信する。JavaScript は使わず、アプリと同じ CSP を `public/_headers` で付与する。
+- S0・S3a・S6・S8 は静的ページ（`public/index.html`、`public/answered.html`、`public/security.html`、`public/manual/*.html`）として Cloudflare Pages から配信する（英語版は `public/en/` の下に同じ構成で置く。§6.12）。JavaScript は言語の切り替え（`public/assets/lang.js`）と広告の同意（`public/assets/ad-consent.js`）など、同じオリジンの小さなスクリプトだけを使い、アプリと同じ CSP を `public/_headers` で付与する。
 - **検索結果での表示（S0）**: LP の `<title>` と `og:title` を「DIscheduler（Discord の日程調整 Bot）」、`og:site_name` と構造化データ（`WebSite` の `name`）を「DIscheduler」にする。正規 URL（`<link rel="canonical">`・`og:url`）と構造化データの `url` は、正式な公開アドレス（`PUBLIC_ORIGIN`）を `scripts/prepare-public.sh` がデプロイ時に埋め込む（Pages のデプロイごとの別名のアドレスが、検索結果に別のページとして出ないようにするため）。構造化データは実行されないデータなので、CSP（`script-src 'self'`）の対象にならない。Google は検索結果のタイトルを書き換えることがあるため、表示は保証されない。
 - S8 のマニュアルは、項目（はじめに、サーバーに追加する、使えるチャンネルを決める、調整を作る、候補日時を入れる、回答の選択肢を変える、参加者を決める、公開する、回答する、集計を見て確定する、募集メッセージの更新、調整を管理・削除する、困ったときは）ごとに 1 ページとし、全ページに同じ目次（広い画面では左のサイドバー、狭い画面では本文の下。本文の上に「目次へ」のリンク）と、前後のページへのリンクを置く。ヘッダー・フッター・LP の「使い方」の下と、Discord の［使い方］からリンクする。項目を足すときは、全ページの目次と前後のリンクを直す。
 - **利用者向けのセキュリティ方針は S6（`public/security.html`）を基準とする。** リポジトリの `SECURITY.md` は S6 へのリンクと脆弱性の報告窓口だけを載せる。
@@ -792,7 +792,7 @@ S2 の [変更] を押すと、ひな形から選ぶか、自分で編集でき�
 - **Web 画面の言語の決め方**: URL の `?lang=ja|en` ＞ このブラウザで選んだ言語（`localStorage`。サーバーには保存しない）＞ ブラウザの言語（`navigator.languages` の先頭が日本語なら日本語、それ以外は英語）。どの画面でも右上に［English］／［日本語］の切り替えを置き、押すと選んだ言語を保存して画面を読み込み直す。リンク中継の画面（S1）だけは、読み込み直すとリンクの中身が URL から消えているため、読み込み直さずにその場で描き直す（API のエラーは `messages` に日本語と英語の両方を入れて返すので、表示中のエラーもその場で入れ替えられる）。静的ページは次項。
 - **静的ページ（LP・マニュアル・セキュリティ方針・回答の完了画面）の英語版**: `public/en/` の下に同じ構成で置く（`/en/`、`/en/security`、`/en/manual/…`、`/en/answered`）。日本語版を直したら、英語版も同じように直す。
   - どのページも、ヘッダーの右上にもう一方の言語のページへの切り替えのリンク（`a[data-lang]`）を置く。
-  - `public/assets/lang.js`: 切り替えで選んだ言語を `localStorage`（`dis.lang`。Web 画面と共通）にだけ保存する。保存した言語がページの言語と違えば、そのページのもう一方の言語版へ移る。まだ選んでいなければ、ブラウザの言語（日本語なら日本語、それ以外は英語）で同じように移る。`#` の後ろ（回答の完了画面の `#p=` など）は保つ。検索エンジンのクローラーと自動操作のブラウザ（`navigator.webdriver`）は移さない（日本語版と英語版のどちらも、それぞれのアドレスで読まれるように）。
+  - `public/assets/lang.js`: 切り替えで選んだ言語を `localStorage`（`dis.lang`。Web 画面と共通）にだけ保存する。保存した言語がページの言語と違えば、そのページのもう一方の言語版へ移る。まだ選んでいなければ、ブラウザの言語（日本語なら日本語、それ以外は英語）で同じように移る。`#` の後ろ（回答の完了画面の `#p=` など）は保つ。`localStorage` に保存できないブラウザでは、切り替えのリンクに `?lang=` を付け、移った先ではその言語のまま表示する。別の言語のページへ移るときは、広告の枠を読み込まない（`lang.js` を `ad-consent.js` より先に読み込む）。検索エンジンのクローラーと自動操作のブラウザ（`navigator.webdriver`）は移さない（日本語版と英語版のどちらも、それぞれのアドレスで読まれるように）。
   - `<link rel="alternate" hreflang="ja|en|x-default">` で日本語版と英語版の対応を示す（`PUBLIC_ORIGIN` があるときだけ。英語版の LP の canonical は `/en/`）。`robots.txt` で `/en/`・`/en/security`・`/en/manual/` を許可し、`/en/answered` は `noindex`。
   - 広告の枠の文言（`ad-consent.js`）は `<html lang>` で切り替える。Ko-fi の説明は、英語版では `__DONATION_NOTE_EN__` に英語の文を入れる（`scripts/prepare-public.sh`）。
   - Web 画面から静的ページへのリンク（マニュアル・セキュリティ方針・回答の完了画面）と、英語の［使い方］のリンクは、英語版のページを指す。
