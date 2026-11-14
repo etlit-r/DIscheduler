@@ -208,7 +208,8 @@ function fixPanel(d: PollData, slotId: string, cancel: () => void, done: (m: HTM
   const typeVoice = h("input", { type: "radio", name: "ev-type", id: "ev-voice", value: "voice" });
   const typeExternal = h("input", { type: "radio", name: "ev-type", id: "ev-external", value: "external", checked: true });
   const voiceSel = h("select", { id: "ev-channel" }, h("option", { value: "" }, "読み込み中…"));
-  const location = h("input", { type: "text", id: "ev-location", maxLength: 100, value: "Discord", autocomplete: "off" });
+  // 最初に入れておく場所は、サーバーの既定値（§5.3.1）。決めていなければ「Discord」
+  const location = h("input", { type: "text", id: "ev-location", maxLength: 100, value: d.defaultEventLocation ?? "Discord", autocomplete: "off" });
   const status = h("p", { role: "status", class: "muted" });
   let voiceLoaded = false;
   const loadVoice = async () => {
