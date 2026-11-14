@@ -60,6 +60,12 @@ export const api = new Hono<{ Bindings: Env; Variables: Vars }>();
 /** 画面の言語（エラーと警告の文言に使う。§6.12） */
 const reqLang = (c: { req: { header(name: string): string | undefined } }): Lang => requestLang((n) => c.req.header(n));
 
+/** 警告の一覧を、画面の言語の文言にする */
+const localize = (c: { req: { header(name: string): string | undefined } }, list: Msg[]): string[] => {
+  const lang = reqLang(c);
+  return list.map((w) => pick(w, lang));
+};
+
 api.use("*", async (c, next) => {
   if (c.env.MAINTENANCE === "1") throw new AppError(503, "maintenance", msg("DIscheduler は現在メンテナンス中です。", "DIscheduler is under maintenance."));
   if (c.req.method !== "GET" && c.req.method !== "HEAD") {
@@ -379,7 +385,7 @@ polls.put("/:id/slots", async (c) => {
       if (err && !warnings.some((w) => w.ja === err.ja)) warnings.push(err);
     }
   }
-  return c.json({ ok: true, updatedAt: now, warnings: warnings.map((w) => pick(w, reqLang(c))) });
+  return c.json({ ok: true, updatedAt: now, warnings: localize(c, warnings) });
 });
 
 polls.put("/:id/choices", async (c) => {
@@ -725,7 +731,7 @@ polls.post("/:id/fix", async (c) => {
     const err = await upsertEvent(c.env, poll, slot, body.event);
     if (err) warnings.push(err);
   }
-  return c.json({ ok: true, warnings: warnings.map((w) => pick(w, reqLang(c))) });
+  return c.json({ ok: true, warnings: localize(c, warnings) });
 });
 
 // 確定を取り消す（主催者）。Discord イベントを消す。チャンネルへのお知らせは［確定をお知らせする］でまとめて投稿する。
@@ -750,7 +756,7 @@ polls.delete("/:id/fix/:slotId", async (c) => {
     refreshFixedStatement(db, poll, now),
   ]);
   await syncNow(c.env, poll.id).catch(() => warnings.push(msg("募集メッセージを更新できませんでした。", "Couldn't update the poll message.")));
-  return c.json({ ok: true, warnings: warnings.map((w) => pick(w, reqLang(c))) });
+  return c.json({ ok: true, warnings: localize(c, warnings) });
 });
 
 // 確定をお知らせする（主催者）。いま確定している日時と、前回のお知らせのあとに取り消した日時を、1 つのメッセージにまとめて投稿する（§4.3）
@@ -803,7 +809,7 @@ polls.post("/:id/announce", async (c) => {
   ];
   if (mention) stmts.push(hitRateLimitStatement(db, MENTION_KEY, 3600, now));
   await db.batch(stmts);
-  return c.json({ ok: true, warnings: warnings.map((w) => pick(w, reqLang(c))) });
+  return c.json({ ok: true, warnings: localize(c, warnings) });
 });
 
 /** 登録済みの Discord イベントの日時だけを変える（場所などはそのまま） */
@@ -966,7 +972,7 @@ polls.delete("/:id", async (c) => {
   requireOrganizer(c);
   const warnings = await deletePollEverywhere(c.env, c.var.poll);
   c.header("Set-Cookie", clearSessionCookie(c.var.poll.id));
-  return c.json({ ok: true, warnings: warnings.map((w) => pick(w, reqLang(c))) });
+  return c.json({ ok: true, warnings: localize(c, warnings) });
 });
 
 polls.delete("/:id/session", async (c) => {
@@ -1074,7 +1080,7 @@ guilds.post("/:guildId/polls/:pollId/open", async (c: LC) => {
 guilds.delete("/:guildId/polls/:pollId", async (c: LC) => {
   const poll = await ownPoll(c);
   const warnings = await deletePollEverywhere(c.env, poll);
-  return c.json({ ok: true, warnings: warnings.map((w) => pick(w, reqLang(c))) });
+  return c.json({ ok: true, warnings: localize(c, warnings) });
 });
 
 api.route("/guilds", guilds);
