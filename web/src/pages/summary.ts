@@ -263,7 +263,7 @@ function fixPanel(d: PollData, slotId: string, cancel: () => void, done: (m: HTM
     h("p", {}, h("strong", {}, label)),
     otherFixed ? h("p", { class: "muted small" }, tr(`ほかに確定している日時（${otherFixed} 件）は、そのまま残ります。`, `Other confirmed dates (${otherFixed}) stay as they are.`)) : null,
     h("p", { class: "muted small" }, tr("確定しても、チャンネルにはまだお知らせしません。お知らせは、確定のあとに［確定をお知らせする］から投稿します。", "Confirming doesn't announce anything to the channel yet. After confirming, post the announcement with [Announce the dates].")),
-    h("div", { class: "field-inline" }, useEvent, h("label", { for: "fix-event" }, tr("Discord イベントとして登録する", "Create a Discord event"))),
+    h("div", { class: "field-inline field-check" }, useEvent, h("label", { for: "fix-event" }, tr("Discord イベントとして登録する", "Create a Discord event"))),
     h(
       "fieldset",
       { class: "sub-fields" },
@@ -324,7 +324,7 @@ function announcePanel(d: PollData, done: (m: HTMLElement) => void): HTMLElement
       h("dt", {}, tr("まだお知らせしていない変更", "Changes not yet announced")),
       h("dd", {}, pending ? tr(`あり（確定 ${newly} 件・取り消し ${cancelled.length} 件）`, `Yes (${newly} confirmed, ${cancelled.length} cancelled)`) : tr("なし（お知らせ済みです。もう一度投稿することもできます）", "None (already announced. You can post it again)")),
     ),
-    h("div", { class: "field-inline" }, mention, h("label", { for: "announce-mention" }, d.poll.targetType === "role" ? tr("参加者のロールにメンションしてお知らせする", "Mention the participants' role in the announcement") : tr("@everyone にメンションしてお知らせする", "Mention @everyone in the announcement"))),
+    h("div", { class: "field-inline field-check" }, mention, h("label", { for: "announce-mention" }, d.poll.targetType === "role" ? tr("参加者のロールにメンションしてお知らせする", "Mention the participants' role in the announcement") : tr("@everyone にメンションしてお知らせする", "Mention @everyone in the announcement"))),
     h("div", { class: "row" }, btn),
     status,
   );

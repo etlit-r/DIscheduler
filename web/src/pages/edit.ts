@@ -605,8 +605,8 @@ export async function editPage(pollId: string): Promise<void> {
         "fieldset",
         {},
         h("legend", {}, tr("決め方", "How to choose"), isDraft ? "" : tr("（公開後は変更できません）", " (can't be changed after publishing)")),
-        h("div", { class: "field-inline" }, modeAuto, h("label", { for: "mode-auto" }, tr("自動（チャンネルのメンバー・ロールのメンバー）", "Automatic (channel members or role members)"))),
-        h("div", { class: "field-inline" }, modeManual, h("label", { for: "mode-manual" }, tr("手動で選ぶ", "Choose manually"))),
+        h("div", { class: "field-inline field-check" }, modeAuto, h("label", { for: "mode-auto" }, tr("自動（チャンネルのメンバー・ロールのメンバー）", "Automatic (channel members or role members)"))),
+        h("div", { class: "field-inline field-check" }, modeManual, h("label", { for: "mode-manual" }, tr("手動で選ぶ", "Choose manually"))),
         h("div", { class: "field-inline" }, h("label", { for: "role" }, tr("ロール", "Role")), roleSel),
         roleHint(),
       ),
@@ -634,8 +634,8 @@ export async function editPage(pollId: string): Promise<void> {
         "fieldset",
         {},
         h("legend", {}, tr("参加者以外が［回答する］を押したとき", "When a non-participant presses [Answer]")),
-        h("div", { class: "field-inline" }, jpClosed, h("label", { for: "jp-closed" }, tr("回答できない", "They can't answer"))),
-        h("div", { class: "field-inline" }, jpOpen, h("label", { for: "jp-open" }, tr("チャンネルを見られる人なら、参加者に追加して回答できる", "Anyone who can see the channel is added as a participant and can answer"))),
+        h("div", { class: "field-inline field-check" }, jpClosed, h("label", { for: "jp-closed" }, tr("回答できない", "They can't answer"))),
+        h("div", { class: "field-inline field-check" }, jpOpen, h("label", { for: "jp-open" }, tr("チャンネルを見られる人なら、参加者に追加して回答できる", "Anyone who can see the channel is added as a participant and can answer"))),
       ),
     );
   }
