@@ -20,7 +20,8 @@ function setupShell(): void {
   if (security) security.textContent = tr("セキュリティ方針", "Security policy");
   // 言語の切り替え。もう一方の言語の名前を、その言語で書く
   const sw = document.getElementById("lang-switch");
-  if (sw) {
+  // リンク中継（/l）では出さない。トークンは読み取ったときに URL から消すので、読み込み直すとエラーの内容が変わってしまうため
+  if (sw && location.pathname !== "/l") {
     const other = LANG === "en" ? "ja" : "en";
     sw.textContent = other === "en" ? "English" : "日本語";
     sw.setAttribute("lang", other);
