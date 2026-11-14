@@ -174,8 +174,8 @@ export async function summaryPage(pollId: string): Promise<void> {
         type: "button",
         class: "btn btn-secondary btn-small",
         onClick: async () => {
-          const ev = s.hasEvent ? tr("登録した Discord イベントも削除されます。", "The Discord event will also be deleted. ") : "";
-          if (!confirm(tr(`${label} の確定を取り消します。${ev}よろしいですか？`, `Cancel the confirmation of ${label}? ${ev}`))) return;
+          const ev = s.hasEvent ? tr("登録した Discord イベントも削除されます。", "The Discord event will also be deleted.") : "";
+          if (!confirm(tr(`${label} の確定を取り消します。${ev}よろしいですか？`, `Cancel the confirmation of ${label}? ${ev}`.trim()))) return;
           btn.disabled = true;
           try {
             const r = await request<{ warnings: string[] }>("DELETE", `/api/polls/${d.poll.id}/fix/${s.id}`);
