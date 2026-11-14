@@ -798,6 +798,20 @@ describe("エラーの言語（§6.12）", () => {
     const ja = await call(getReq(`/api/polls/${s.pollId}`));
     expect(((await ja.json()) as { error: { message: string } }).error.message).toMatch(/有効期限/);
   });
+
+  it("入力チェックの文言も、画面の言語のほうだけを返す", async () => {
+    const s = await seedPoll({ participants: [ALICE] });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const patch = (lang: string) => {
+      const req = jsonReq("PATCH", `/api/polls/${s.pollId}`, { title: "" }, org);
+      req.headers.set("X-DI-Lang", lang);
+      return call(req);
+    };
+    const en = ((await (await patch("en")).json()) as { error: { message: string } }).error.message;
+    expect(en).toBe("Enter 1 to 100 characters");
+    const ja = ((await (await patch("ja")).json()) as { error: { message: string } }).error.message;
+    expect(ja).toMatch(/^1〜100 文字で入力してください$/);
+  });
 });
 
 describe("イベントの場所の既定値（§5.3.1）", () => {
