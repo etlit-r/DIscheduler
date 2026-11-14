@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/core/env";
 import { issueLink } from "../src/auth";
-import { ALICE, BOB, call, CHANNEL, getReq, jsonReq, login, mockDiscord, ORGANIZER, ORIGIN, OUTSIDER, seedPoll, tokenFromUrl } from "./helpers";
+import { ALICE, BOB, call, CHANNEL, getReq, GUILD, jsonReq, login, mockDiscord, ORGANIZER, ORIGIN, OUTSIDER, seedPoll, tokenFromUrl } from "./helpers";
 
 const db = () => (env as unknown as Env).DB;
 
@@ -789,6 +789,19 @@ describe("8 回目のレビューのあとの確認", () => {
   });
 });
 
+
+describe("イベントの場所の既定値（§5.3.1）", () => {
+  it("主催者にだけ、サーバーの既定値を返す", async () => {
+    const s = await seedPoll({ participants: [ALICE] });
+    await db().prepare("INSERT OR REPLACE INTO guild_settings (guild_id, mode, role_id, event_location, updated_by, updated_at) VALUES (?, 'channel', NULL, '第2会議室', ?, 1)").bind(GUILD, ORGANIZER).run();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const alice = await login(s.pollId, ALICE, "participant");
+    const get = async (c: Awaited<ReturnType<typeof login>>) => ((await (await call(getReq(`/api/polls/${s.pollId}`, c.cookie))).json()) as { defaultEventLocation: string | null }).defaultEventLocation;
+    expect(await get(org)).toBe("第2会議室");
+    expect(await get(alice)).toBeNull();
+    await db().prepare("DELETE FROM guild_settings").run();
+  });
+});
 
 describe("サーバーの最近使った時間帯（§6.3.1）", () => {
   const JST = (h: number, m = 0, day = 20) => Math.floor(Date.UTC(2027, 0, day, h - 9, m) / 1000);

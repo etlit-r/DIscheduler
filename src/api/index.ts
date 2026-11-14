@@ -45,6 +45,7 @@ import { canAnswer, effectiveStatus, LIMITS, reminderAt, UNANSWERED } from "../s
 import { isValidTimeZone, nextCronAt } from "../shared/time";
 import { isValidDonationUrl } from "../shared/text";
 import { getRecentTimes, mergeRanges, rangesFromSlots, saveRecentTimesStatement } from "../guilds/recent-times";
+import { getDefaultEventLocation } from "../guilds/settings";
 import { syncAfterAnswer, syncNow } from "../polls/sync";
 import { AnnounceBody, AnswersBody, ChoicesBody, FixBody, OpenPollBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
 
@@ -175,7 +176,10 @@ polls.get("/:id", async (c) => {
   // 未反映の回答の変更は、読み込み済みの回答から数える（問い合わせを増やさない）
   const pending = isOrganizer ? answers.filter((a) => a.updated_at > (poll.last_synced_at ?? 0)).length : null;
   // サーバーの最近使った時間帯は、候補日時を編集できる主催者にだけ返す（§6.3.1）
-  const recentTimes = isOrganizer ? await getRecentTimes(db, poll.guild_id) : [];
+  // イベントの場所の既定値（§5.3.1）も、確定できる主催者にだけ返す
+  const [recentTimes, defaultEventLocation] = isOrganizer
+    ? await Promise.all([getRecentTimes(db, poll.guild_id), getDefaultEventLocation(db, poll.guild_id)])
+    : [[], null];
   return c.json({
     now,
     csrfToken: session.csrf_token,
@@ -221,6 +225,7 @@ polls.get("/:id", async (c) => {
     participants: participants.map((p) => ({ userId: p.user_id, displayName: p.display_name, comment: p.comment, answeredAt: p.answered_at })),
     answers: answers.map((a) => ({ slotId: a.slot_id, userId: a.user_id, choiceId: a.choice_id, prevChoiceId: a.prev_choice_id, updatedAt: a.updated_at })),
     recentTimes,
+    defaultEventLocation,
   });
 });
 
