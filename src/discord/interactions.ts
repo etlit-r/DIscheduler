@@ -5,7 +5,7 @@ import { issueLink, issueListLink } from "../auth";
 import { getParticipant, getPoll, hitRateLimit } from "../db";
 import { AppError, isQuotaError, nowSec, QUOTA_MESSAGE } from "../core/lib";
 import { createOrReuseDraft } from "../polls/create";
-import { buildLocationModal, buildSettingsMessage, canManageGuild, EVENT_LOCATION_MAX, getGuildSettings, saveDefaultEventLocation, saveGuildSettings, type DefaultMode } from "../guilds/settings";
+import { buildLocationModal, buildSettingsMessage, canManageGuild, EVENT_LOCATION_MAX, getGuildSettings, saveDefaultEventChannel, saveDefaultEventLocation, saveGuildSettings, type DefaultMode } from "../guilds/settings";
 import { canAnswer, effectiveStatus } from "../shared/model";
 import { charLength, hasControlChars, sanitizeDisplayName, sanitizeLine } from "../shared/text";
 import { syncCommands } from "./commands";
@@ -28,6 +28,8 @@ interface Interaction {
     name?: string;
     custom_id?: string;
     values?: string[];
+    /** 選択メニューで選ばれたチャンネルの情報（Discord が付けて送る） */
+    resolved?: { channels?: Record<string, { type?: number }> };
     options?: { name: string; type: number; value: string | number }[];
     /** モーダルの送信（type 5）で届く入力欄の値 */
     components?: { type: number; components?: { type: number; custom_id?: string; value?: string }[] }[];
@@ -94,7 +96,7 @@ export async function handleInteraction(env: Env, ctx: Ctx, i: Interaction, orig
   if (i.type === 3) {
     const id = i.data?.custom_id ?? "";
     if (id === "help") return ephemeral(helpText(origin));
-    if (id === "settings" || id === "settings_mode" || id === "settings_role" || id === "settings_location") {
+    if (id === "settings" || id === "settings_mode" || id === "settings_role" || id === "settings_location" || id === "settings_channel") {
       return handleSettings(env, i, id, guildId, userId);
     }
     // 以前の［このチャンネルの調整］ボタン（すでに送ったメッセージに残っている分）にも応える
@@ -197,6 +199,15 @@ async function handleSettings(env: Env, i: Interaction, id: string, guildId: str
   if (id === "settings") return json({ type: 4, data: { ...buildSettingsMessage(current, null), flags: EPHEMERAL } });
   // イベントの場所は、入力欄のあるフォーム（モーダル）で受け取る
   if (id === "settings_location") return json({ type: 9, data: buildLocationModal(current.eventLocation) });
+  if (id === "settings_channel") {
+    const channelId = i.data?.values?.[0] ?? "";
+    const type = i.data?.resolved?.channels?.[channelId]?.type;
+    // ボイス・ステージのチャンネルだけを受け付ける（選択メニューの絞り込みに頼らず、ここでも確かめる）
+    if (!/^\d{17,20}$/.test(channelId) || (type !== 2 && type !== 13)) return ephemeral("ボイスチャンネルを選んでください。");
+    await saveDefaultEventChannel(env.DB, guildId, channelId, userId);
+    const saved = await getGuildSettings(env.DB, guildId);
+    return json({ type: 7, data: buildSettingsMessage(saved, "イベントの場所をボイスチャンネルにしました。") });
+  }
   if (id === "settings_location_modal") {
     const raw = i.data?.components?.flatMap((r) => r.components ?? []).find((c) => c.custom_id === "location")?.value ?? "";
     const value = raw.normalize("NFC").trim();

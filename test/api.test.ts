@@ -793,12 +793,16 @@ describe("8 回目のレビューのあとの確認", () => {
 describe("イベントの場所の既定値（§5.3.1）", () => {
   it("主催者にだけ、サーバーの既定値を返す", async () => {
     const s = await seedPoll({ participants: [ALICE] });
-    await db().prepare("INSERT OR REPLACE INTO guild_settings (guild_id, mode, role_id, event_location, updated_by, updated_at) VALUES (?, 'channel', NULL, '第2会議室', ?, 1)").bind(GUILD, ORGANIZER).run();
+    await db().prepare("INSERT OR REPLACE INTO guild_settings (guild_id, mode, role_id, event_location, event_channel_id, updated_by, updated_at) VALUES (?, 'channel', NULL, '第2会議室', '300000000000000777', ?, 1)").bind(GUILD, ORGANIZER).run();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
     const alice = await login(s.pollId, ALICE, "participant");
-    const get = async (c: Awaited<ReturnType<typeof login>>) => ((await (await call(getReq(`/api/polls/${s.pollId}`, c.cookie))).json()) as { defaultEventLocation: string | null }).defaultEventLocation;
-    expect(await get(org)).toBe("第2会議室");
-    expect(await get(alice)).toBeNull();
+    type R = { defaultEventLocation: string | null; defaultEventChannelId: string | null };
+    const get = async (c: Awaited<ReturnType<typeof login>>) => {
+      const r = (await (await call(getReq(`/api/polls/${s.pollId}`, c.cookie))).json()) as R;
+      return { location: r.defaultEventLocation, channel: r.defaultEventChannelId };
+    };
+    expect(await get(org)).toEqual({ location: "第2会議室", channel: "300000000000000777" });
+    expect(await get(alice)).toEqual({ location: null, channel: null });
     await db().prepare("DELETE FROM guild_settings").run();
   });
 });
