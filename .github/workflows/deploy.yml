@@ -95,7 +95,7 @@ jobs:
           [[ "$D1_DATABASE_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || fail "Environment variable D1_DATABASE_ID が未設定か、形式が正しくありません"
           [[ "$DISCORD_PUBLIC_KEY" =~ ^[0-9a-f]{64}$ ]] || fail "Environment variable DISCORD_PUBLIC_KEY が未設定か、形式が正しくありません"
           [[ "$PAGES_PROJECT" =~ ^[a-z0-9][a-z0-9-]{0,57}$ ]] || fail "Environment variable PAGES_PROJECT（Cloudflare Pages のプロジェクト名）が未設定か、形式が正しくありません"
-          [[ "$PUBLIC_ORIGIN" =~ ^https://[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || fail "Environment variable PUBLIC_ORIGIN（例: https://discheduler.pages.dev。末尾の / なし）が未設定か、形式が正しくありません"
+          [[ "$PUBLIC_ORIGIN" =~ ^https://[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || fail "Environment variable PUBLIC_ORIGIN（例: https://discheduler.etlits.dev。末尾の / なし）が未設定か、形式が正しくありません"
           sed -i "s/__D1_DATABASE_ID__/${D1_DATABASE_ID}/" wrangler.jsonc
           sed -i \
             -e "s|__PAGES_PROJECT__|${PAGES_PROJECT}|" \
@@ -118,7 +118,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: d1 migrations apply DB --remote
 
-      # 広告の枠を、本体とは別のオリジン（discheduler-ads.etlits.workers.dev）の Worker として配信する。
+      # 広告の枠を、本体とは別のオリジン（ads.etlits.dev）の Worker として配信する。
       # 広告の ID（ADMAX_ID）が設定されているときだけデプロイする（docs/design.md §6.10.1）
       - name: 広告の枠をデプロイ
         if: ${{ vars.ADMAX_ID != '' }}

@@ -239,7 +239,7 @@ sequenceDiagram
 
 ### 5.1 Bot の登録
 - インストールスコープ: `bot`, `applications.commands`（ギルドインストールのみ。ユーザーインストールは無効）
-- Interactions Endpoint URL: `https://<プロジェクト名>.pages.dev/discord/interactions`（正式な公開アドレス `PUBLIC_ORIGIN`。§14）
+- Interactions Endpoint URL: `https://discheduler.etlits.dev/discord/interactions`（正式な公開アドレス `PUBLIC_ORIGIN`。§14）
 - コマンドは Worker 自身が REST API（`PUT /applications/{id}/commands`）で登録する。Bot トークンを Cloudflare の外（GitHub など）に置かないため。定義のバージョン（ハッシュ）を D1 の `meta` テーブルに記録し、Interactions Endpoint URL の登録時の PING、各 Interaction、Cron のときに、バージョンが変わっていれば登録し直す 同じ実行環境（isolate）の中では、一度確かめたバージョンを覚えておき、Interaction のたびに D1 を読み直さない（PING と Cron のときは毎回確かめる）。
 
 ### 5.2 必要な Bot 権限（最小権限）
@@ -750,19 +750,23 @@ S2 の [変更] を押すと、ひな形から選ぶか、自分で編集でき�
 
 - **出す場所**：LP の「使い方」の下、セキュリティ方針ページの末尾、回答の完了画面（S3a）の［集計画面を見る］の下だけ。作成・回答入力・集計・公開完了・確定完了の画面（S1〜S5・S7）と、Discord に投稿するメッセージには出さない。入力の邪魔をしないためと、回答や名前が出る画面に広告を並べないため。S3a は回答や名前を表示しない静的ページなので、広告の枠を置く。
   - S3a は回答を保存した人だけが通る完了画面で、Google AdSense の規約が広告の掲載を認めない画面（運営者のコンテンツがない完了画面など）に当たる。AdSense を使う場合も、S3a には AdSense の広告を出さない（忍者AdMax の枠だけ）。
-- **別オリジンで切り離す**：広告の枠は本体とは別の Worker `discheduler-ads`（`https://discheduler-ads.etlits.workers.dev/frame`。`ads/`）で配信し、本体のページに iframe で埋め込む。`workers.dev` は Public Suffix List に載っているので、本体とは別のサイトとして扱われる。
+- **別オリジンで切り離す**：広告の枠は本体とは別の Worker `discheduler-ads`（`https://ads.etlits.dev/frame`。`ads/`）で配信し、本体のページに iframe で埋め込む。本体（`discheduler.etlits.dev`）とはオリジンが違うので、同一オリジンポリシーで切り離される。
+  - 本体と広告の枠は、同じ `etlits.dev` の下にあるので同じサイト（same-site）として扱われる（以前の `discheduler-ads.etlits.workers.dev` は `workers.dev` が Public Suffix List に載っているため別のサイトだった）。そのため次の 3 点で切り離しを保つ。
+    - 本体の Cookie はすべて `__Host-` 付き（`Domain` なし・`Path=/`・`Secure`）なので、広告の枠から読めず、`etlits.dev` 全体に向けた同名の Cookie で上書きもされない。
+    - 本体の API は書き込みのたびに `Origin` の完全一致（`ads.etlits.dev` からは通らない）と CSRF トークンを求め、CORS のヘッダーを返さないので、広告の枠のスクリプトから本体のデータは読めず、変更もできない。
+    - 広告会社が `etlits.dev` 全体に向けて Cookie を置くと、本体へのリクエストにも付いて届くが、本体はその Cookie を読まず、ログにも残さない。
   - 広告会社のスクリプトは自分の Cookie を使える（興味に合った広告を出すため。運営者の判断）。
   - 本体のページの内容・Cookie・localStorage には、同一オリジンポリシーにより触れられない。
   - iframe には `sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"` を付ける。`allow-top-navigation` を付けないので、広告が本体のページごと別のサイトへ移動させることはできない。
-- **CSP**：本体の静的ページ（LP・セキュリティ方針・回答の完了画面）は `frame-src https://discheduler-ads.etlits.workers.dev` だけを足し、ほかは §4.2 のまま。広告の枠（`ads/public/_headers`）は広告会社のスクリプトを読むため `script-src https: 'unsafe-inline' 'unsafe-eval'` などを許し、`frame-ancestors https://discheduler.etlits.workers.dev` で本体以外への埋め込みを禁止する。広告会社には枠のアドレスだけを送り、本体のページの場所は送らない（本体は `Referrer-Policy: no-referrer`）。
+- **CSP**：本体の静的ページ（LP・セキュリティ方針・回答の完了画面）は `frame-src https://ads.etlits.dev` だけを足し、ほかは §4.2 のまま。広告の枠（`ads/public/_headers`）は広告会社のスクリプトを読むため `script-src https: 'unsafe-inline' 'unsafe-eval'` などを許し、`frame-ancestors`（デプロイ時に `PUBLIC_ORIGIN` を入れる）で本体以外への埋め込みを禁止する。広告会社には枠のアドレスだけを送り、本体のページの場所は送らない（本体は `Referrer-Policy: no-referrer`）。
 - **拒否できる**：枠の下に「広告と広告会社の Cookie を拒否する」ボタンを置く（`public/assets/ad-consent.js`）。
   - 拒否すると iframe を作らず、広告会社には何も送らない。「広告を表示する（広告会社の Cookie を許可）」で戻せる。
   - 選択は閲覧者のブラウザの localStorage（`discheduler.ads`）にだけ保存し、サーバーには送らない。
   - 選択がまだなく、ブラウザで Global Privacy Control（`navigator.globalPrivacyControl`）が有効なら、拒否として扱う。
   - スクリプトが動かない環境では広告を出さない。
 - **出し分け**：GitHub の `production` 環境の変数 `ADMAX_ID`（広告コードの `https://adm.shinobi.jp/s/` に続く 32 文字）があるときだけ、`scripts/prepare-public.sh` が `<!-- ad:start -->`〜`<!-- ad:end -->` を残して `ads/public/frame.html` に ID を埋め込み、デプロイで広告の枠の Worker も公開する。ないときは広告の枠・説明・`ad-consent.js` を消し、広告の枠の Worker はデプロイしない。セキュリティ方針の「しないこと」なども、広告の有無で文言を切り替える（`<!-- no-ad:start -->`）。
-- **Google AdSense の審査**：AdSense には正式な公開アドレス（`<プロジェクト名>.pages.dev`。`pages.dev` は Public Suffix List に載っているため、これがサイトの単位になる）を登録し、所有の確認にはメタタグ `<meta name="google-adsense-account" content="ca-pub-7698368408631991">` を LP とセキュリティ方針ページに置く。メタタグは情報を示すだけで、スクリプトは読み込まない（CSP は変わらない）。承認されたら、忍者AdMax と AdSense のどちらを使うかを決め直す。
-- **ads.txt**：広告枠の販売を許可した事業者の一覧。AdSense の行（`google.com, pub-7698368408631991, DIRECT, f08c47fec0942fa0`）を `public/ads.txt` に置き、`robots.txt` で読み取りを許す。Pages に移したことで、サイトの単位（`<プロジェクト名>.pages.dev`）の直下に置ける。（`workers.dev` で動かしていたときは、サイトの単位 `etlits.workers.dev` の直下に何も置けず、所有確認に失敗した。）
+- **Google AdSense の審査**：AdSense にはサイトの単位であるドメイン `etlits.dev` を登録し（以前は `<プロジェクト名>.pages.dev`）、所有の確認にはメタタグ `<meta name="google-adsense-account" content="ca-pub-7698368408631991">` を LP とセキュリティ方針ページに置く。メタタグは情報を示すだけで、スクリプトは読み込まない（CSP は変わらない）。承認されたら、忍者AdMax と AdSense のどちらを使うかを決め直す。
+- **ads.txt**：広告枠の販売を許可した事業者の一覧。AdSense の行（`google.com, pub-7698368408631991, DIRECT, f08c47fec0942fa0`）を `public/ads.txt` に置き、`robots.txt` で読み取りを許す。独自ドメインに移したので、サイトの単位は `etlits.dev` になり、`ads.txt` は `https://etlits.dev/ads.txt` で読めなければならない。`etlits.dev` そのものには何も置いていないので、Cloudflare のリダイレクトルールで `https://etlits.dev/ads.txt` を `https://discheduler.etlits.dev/ads.txt` へ転送する（ads.txt の仕様では、同じドメインの中への転送はたどってよい。§14.1.2）。
 - **開示**：セキュリティ方針ページに「広告について」（表示する場所、切り離し方、広告会社に届く情報と Cookie、拒否する方法）と、残っているリスク（不適切な広告が出る可能性）を書く。
 
 
@@ -1099,7 +1103,7 @@ CREATE TABLE rate_limits (
 | Cron Triggers | 無料プランで利用可 | 2 本（1 日 2 回: 日本時間 1 時・13 時。1 時の回で削除も実行。予定のリマインド: 毎時 0〜4 分に 1 分おきに 5 回。§5.7） |
 | D1 の問い合わせ回数 | 1 回の実行（リクエスト・Cron）あたり 50 回まで（batch の中の文も 1 文ずつ数える前提で見積もる） | 募集メッセージの更新 1 件で 3 文（最終更新時刻の読み込みと更新権利の取得を 1 回の batch で行い、権利を取れたときだけ調整と関連データを読む。データは権利を取ったあとの内容を読む）。参加者の追加は人数によらず 1 文（JSON で渡す）。Cron は 13 時の回で最大 8 件・約 44 文、1 時の回で最大 4 件と削除で約 43 文まで。予定のリマインドの回は、対象を読む 1 文（上限より 1 件多く読み、残りがあるかを知る）と、1 件ごとに権利を取る 1 文で、20 件・21 文（Discord への送信も 20 件）まで。削除は調整やサーバーの数によらず決まった文の数で行う。残りは次の機会に反映 |
 
-- 独自ドメインは不要（`*.pages.dev` を使用）。独自ドメインを使う場合のみドメイン費用が発生。Pages Functions へのリクエストは Workers の無料枠（1 日 10 万リクエスト）と共通で数え、静的ファイルの配信は無料・無制限。
+- 独自ドメイン `etlits.dev` を Cloudflare Registrar で取得（ドメイン費用は年 1 回。Cloudflare の DNS とリダイレクトルールは無料プランで使える）。Pages Functions へのリクエストは Workers の無料枠（1 日 10 万リクエスト）と共通で数え、静的ファイルの配信は無料・無制限。
 - 無料枠を超えた場合、Workers はエラー応答になる（課金は発生しない）。表示は §9.1 のとおり、「混雑」などとぼかさず **無料枠を超えたことをそのまま伝える**。
 - **有料プランへの自動アップグレードは行わない**（Cloudflare アカウントに支払い情報を登録しない運用も可能）。
 
@@ -1242,7 +1246,7 @@ DIscheduler/
 | タイムゾーン | 設定変更可能。既定はブラウザのタイムゾーン、不明なら `Asia/Tokyo` | 海外のメンバーにも対応するため | §6.7 |
 | データ保持期間 | 締切・確定から 6 ヶ月（180 日）後に自動削除 | 振り返りや再調整に使えるようにするため | §7.4 |
 | 運営費 | 寄付リンクを LP・完了画面・無料枠超過の画面に置く。広告は LP・セキュリティ方針ページ・回答の完了画面（S3a）だけに、別オリジンで切り離した枠で出し、閲覧者が拒否できるようにする（§6.10.1）。無料枠を超えたときはそのまま伝える | 回答や名前が出る画面に広告のスクリプトを入れると読める状態になり、セキュリティ方針に反するため。広告は公開ページだけに、サイトから切り離して出す | §6.10, §6.10.1, §9.1 |
-| ドメイン | `*.pages.dev` を使用（旧アドレス `discheduler.etlits.workers.dev` は正式なアドレスへ転送） | 維持費をかけないため。`pages.dev` はアドレスの直下にファイルを置けるので、AdSense の所有確認と `ads.txt` を置ける | §9, §14 |
+| ドメイン | 独自ドメイン `etlits.dev` のサブドメイン `discheduler.etlits.dev`（広告の枠は `ads.etlits.dev`）。以前のアドレス（`*.pages.dev`、`discheduler.etlits.workers.dev`）は正式なアドレスへ転送 | サービスのアドレスを Cloudflare のサービス名に左右されない、覚えやすいものにするため。`etlits.dev` 本体はほかの用途にも使えるよう空けておく | §9, §14 |
 
 - Server Members Intent は、Bot の導入サーバーが 100 未満なら Discord の審査なしで、Developer Portal の設定だけで有効化できる。100 サーバー以上になる場合は Discord への申請が必要。
 
@@ -1254,9 +1258,9 @@ GitHub Actions から Cloudflare にデプロイする（`.github/workflows/depl
 
 | 置き場所 | アドレス | 担当 | 設定 |
 |---|---|---|---|
-| Cloudflare Pages（本体） | 正式な公開アドレス `PUBLIC_ORIGIN`（例: `https://discheduler.pages.dev`） | LP・セキュリティ方針・Web 画面・Web API・Discord からの通信 | `pages/wrangler.jsonc`、`public/_worker.js`、`public/_routes.json` |
+| Cloudflare Pages（本体） | 正式な公開アドレス `PUBLIC_ORIGIN`（`https://discheduler.etlits.dev`。Pages の独自ドメイン。`https://<プロジェクト名>.pages.dev` は正式なアドレスへ転送） | LP・セキュリティ方針・Web 画面・Web API・Discord からの通信 | `pages/wrangler.jsonc`、`public/_worker.js`、`public/_routes.json` |
 | Cloudflare Workers（`discheduler`） | 旧アドレス `https://discheduler.etlits.workers.dev` | 1 日 2 回の自動処理（Cron）と、旧アドレスへのアクセスの転送 | `wrangler.jsonc` |
-| Cloudflare Workers（`discheduler-ads`） | `https://discheduler-ads.etlits.workers.dev` | 広告の枠（`ADMAX_ID` があるときだけ。§6.10.1） | `ads/wrangler.jsonc` |
+| Cloudflare Workers（`discheduler-ads`） | `https://ads.etlits.dev`（Workers の独自ドメイン。`workers.dev` のアドレスは使わない） | 広告の枠（`ADMAX_ID` があるときだけ。§6.10.1） | `ads/wrangler.jsonc` |
 
 - Pages と Worker は同じコード（`src/index.ts`）と同じ D1 データベースを使う。
 - **正式なアドレス以外へのアクセスは転送する**：`PUBLIC_ORIGIN` と違うアドレス（旧アドレスの Worker、Pages がデプロイごとに作る別名のアドレス）への GET は、同じパスのまま正式なアドレスへ 301 で転送し、それ以外の書き込みは 404 にする。入力リンクの `#t=` は転送後も保たれる。
@@ -1270,7 +1274,7 @@ flowchart LR
   A -- 承認 --> R[deploy: 設定値を埋め込む<br/>静的ページ・Pages・Worker]
   R --> MG[D1 マイグレーション]
   MG --> AD[広告の枠の Worker<br/>ADMAX_ID があるとき]
-  AD --> P[(Cloudflare Pages<br/>*.pages.dev)]
+  AD --> P[(Cloudflare Pages<br/>discheduler.etlits.dev)]
   P --> W[(Cloudflare Workers<br/>Cron・転送)]
 ```
 
@@ -1284,7 +1288,7 @@ flowchart LR
 **Cloudflare**
 1. 無料アカウントを作り、「Workers & Pages」で `workers.dev` のサブドメインを決める（Cron と転送の Worker は `https://discheduler.<サブドメイン>.workers.dev`）。
 2. Account ID を控える。
-3. 「My Profile → API Tokens → Create Token」でテンプレート「Edit Cloudflare Workers」を選び、Account Resources を自分のアカウントだけに限り、有効期限（最長 1 年）を付けてトークンを作る。権限は「Workers Scripts: Edit」「Account Settings: Read」「User Details: Read」「Memberships: Read」に加えて **「D1: Edit」** と **「Cloudflare Pages: Edit」** を付ける。
+3. 「My Profile → API Tokens → Create Token」でテンプレート「Edit Cloudflare Workers」を選び、Account Resources を自分のアカウントだけに限り、有効期限（最長 1 年）を付けてトークンを作る。権限は「Workers Scripts: Edit」「Account Settings: Read」「User Details: Read」「Memberships: Read」に加えて **「D1: Edit」** と **「Cloudflare Pages: Edit」** を付ける。広告の枠を出すとき（`ADMAX_ID` があるとき）は、広告の枠の Worker を独自ドメイン `ads.etlits.dev` に結び付けるため、Zone Resources を `etlits.dev` に限って **「Zone > Workers Routes: Edit」** も付ける。
 4. 「Storage & Databases → D1」で `discheduler` という名前のデータベースを作り、Database ID を控える。
 5. 「Workers & Pages → Create → Pages」で、直接アップロード（Direct Upload）の Pages プロジェクトを作る（名前は例: `discheduler`。作成時に仮のファイルを 1 つアップロードしてよい。本番のブランチは `main`）。表示された `https://<プロジェクト名>.pages.dev` を控える（名前が使われていると、末尾に文字が付いたアドレスになる）。
 6. Pages のプロジェクトの「Settings → Variables and Secrets」で、本番（Production）の **Secret** として `DISCORD_BOT_TOKEN`（Bot トークン）を登録する。初回のデプロイのあと、Worker（`discheduler`）にも同じ Secret を登録する（Cron が Discord の API を呼ぶため）。Bot トークンは GitHub には置かない。
@@ -1296,7 +1300,7 @@ flowchart LR
 - 75 を目安にしているのは、認証（Verification）を受けていない Bot は 100 を超えるサーバーに入れず、認証の申請が 75 サーバーからできるため。100 に届く前に申請を始められるようにする。Server Members Intent の利用（§5.3）も、100 サーバー以上では Discord への申請が要る。
 
 **Discord**（初回のデプロイと Bot トークンの登録のあと）
-1. Developer Portal の「General Information」で、Interactions Endpoint URL に `https://<プロジェクト名>.pages.dev/discord/interactions` を入れて保存する。保存時の PING を受けた Pages が `/schedule`・`/di` を自動で登録する。
+1. Developer Portal の「General Information」で、Interactions Endpoint URL に `https://discheduler.etlits.dev/discord/interactions`（`PUBLIC_ORIGIN` のアドレス）を入れて保存する。保存時の PING を受けた Pages が `/schedule`・`/di` を自動で登録する。
 2. 「Bot」で Server Members Intent をオンにする（参加者の自動設定に必要）。
 3. 「General Information」の「App Icon」と、「Bot」の「Icon」に `branding/app-icon.png`（1024×1024。ファビコンと同じデザイン）を設定する。コマンドの入力欄の横や Bot のアバターに表示される。Discord は円形に切り抜くので、元の `branding/app-icon.svg` は背景を正方形いっぱいにし、カレンダーを中央に小さめに置いている。
 
@@ -1321,7 +1325,7 @@ flowchart LR
 | Environment variable | `DISCORD_PUBLIC_KEY` | Discord Developer Portal の Public Key（公開値。署名検証に使う） |
 | Environment variable | `D1_DATABASE_ID` | D1 の Database ID（公開しても問題ない値） |
 | Environment variable | `PAGES_PROJECT` | Cloudflare Pages のプロジェクト名（例: `discheduler`） |
-| Environment variable | `PUBLIC_ORIGIN` | 正式な公開アドレス（例: `https://discheduler.pages.dev`。末尾の `/` なし） |
+| Environment variable | `PUBLIC_ORIGIN` | 正式な公開アドレス（`https://discheduler.etlits.dev`。末尾の `/` なし） |
 | Environment variable | `DONATION_URL` | 寄付リンクの URL（任意。未設定なら寄付の欄を出さない） |
 | Environment variable | `ADMAX_ID` | 忍者AdMax の広告枠の ID（任意。英小文字と数字の 32 文字。未設定なら広告の枠を出さない。§6.10.1） |
 
@@ -1332,6 +1336,15 @@ flowchart LR
 3. Discord の Interactions Endpoint URL を正式なアドレスに切り替える（切り替えるまでは旧アドレスの Worker が処理する）。
 4. AdSense のサイトを正式なアドレスで登録し直す（§6.10.1）。
 
+
+### 14.1.2 独自ドメイン etlits.dev への移行（2026 年 11 月）
+`etlits.dev` を Cloudflare Registrar で取得し（同じアカウントのゾーンになる）、本体を `discheduler.etlits.dev`、広告の枠を `ads.etlits.dev` に移したときの手順。
+1. **Pages に独自ドメインを付ける**：「Workers & Pages → Pages のプロジェクト → Custom domains → Set up a custom domain」で `discheduler.etlits.dev` を追加する（DNS のレコードは Cloudflare が作る）。有効になるまで数分かかる。
+2. **GitHub の `PUBLIC_ORIGIN` を変える**：`production` 環境の変数 `PUBLIC_ORIGIN` を `https://discheduler.etlits.dev` にする。
+3. **デプロイする**：`main` にマージして承認する。以後、`<プロジェクト名>.pages.dev` と旧 Worker のアドレスへの GET は `discheduler.etlits.dev` に転送される（Discord に投稿済みのリンクもそのまま使える。入力リンクの `#t=` も保たれる）。ログインのセッション（Cookie）はアドレスごとなので、移ったあとは Discord のボタンからもう一度開いてもらう。
+4. **Discord の Interactions Endpoint URL を変える**：Developer Portal の「General Information」で `https://discheduler.etlits.dev/discord/interactions` にして保存する。切り替えるまでの間も、以前のアドレスで Discord からの通信を受けられる（§14 の表のあと）。
+5. **ads.txt を etlits.dev から読めるようにする**（AdSense を使うとき）：`etlits.dev` のゾーンの「DNS」で、`etlits.dev` に Proxied（オレンジの雲）の `AAAA` レコード（値 `100::`）を作り、「Rules → Redirect Rules」で「URI Full が `https://etlits.dev/ads.txt` と等しい」ときに `https://discheduler.etlits.dev/ads.txt` へ 301 で転送するルールを作る。AdSense の「サイト」には `etlits.dev` を追加する。
+6. **広告の枠**（広告を再開するとき）：API トークンに `etlits.dev` の「Zone > Workers Routes: Edit」を足す。`ads/wrangler.jsonc` の `routes` で、デプロイ時に `ads.etlits.dev` が広告の枠の Worker に結び付く。忍者AdMax などの広告ネットワークには、新しいサイトのアドレスを登録し直す。
 ### 14.2 ワークフローの安全策
 - 静的ページへの設定値（招待リンクの Application ID、寄付リンク）の埋め込みは `scripts/prepare-public.sh` で行う。値の形式を検証し、不正なら止める。
 - `permissions: contents: read` のみ。`actions/checkout` は `persist-credentials: false` で GitHub トークンを残さない。
