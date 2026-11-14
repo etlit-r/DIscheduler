@@ -5,7 +5,7 @@
 // CSP（Trusted Types）を守るため、innerHTML などは使わず DOM の API だけで組み立てる
 (() => {
   const KEY = "discheduler.ads";
-  const FRAME_URL = "https://discheduler-ads.etlits.workers.dev/frame";
+  const FRAME_URL = "https://ads.etlits.dev/frame";
 
   const saved = () => {
     try {
