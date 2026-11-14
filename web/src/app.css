@@ -128,6 +128,8 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .tz-option[aria-selected="true"] .tz-id { font-weight: 700; }
 .tz-meta { font-size: 0.8rem; color: var(--text-muted); }
 .tz-empty { padding: 8px 10px; color: var(--text-muted); }
+.header-actions { display: flex; align-items: center; gap: 8px; }
+.lang-switch { white-space: nowrap; }
 .tz-switch { width: 180px; }
 .tz-switch input { min-height: 36px; padding: 4px 8px; font-size: 0.85rem; }
 

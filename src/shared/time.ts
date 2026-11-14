@@ -1,4 +1,5 @@
 // タイムゾーンの扱い（docs/design.md §6.7）
+// 表示の書式は日本語と英語で分ける（§6.11）。言語を渡さなければ日本語。
 // サーバーは UTC の UNIX 秒で保存し、表示と入力はブラウザ側で IANA タイムゾーンを使って変換する。
 
 export const DEFAULT_TIMEZONE = "Asia/Tokyo";
@@ -71,12 +72,17 @@ export function epochToZoned(epochSec: number, tz: string): Parts {
   return partsInZone(epochSec * 1000, tz);
 }
 
-const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
+import type { Lang } from "./i18n";
 
-/** 例: 11/12(水) */
-export function formatDate(epochSec: number, tz: string): string {
+const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
+const WEEKDAYS_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** 例: 11/12(水)、英語では Wed, Nov 12 */
+export function formatDate(epochSec: number, tz: string, lang: Lang = "ja"): string {
   const p = epochToZoned(epochSec, tz);
   const wd = new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();
+  if (lang === "en") return `${WEEKDAYS_EN[wd]}, ${MONTHS_EN[p.month - 1]} ${p.day}`;
   return `${p.month}/${p.day}(${WEEKDAYS[wd]})`;
 }
 
@@ -101,23 +107,23 @@ export interface SlotTime {
 }
 
 /** 例: 11/12(水) 20:00–22:00 / 11/12(水) 終日 */
-export function formatSlot(slot: SlotTime, tz: string): string {
-  return `${formatDate(slot.startAt, tz)} ${formatSlotTime(slot, tz)}`;
+export function formatSlot(slot: SlotTime, tz: string, lang: Lang = "ja"): string {
+  return `${formatDate(slot.startAt, tz, lang)} ${formatSlotTime(slot, tz, lang)}`;
 }
 
 /** 日付を除いた時間帯。例: 20:00–22:00 / 終日 / 23:00–11/13(金) 01:00（日付を見出しにまとめて表示するとき。日付をまたぐときは終わりの日付を残す） */
-export function formatSlotTime(slot: SlotTime, tz: string): string {
-  if (slot.allDay) return "終日";
+export function formatSlotTime(slot: SlotTime, tz: string, lang: Lang = "ja"): string {
+  if (slot.allDay) return lang === "en" ? "All day" : "終日";
   const start = formatTime(slot.startAt, tz);
-  if (slot.endAt === null) return `${start}〜`;
+  if (slot.endAt === null) return lang === "en" ? `${start}–` : `${start}〜`;
   const end = formatTime(slot.endAt, tz);
-  const endDate = formatDate(slot.endAt, tz);
-  return endDate === formatDate(slot.startAt, tz) ? `${start}–${end}` : `${start}–${endDate} ${end}`;
+  const endDate = formatDate(slot.endAt, tz, lang);
+  return endDate === formatDate(slot.startAt, tz, lang) ? `${start}–${end}` : `${start}–${endDate} ${end}`;
 }
 
 /** 例: 11/12(水) 20:00 */
-export function formatDateTime(epochSec: number, tz: string): string {
-  return `${formatDate(epochSec, tz)} ${formatTime(epochSec, tz)}`;
+export function formatDateTime(epochSec: number, tz: string, lang: Lang = "ja"): string {
+  return `${formatDate(epochSec, tz, lang)} ${formatTime(epochSec, tz)}`;
 }
 
 /** 次の自動更新（日本時間 1 時・13 時 = UTC 16 時・4 時）の UNIX 秒 */

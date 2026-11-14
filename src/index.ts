@@ -5,7 +5,8 @@ import { api } from "./api";
 import { runCron } from "./jobs/cron";
 import { handleInteraction } from "./discord/interactions";
 import { verifyDiscordRequest } from "./discord/verify";
-import { AppError, isQuotaError, nowSec, QUOTA_MESSAGE, randomToken } from "./core/lib";
+import { AppError, isQuotaError, nowSec, QUOTA_MSG, randomToken } from "./core/lib";
+import { pick, requestLang } from "./shared/i18n";
 
 /** すべての応答に付けるセキュリティヘッダー（docs/security-design.md §4.2） */
 export const SECURITY_HEADERS: Record<string, string> = {
@@ -50,11 +51,15 @@ app.use("*", async (c, next) => {
 });
 
 app.onError((err, c) => {
-  if (err instanceof AppError) return c.json({ error: { code: err.code, message: err.message } }, err.status as 400);
-  if (isQuotaError(err)) return c.json({ error: { code: "free_tier_exceeded", message: QUOTA_MESSAGE } }, 503);
+  // エラーの文言は、画面の言語（X-DI-Lang）か Accept-Language に合わせる（§6.12）
+  const lang = requestLang((n) => c.req.header(n));
+  if (err instanceof AppError) return c.json({ error: { code: err.code, message: pick(err.text, lang) } }, err.status as 400);
+  if (isQuotaError(err)) return c.json({ error: { code: "free_tier_exceeded", message: pick(QUOTA_MSG, lang) } }, 503);
   const ref = randomToken(6);
   console.error(JSON.stringify({ event: "unhandled_error", ref, error: err instanceof Error ? err.message : "unknown" }));
-  return c.json({ error: { code: "internal", message: `エラーが発生しました。時間をおいてもう一度お試しください（参照番号: ${ref}）。` } }, 500);
+  const message =
+    lang === "en" ? `Something went wrong. Please try again later (reference: ${ref}).` : `エラーが発生しました。時間をおいてもう一度お試しください（参照番号: ${ref}）。`;
+  return c.json({ error: { code: "internal", message } }, 500);
 });
 
 app.post("/discord/interactions", async (c) => {

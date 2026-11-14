@@ -1,4 +1,5 @@
 // 共通の小さな道具（乱数・ハッシュ・時刻・エラー）
+import type { Msg } from "../shared/i18n";
 
 export function nowSec(): number {
   return Math.floor(Date.now() / 1000);
@@ -41,14 +42,17 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** 利用者に見せてよいエラー（メッセージは日本語の説明） */
+/** 利用者に見せてよいエラー（メッセージは日本語と英語の組。§6.12） */
 export class AppError extends Error {
+  readonly text: Msg;
   constructor(
     readonly status: number,
     readonly code: string,
-    message: string,
+    message: Msg | string,
   ) {
-    super(message);
+    const text = typeof message === "string" ? { ja: message, en: message } : message;
+    super(text.ja);
+    this.text = text;
   }
 }
 
@@ -61,6 +65,10 @@ export function isQuotaError(err: unknown): boolean {
 export const QUOTA_MESSAGE =
   "本日分の無料枠（データベースの読み書きの上限）を超えたため、DIscheduler は日本時間 午前 9 時まで使えません。" +
   "DIscheduler は Cloudflare の無料枠だけで運営しているため、利用が多い日はこの上限に達することがあります。入力済みの回答は消えていません。";
+export const QUOTA_MESSAGE_EN =
+  "Today's free tier (the database read/write limit) has been used up, so DIscheduler is unavailable until 00:00 UTC. " +
+  "DIscheduler runs only on Cloudflare's free tier, so busy days can hit this limit. Answers you already entered are not lost.";
+export const QUOTA_MSG: Msg = { ja: QUOTA_MESSAGE, en: QUOTA_MESSAGE_EN };
 
 export const DAY = 86400;
 

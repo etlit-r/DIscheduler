@@ -44,6 +44,7 @@ import { DEFAULT_DEADLINE_DAYS, resetParticipants, RETENTION } from "../polls/cr
 import { canAnswer, effectiveStatus, LIMITS, reminderAt, UNANSWERED } from "../shared/model";
 import { isValidTimeZone, nextCronAt } from "../shared/time";
 import { isValidDonationUrl } from "../shared/text";
+import { decodeMsg, msg, pick, requestLang, type Lang, type Msg } from "../shared/i18n";
 import { getRecentTimes, mergeRanges, rangesFromSlots, saveRecentTimesStatement } from "../guilds/recent-times";
 import { getEventDefaults } from "../guilds/settings";
 import { syncAfterAnswer, syncNow } from "../polls/sync";
@@ -56,33 +57,37 @@ export const api = new Hono<{ Bindings: Env; Variables: Vars }>();
 
 // --- 共通の前処理 ---
 
+/** 画面の言語（エラーと警告の文言に使う。§6.12） */
+const reqLang = (c: { req: { header(name: string): string | undefined } }): Lang => requestLang((n) => c.req.header(n));
+
 api.use("*", async (c, next) => {
-  if (c.env.MAINTENANCE === "1") throw new AppError(503, "maintenance", "DIscheduler は現在メンテナンス中です。");
+  if (c.env.MAINTENANCE === "1") throw new AppError(503, "maintenance", msg("DIscheduler は現在メンテナンス中です。", "DIscheduler is under maintenance."));
   if (c.req.method !== "GET" && c.req.method !== "HEAD") {
     // CSRF 対策: Origin の完全一致と JSON の Content-Type を必須にする（security-design T-3）
     const origin = c.req.header("Origin");
-    if (!origin || origin !== new URL(c.req.url).origin) throw new AppError(403, "bad_origin", "不正なリクエストです。");
+    if (!origin || origin !== new URL(c.req.url).origin) throw new AppError(403, "bad_origin", msg("不正なリクエストです。", "Invalid request."));
     const ct = c.req.header("Content-Type") ?? "";
-    if (!ct.toLowerCase().startsWith("application/json")) throw new AppError(415, "bad_content_type", "不正なリクエストです。");
+    if (!ct.toLowerCase().startsWith("application/json")) throw new AppError(415, "bad_content_type", msg("不正なリクエストです。", "Invalid request."));
     const len = Number(c.req.header("Content-Length") ?? "0");
-    if (len > LIMITS.bodyBytesMax) throw new AppError(413, "too_large", "送信する内容が大きすぎます。");
+    if (len > LIMITS.bodyBytesMax) throw new AppError(413, "too_large", msg("送信する内容が大きすぎます。", "The request is too large."));
   }
   await next();
 });
 
 async function readJson<T extends v.GenericSchema>(c: C | Context<{ Bindings: Env }>, schema: T): Promise<v.InferOutput<T>> {
   const text = await c.req.text();
-  if (text.length > LIMITS.bodyBytesMax) throw new AppError(413, "too_large", "送信する内容が大きすぎます。");
+  if (text.length > LIMITS.bodyBytesMax) throw new AppError(413, "too_large", msg("送信する内容が大きすぎます。", "The request is too large."));
   let data: unknown;
   try {
     data = JSON.parse(text);
   } catch {
-    throw new AppError(400, "bad_json", "不正なリクエストです。");
+    throw new AppError(400, "bad_json", msg("不正なリクエストです。", "Invalid request."));
   }
   const r = v.safeParse(schema, data);
   if (!r.success) {
-    const msg = r.issues.find((i) => !i.message.startsWith("Invalid"))?.message ?? "入力内容が正しくありません。";
-    throw new AppError(400, "invalid", msg);
+    // スキーマの文言は日本語と英語の組（vmsg）。valibot が付ける英語の既定の文言（Invalid ...）は使わない
+    const found = r.issues.find((i) => !i.message.startsWith("Invalid"))?.message;
+    throw new AppError(400, "invalid", found ? decodeMsg(found) : msg("入力内容が正しくありません。", "The input is not valid."));
   }
   return r.output;
 }
@@ -106,18 +111,28 @@ api.post("/session", async (c) => {
     const kind = await lookupLinkKind(c.env.DB, body.token);
     const how =
       kind === "answer"
-        ? "チャンネルの募集メッセージの［回答する］を、もう一度押してください。"
+        ? msg("チャンネルの募集メッセージの［回答する］を、もう一度押してください。", "Press [Answer] on the poll message in the channel again.")
         : kind === "view"
-          ? "チャンネルの募集メッセージの［集計を見る］を、もう一度押してください。"
+          ? msg("チャンネルの募集メッセージの［集計を見る］を、もう一度押してください。", "Press [View results] on the poll message in the channel again.")
           : kind === "edit" || kind === "list"
-            ? "Discord でもう一度 /schedule を実行し、［作成した調整を管理］を押して、新しいリンクを受け取ってください。"
-            : "参加者はチャンネルの募集メッセージの［回答する］または［集計を見る］を、主催者は Discord で /schedule を実行して［作成した調整を管理］を、もう一度押してください。";
-    throw new AppError(401, "link_expired", `リンクの有効期限が切れているか、すでに使われています。Discord で前に受け取ったリンクは、無効になっています。${how}`);
+            ? msg("Discord でもう一度 /schedule を実行し、［作成した調整を管理］を押して、新しいリンクを受け取ってください。", "Run /schedule in Discord again and press [Manage my polls] to get a new link.")
+            : msg(
+                "参加者はチャンネルの募集メッセージの［回答する］または［集計を見る］を、主催者は Discord で /schedule を実行して［作成した調整を管理］を、もう一度押してください。",
+                "Participants: press [Answer] or [View results] on the poll message again. Organizers: run /schedule in Discord and press [Manage my polls] again.",
+              );
+    throw new AppError(
+      401,
+      "link_expired",
+      msg(
+        `リンクの有効期限が切れているか、すでに使われています。Discord で前に受け取ったリンクは、無効になっています。${how.ja}`,
+        `This link has expired or has already been used. Links you received earlier in Discord no longer work. ${how.en}`,
+      ),
+    );
   }
   const poll = await getPoll(c.env.DB, link.poll_id);
-  if (!poll || poll.status === "cancelled") throw new AppError(404, "not_found", "この調整は削除されました。");
+  if (!poll || poll.status === "cancelled") throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
   if (link.role === "participant" && !(await getParticipant(c.env.DB, poll.id, link.user_id))) {
-    throw new AppError(403, "not_participant", "この調整の参加者ではありません。");
+    throw new AppError(403, "not_participant", msg("この調整の参加者ではありません。", "You are not a participant in this poll."));
   }
   const { sid } = await createSession(c.env.DB, poll.id, link.user_id, link.role);
   const path = link.purpose === "edit" ? `/p/${poll.id}/edit` : link.purpose === "answer" ? `/p/${poll.id}/answer` : `/p/${poll.id}`;
@@ -134,17 +149,17 @@ polls.use("/:id/*", loadSession);
 
 async function loadSession(c: C, next: () => Promise<void>) {
   const id = c.req.param("id") ?? "";
-  if (!/^[A-Za-z0-9_-]{22}$/.test(id)) throw new AppError(404, "not_found", "調整が見つかりません。");
+  if (!/^[A-Za-z0-9_-]{22}$/.test(id)) throw new AppError(404, "not_found", msg("調整が見つかりません。", "Poll not found."));
   const sid = readCookie(c.req.header("Cookie") ?? null, sessionCookieName(id));
   const session = sid ? await getSession(c.env.DB, id, sid) : null;
-  if (!session) throw new AppError(401, "no_session", "リンクの有効期限が切れています。Discord で前に受け取ったリンクは、無効になっています。");
+  if (!session) throw new AppError(401, "no_session", msg("リンクの有効期限が切れています。Discord で前に受け取ったリンクは、無効になっています。", "This link has expired. Links you received earlier in Discord no longer work."));
   // GET /:id は、調整と関連データをハンドラで 1 文で読むので、ここでは読まない（同じ行を 2 回読まないため）
   const isDetail = c.req.method === "GET" && /^\/api\/polls\/[A-Za-z0-9_-]{22}\/?$/.test(c.req.path);
   const poll = isDetail ? null : await getPoll(c.env.DB, id);
-  if (!isDetail && (!poll || poll.status === "cancelled")) throw new AppError(404, "not_found", "この調整は削除されました。");
+  if (!isDetail && (!poll || poll.status === "cancelled")) throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
   if (c.req.method !== "GET") {
     const token = c.req.header("X-CSRF-Token") ?? "";
-    if (!timingSafeEqual(token, session.csrf_token)) throw new AppError(403, "bad_csrf", "不正なリクエストです。画面を再読み込みしてください。");
+    if (!timingSafeEqual(token, session.csrf_token)) throw new AppError(403, "bad_csrf", msg("不正なリクエストです。画面を再読み込みしてください。", "Invalid request. Please reload the page."));
   }
   c.set("session", session);
   if (poll) c.set("poll", poll);
@@ -153,7 +168,7 @@ async function loadSession(c: C, next: () => Promise<void>) {
 
 function requireOrganizer(c: C): void {
   if (c.var.session.role !== "organizer" || c.var.poll.organizer_id !== c.var.session.user_id) {
-    throw new AppError(403, "forbidden", "この操作は主催者だけができます。");
+    throw new AppError(403, "forbidden", msg("この操作は主催者だけができます。", "Only the organizer can do this."));
   }
 }
 
@@ -168,11 +183,11 @@ polls.get("/:id", async (c) => {
   const isOrganizer = session.role === "organizer";
   // 調整と関連データは 1 文で読む（画面を開くたびに呼ばれるため、問い合わせの回数を抑える）
   const data = await readPollWithData(db, session.poll_id);
-  if (!data || data.poll.status === "cancelled") throw new AppError(404, "not_found", "この調整は削除されました。");
+  if (!data || data.poll.status === "cancelled") throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
   const { poll, slots, choices, participants, answers } = data;
-  if (poll.status === "draft" && !isOrganizer) throw new AppError(404, "not_found", "この調整はまだ公開されていません。");
+  if (poll.status === "draft" && !isOrganizer) throw new AppError(404, "not_found", msg("この調整はまだ公開されていません。", "This poll has not been published yet."));
   const me = participants.find((p) => p.user_id === session.user_id);
-  if (!me && !isOrganizer) throw new AppError(403, "not_participant", "この調整の参加者ではありません。");
+  if (!me && !isOrganizer) throw new AppError(403, "not_participant", msg("この調整の参加者ではありません。", "You are not a participant in this poll."));
   // 未反映の回答の変更は、読み込み済みの回答から数える（問い合わせを増やさない）
   const pending = isOrganizer ? answers.filter((a) => a.updated_at > (poll.last_synced_at ?? 0)).length : null;
   // サーバーの最近使った時間帯は、候補日時を編集できる主催者にだけ返す（§6.3.1）
@@ -237,7 +252,7 @@ polls.patch("/:id", async (c) => {
   const db = c.env.DB;
   const now = nowSec();
   if (body.updatedAt !== undefined && body.updatedAt !== poll.updated_at) {
-    throw new AppError(409, "conflict", "ほかの画面で変更されています。画面を再読み込みしてください。");
+    throw new AppError(409, "conflict", msg("ほかの画面で変更されています。画面を再読み込みしてください。", "This poll was changed in another window. Please reload the page."));
   }
   const sets: string[] = [];
   const binds: (string | number | null)[] = [];
@@ -252,7 +267,7 @@ polls.patch("/:id", async (c) => {
   // 締切は画面で分まで入力するので、分単位で同じなら「変えていない」とみなす
   const deadlineChanged = body.deadlineAt !== undefined && (poll.deadline_at === null || floorToMinute(body.deadlineAt) !== floorToMinute(poll.deadline_at));
   if (body.deadlineAt !== undefined && deadlineChanged) {
-    if (body.deadlineAt < now - DAY || body.deadlineAt > now + 365 * DAY) throw new AppError(400, "invalid", "締切は今日から 1 年以内にしてください。");
+    if (body.deadlineAt < now - DAY || body.deadlineAt > now + 365 * DAY) throw new AppError(400, "invalid", msg("締切は今日から 1 年以内にしてください。", "Set the deadline within one year from today."));
     sets.push("deadline_at = ?");
     binds.push(floorToMinute(body.deadlineAt));
     if (poll.status === "closed" && body.deadlineAt > now) {
@@ -264,7 +279,7 @@ polls.patch("/:id", async (c) => {
     }
   }
   if (body.timezone !== undefined) {
-    if (!isValidTimeZone(body.timezone)) throw new AppError(400, "invalid", "タイムゾーンが正しくありません。");
+    if (!isValidTimeZone(body.timezone)) throw new AppError(400, "invalid", msg("タイムゾーンが正しくありません。", "Invalid time zone."));
     // 主催者が選んだとき（timezoneAuto でないとき）は、以後ブラウザのタイムゾーンで上書きしない
     if (!body.timezoneAuto || poll.timezone_set === 0) {
       sets.push("timezone = ?", "timezone_set = ?");
@@ -285,7 +300,7 @@ polls.patch("/:id", async (c) => {
   }
   let notice: string | null = null;
   if (body.members !== undefined || body.roleId !== undefined) {
-    if (poll.status !== "draft") throw new AppError(409, "published", "公開後は参加者の決め方を変えられません。参加者の追加・削除をお使いください。");
+    if (poll.status !== "draft") throw new AppError(409, "published", msg("公開後は参加者の決め方を変えられません。参加者の追加・削除をお使いください。", "You can't change how participants are chosen after publishing. Add or remove participants instead."));
     const members = body.members ?? (poll.target_type === "manual" ? "manual" : "auto");
     const roleId = body.roleId !== undefined ? body.roleId : poll.target_id;
     notice = (await resetParticipants(c.env, poll, members, members === "manual" ? null : roleId)).notice;
@@ -308,24 +323,24 @@ polls.put("/:id/slots", async (c) => {
   const db = c.env.DB;
   const now = nowSec();
   if (body.updatedAt !== undefined && body.updatedAt !== poll.updated_at) {
-    throw new AppError(409, "conflict", "ほかの画面で変更されています。画面を再読み込みしてください。");
+    throw new AppError(409, "conflict", msg("ほかの画面で変更されています。画面を再読み込みしてください。", "This poll was changed in another window. Please reload the page."));
   }
   const existing = await getSlots(db, poll.id);
   const existingIds = new Set(existing.map((s) => s.id));
   const seen = new Set<string>();
   const seenIds = new Set<string>();
   for (const s of body.slots) {
-    if (s.id && !existingIds.has(s.id)) throw new AppError(400, "invalid", "候補が見つかりません。画面を再読み込みしてください。");
-    if (s.id && seenIds.has(s.id)) throw new AppError(400, "invalid", "同じ候補が重複しています。画面を再読み込みしてください。");
+    if (s.id && !existingIds.has(s.id)) throw new AppError(400, "invalid", msg("候補が見つかりません。画面を再読み込みしてください。", "Date option not found. Please reload the page."));
+    if (s.id && seenIds.has(s.id)) throw new AppError(400, "invalid", msg("同じ候補が重複しています。画面を再読み込みしてください。", "The same date option appears twice. Please reload the page."));
     if (s.id) seenIds.add(s.id);
-    if (s.endAt !== null && s.endAt <= s.startAt) throw new AppError(400, "invalid", "終了は開始より後にしてください。");
-    if (s.startAt < now - 366 * DAY || s.startAt > now + 2 * 365 * DAY) throw new AppError(400, "invalid", "候補の日時が範囲外です。");
+    if (s.endAt !== null && s.endAt <= s.startAt) throw new AppError(400, "invalid", msg("終了は開始より後にしてください。", "The end must be after the start."));
+    if (s.startAt < now - 366 * DAY || s.startAt > now + 2 * 365 * DAY) throw new AppError(400, "invalid", msg("候補の日時が範囲外です。", "A date option is out of range."));
     const key = `${s.startAt}-${s.endAt}`;
-    if (seen.has(key)) throw new AppError(400, "invalid", "同じ候補が重複しています。");
+    if (seen.has(key)) throw new AppError(400, "invalid", msg("同じ候補が重複しています。", "The same date option appears twice."));
     seen.add(key);
   }
   const keepIds = new Set(body.slots.filter((s) => s.id).map((s) => s.id!));
-  if (existing.some((s) => s.fixed_at !== null && !keepIds.has(s.id))) throw new AppError(409, "fixed_slot", "確定した候補は削除できません。確定を取り消してから削除してください。");
+  if (existing.some((s) => s.fixed_at !== null && !keepIds.has(s.id))) throw new AppError(409, "fixed_slot", msg("確定した候補は削除できません。確定を取り消してから削除してください。", "You can't delete a confirmed date. Cancel the confirmation first."));
   const sorted = [...body.slots].sort((a, b) => a.startAt - b.startAt);
   const stmts: D1PreparedStatement[] = [];
   for (const old of existing) {
@@ -355,16 +370,16 @@ polls.put("/:id/slots", async (c) => {
   await db.batch(stmts);
   if (poll.status !== "draft") c.executionCtx.waitUntil(syncNow(c.env, poll.id));
   // 確定した候補の日時を変えたときは、登録済みの Discord イベントの日時も合わせる
-  const warnings: string[] = [];
+  const warnings: Msg[] = [];
   for (const oldFixed of existing) {
     if (!oldFixed.discord_event_id) continue;
     const newFixed = body.slots.find((s) => s.id === oldFixed.id);
     if (newFixed && (oldFixed.start_at !== newFixed.startAt || oldFixed.end_at !== newFixed.endAt || (oldFixed.all_day === 1) !== newFixed.allDay)) {
       const err = await updateEventTime(c.env, poll, oldFixed, { start_at: newFixed.startAt, end_at: newFixed.endAt, all_day: newFixed.allDay ? 1 : 0 });
-      if (err && !warnings.includes(err)) warnings.push(err);
+      if (err && !warnings.some((w) => w.ja === err.ja)) warnings.push(err);
     }
   }
-  return c.json({ ok: true, updatedAt: now, warnings });
+  return c.json({ ok: true, updatedAt: now, warnings: warnings.map((w) => pick(w, reqLang(c))) });
 });
 
 polls.put("/:id/choices", async (c) => {
@@ -374,18 +389,18 @@ polls.put("/:id/choices", async (c) => {
   const db = c.env.DB;
   const now = nowSec();
   const status = effectiveStatus(poll.status, poll.deadline_at, now);
-  if (status === "closed" || status === "fixed") throw new AppError(409, "locked", "締切後・確定後は選択肢を変更できません。");
-  if (body.choicesVersion !== poll.choices_version) throw new AppError(409, "conflict", "選択肢がほかの画面で変更されています。画面を再読み込みしてください。");
+  if (status === "closed" || status === "fixed") throw new AppError(409, "locked", msg("締切後・確定後は選択肢を変更できません。", "You can't change the answer choices after the deadline or after a date is confirmed."));
+  if (body.choicesVersion !== poll.choices_version) throw new AppError(409, "conflict", msg("選択肢がほかの画面で変更されています。画面を再読み込みしてください。", "The answer choices were changed in another window. Please reload the page."));
   const kinds = new Set(body.choices.map((ch) => ch.kind));
-  if (!kinds.has("ok") || !kinds.has("ng")) throw new AppError(400, "invalid", "「参加できる」と「参加できない」の選択肢をそれぞれ 1 つ以上入れてください。");
+  if (!kinds.has("ok") || !kinds.has("ng")) throw new AppError(400, "invalid", msg("「参加できる」と「参加できない」の選択肢をそれぞれ 1 つ以上入れてください。", "Include at least one \"available\" choice and one \"not available\" choice."));
   const labels = new Set(body.choices.map((ch) => ch.label));
-  if (labels.size !== body.choices.length) throw new AppError(400, "invalid", "選択肢の名前が重複しています。");
+  if (labels.size !== body.choices.length) throw new AppError(400, "invalid", msg("選択肢の名前が重複しています。", "Two answer choices have the same name."));
 
   const existing = await getChoices(db, poll.id);
   const existingIds = new Set(existing.map((ch) => ch.id));
-  for (const ch of body.choices) if (ch.id && !existingIds.has(ch.id)) throw new AppError(400, "invalid", "選択肢が見つかりません。画面を再読み込みしてください。");
+  for (const ch of body.choices) if (ch.id && !existingIds.has(ch.id)) throw new AppError(400, "invalid", msg("選択肢が見つかりません。画面を再読み込みしてください。", "Answer choice not found. Please reload the page."));
   const bodyIds = body.choices.filter((ch) => ch.id).map((ch) => ch.id!);
-  if (new Set(bodyIds).size !== bodyIds.length) throw new AppError(400, "invalid", "同じ選択肢が重複しています。画面を再読み込みしてください。");
+  if (new Set(bodyIds).size !== bodyIds.length) throw new AppError(400, "invalid", msg("同じ選択肢が重複しています。画面を再読み込みしてください。", "The same answer choice appears twice. Please reload the page."));
   const keepIds = new Set(body.choices.filter((ch) => ch.id).map((ch) => ch.id!));
   const removed = existing.filter((ch) => !keepIds.has(ch.id));
   const used = await db.prepare("SELECT choice_id, COUNT(*) AS n FROM answers WHERE poll_id = ? GROUP BY choice_id").bind(poll.id).all<{ choice_id: string; n: number }>();
@@ -394,7 +409,7 @@ polls.put("/:id/choices", async (c) => {
   for (const r of removed) {
     if (usedIds.has(r.id)) {
       const to = reassign.get(r.id);
-      if (!to || !keepIds.has(to)) throw new AppError(400, "reassign_required", "回答がある選択肢を削除するときは、回答の移し先を選んでください。");
+      if (!to || !keepIds.has(to)) throw new AppError(400, "reassign_required", msg("回答がある選択肢を削除するときは、回答の移し先を選んでください。", "To delete a choice that has answers, choose where to move those answers."));
     }
   }
   const stmts: D1PreparedStatement[] = [];
@@ -435,13 +450,13 @@ polls.get("/:id/member-search", async (c) => {
   const q = (c.req.query("q") ?? "").trim();
   if (q.length < 1 || q.length > 32) return c.json({ members: [] });
   if (!(await hitRateLimit(c.env.DB, `search:${c.var.session.user_id}`, 60, 600, nowSec()))) {
-    throw new AppError(429, "rate_limited", "検索の回数が多すぎます。少し待ってからお試しください。");
+    throw new AppError(429, "rate_limited", msg("検索の回数が多すぎます。少し待ってからお試しください。", "Too many searches. Please wait a moment and try again."));
   }
   try {
     const members = await searchMembers(c.env, c.var.poll.guild_id, q);
     return c.json({ members });
   } catch (e) {
-    if (e instanceof DiscordError && e.status === 403) throw new AppError(502, "discord_forbidden", "Bot にメンバーを検索する権限がありません。");
+    if (e instanceof DiscordError && e.status === 403) throw new AppError(502, "discord_forbidden", msg("Bot にメンバーを検索する権限がありません。", "The bot doesn't have permission to search members."));
     throw e;
   }
 });
@@ -449,7 +464,7 @@ polls.get("/:id/member-search", async (c) => {
 /** Discord API を呼ぶ一覧の取得の回数制限（Bot 全体の Discord の回数制限を守るため） */
 async function limitDiscordLookups(c: C): Promise<void> {
   if (!(await hitRateLimit(c.env.DB, `lookup:${c.var.session.user_id}`, 30, 600, nowSec()))) {
-    throw new AppError(429, "rate_limited", "読み込みの回数が多すぎます。少し待ってからお試しください。");
+    throw new AppError(429, "rate_limited", msg("読み込みの回数が多すぎます。少し待ってからお試しください。", "Too many requests. Please wait a moment and try again."));
   }
 }
 
@@ -483,7 +498,7 @@ polls.put("/:id/participants", async (c) => {
   const currentIds = new Set(current.map((p) => p.user_id));
   const toAdd = body.add.filter((id) => !currentIds.has(id));
   if (current.length - body.remove.length + toAdd.length > LIMITS.participantsMax) {
-    throw new AppError(400, "too_many", `参加者は ${LIMITS.participantsMax} 人までです。`);
+    throw new AppError(400, "too_many", msg(`参加者は ${LIMITS.participantsMax} 人までです。`, `You can have up to ${LIMITS.participantsMax} participants.`));
   }
   // メンバー情報は並列で取得する（最大 25 人）
   const added = (await Promise.all(toAdd.map((id) => fetchMember(c.env, poll.guild_id, id)))).filter((m) => m !== null);
@@ -523,10 +538,10 @@ async function postPollMessage(
     )
     .bind(now, pollId, now - 60)
     .run();
-  if (claimed.meta.changes !== 1) throw new AppError(409, "publishing", "投稿の処理中です。少し待ってから画面を再読み込みしてください。");
+  if (claimed.meta.changes !== 1) throw new AppError(409, "publishing", msg("投稿の処理中です。少し待ってから画面を再読み込みしてください。", "Posting is in progress. Please wait a moment and reload the page."));
   try {
     const loaded = await readPollWithData(db, pollId);
-    if (!loaded) throw new AppError(404, "not_found", "この調整は削除されました。");
+    if (!loaded) throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
     const data = opts.prepare(loaded);
     let messageId: string;
     try {
@@ -534,7 +549,7 @@ async function postPollMessage(
       messageId = res.id;
     } catch (e) {
       if (e instanceof DiscordError && (e.status === 403 || e.status === 404)) {
-        throw new AppError(502, "discord_forbidden", "チャンネルに投稿できませんでした。Bot にこのチャンネルの「チャンネルを見る」「メッセージを送信」の権限があるか確認してください。");
+        throw new AppError(502, "discord_forbidden", msg("チャンネルに投稿できませんでした。Bot にこのチャンネルの「チャンネルを見る」「メッセージを送信」の権限があるか確認してください。", "Couldn't post to the channel. Check that the bot has the \"View Channel\" and \"Send Messages\" permissions in this channel."));
       }
       throw e;
     }
@@ -550,14 +565,14 @@ polls.post("/:id/publish", async (c) => {
   const { poll } = c.var;
   const db = c.env.DB;
   const now = nowSec();
-  if (poll.status !== "draft") throw new AppError(409, "published", "この調整はすでに公開されています。");
-  if (!poll.title) throw new AppError(400, "no_title", "タイトルを入力してください。");
+  if (poll.status !== "draft") throw new AppError(409, "published", msg("この調整はすでに公開されています。", "This poll has already been published."));
+  if (!poll.title) throw new AppError(400, "no_title", msg("タイトルを入力してください。", "Enter a title."));
   const deadlineAt = poll.deadline_at && poll.deadline_at > now ? poll.deadline_at : floorToMinute(now + DEFAULT_DEADLINE_DAYS * DAY);
   const { messageId, data: posted } = await postPollMessage(c.env, poll.id, now, {
     draftOnly: true,
     prepare: (data) => {
-      if (data.slots.length === 0) throw new AppError(400, "no_slots", "候補日時を 1 件以上入れてください。");
-      if (data.participants.length === 0) throw new AppError(400, "no_participants", "参加者を 1 人以上入れてください。");
+      if (data.slots.length === 0) throw new AppError(400, "no_slots", msg("候補日時を 1 件以上入れてください。", "Add at least one date option."));
+      if (data.participants.length === 0) throw new AppError(400, "no_participants", msg("参加者を 1 人以上入れてください。", "Add at least one participant."));
       return { ...data, poll: { ...data.poll, status: "open", deadline_at: deadlineAt }, answers: [] };
     },
     afterPost: async (messageId) => {
@@ -583,25 +598,25 @@ polls.put("/:id/answers/me", async (c) => {
   const db = c.env.DB;
   const now = nowSec();
   const status = effectiveStatus(poll.status, poll.deadline_at, now);
-  if (poll.status === "draft") throw new AppError(403, "draft", "この調整はまだ公開されていません。");
-  if (!canAnswer(status)) throw new AppError(409, "closed", "この調整にはいま回答できません。");
-  if (body.choicesVersion !== poll.choices_version) throw new AppError(409, "choices_changed", "選択肢が変更されました。画面を再読み込みしてから入力し直してください。");
+  if (poll.status === "draft") throw new AppError(403, "draft", msg("この調整はまだ公開されていません。", "This poll has not been published yet."));
+  if (!canAnswer(status)) throw new AppError(409, "closed", msg("この調整にはいま回答できません。", "This poll isn't accepting answers right now."));
+  if (body.choicesVersion !== poll.choices_version) throw new AppError(409, "choices_changed", msg("選択肢が変更されました。画面を再読み込みしてから入力し直してください。", "The answer choices have changed. Please reload the page and answer again."));
   if (!(await hitRateLimit(db, `answer:${session.user_id}`, 30, 600, now))) {
-    throw new AppError(429, "rate_limited", "保存の回数が多すぎます。少し待ってからお試しください。");
+    throw new AppError(429, "rate_limited", msg("保存の回数が多すぎます。少し待ってからお試しください。", "Too many saves. Please wait a moment and try again."));
   }
   // 参加者・候補・選択肢・これまでの回答は 1 文で読む（回答の保存はいちばん多い書き込みなので、問い合わせを減らす）
   const data = await readPollWithData(db, poll.id);
-  if (!data) throw new AppError(404, "not_found", "この調整は削除されました。");
+  if (!data) throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
   const { slots, choices } = data;
   if (!data.participants.some((p) => p.user_id === session.user_id)) {
-    throw new AppError(403, "not_participant", "この調整の参加者ではないため、回答できません。");
+    throw new AppError(403, "not_participant", msg("この調整の参加者ではないため、回答できません。", "You can't answer because you are not a participant in this poll."));
   }
   const slotIds = new Set(slots.map((s) => s.id));
   const choiceIds = new Set(choices.map((ch) => ch.id));
   const seen = new Set<string>();
   for (const a of body.answers) {
-    if (!slotIds.has(a.slotId) || !choiceIds.has(a.choiceId)) throw new AppError(400, "invalid", "候補または選択肢が見つかりません。画面を再読み込みしてください。");
-    if (seen.has(a.slotId)) throw new AppError(400, "invalid", "同じ候補への回答が重複しています。");
+    if (!slotIds.has(a.slotId) || !choiceIds.has(a.choiceId)) throw new AppError(400, "invalid", msg("候補または選択肢が見つかりません。画面を再読み込みしてください。", "Date option or answer choice not found. Please reload the page."));
+    if (seen.has(a.slotId)) throw new AppError(400, "invalid", msg("同じ候補への回答が重複しています。", "There are two answers for the same date option."));
     seen.add(a.slotId);
   }
   const old = new Map(data.answers.filter((a) => a.user_id === session.user_id).map((r) => [r.slot_id, r]));
@@ -655,7 +670,7 @@ function slotWhen(slot: { start_at: number; all_day: number }): string {
 }
 
 /** 登録済みの Discord イベントを消す。すでに消えていれば何もしない。消せなかったら警告の文を返す */
-async function deleteEvent(env: Env, poll: PollRow, slot: SlotRow): Promise<string | null> {
+async function deleteEvent(env: Env, poll: PollRow, slot: SlotRow): Promise<Msg | null> {
   if (!slot.discord_event_id) return null;
   try {
     await discord(env, "DELETE", `/guilds/${poll.guild_id}/scheduled-events/${slot.discord_event_id}`);
@@ -663,7 +678,7 @@ async function deleteEvent(env: Env, poll: PollRow, slot: SlotRow): Promise<stri
     // 消せなくても記録は外す（古いイベントが取り消した候補に結び付いたまま残らないように。主催者には Discord で消すよう知らせる）
     if (!(e instanceof DiscordError && e.status === 404)) {
       await env.DB.prepare("UPDATE slots SET discord_event_id = NULL WHERE id = ?").bind(slot.id).run();
-      return "登録済みの Discord イベントを削除できませんでした。Discord で削除してください。";
+      return msg("登録済みの Discord イベントを削除できませんでした。Discord で削除してください。", "Couldn't delete the Discord event. Please delete it in Discord.");
     }
   }
   await env.DB.prepare("UPDATE slots SET discord_event_id = NULL WHERE id = ?").bind(slot.id).run();
@@ -690,11 +705,11 @@ polls.post("/:id/fix", async (c) => {
   const { poll } = c.var;
   const db = c.env.DB;
   const now = nowSec();
-  if (!canAnswer(poll.status)) throw new AppError(409, "not_published", "公開中の調整だけ確定できます。");
+  if (!canAnswer(poll.status)) throw new AppError(409, "not_published", msg("公開中の調整だけ確定できます。", "You can only confirm dates in a published poll."));
   const slots = await getSlots(db, poll.id);
   const slot = slots.find((s) => s.id === body.slotId);
-  if (!slot) throw new AppError(400, "invalid", "候補が見つかりません。");
-  const alreadyFixed = () => new AppError(409, "already_fixed", "この候補はすでに確定しています。画面を再読み込みしてください。");
+  if (!slot) throw new AppError(400, "invalid", msg("候補が見つかりません。", "Date option not found."));
+  const alreadyFixed = () => new AppError(409, "already_fixed", msg("この候補はすでに確定しています。画面を再読み込みしてください。", "This date is already confirmed. Please reload the page."));
   if (slot.fixed_at !== null) throw alreadyFixed();
   // 先に確定の権利を取る（同時に 2 回押されても、イベントの登録などは 1 回だけにする）
   const claimed = await db.prepare("UPDATE slots SET fixed_at = ? WHERE id = ? AND fixed_at IS NULL").bind(now, slot.id).run();
@@ -704,13 +719,13 @@ polls.post("/:id/fix", async (c) => {
     db.prepare("UPDATE answers SET prev_choice_id = NULL WHERE slot_id = ?").bind(slot.id),
     refreshFixedStatement(db, poll, now),
   ]);
-  const warnings: string[] = [];
-  await syncNow(c.env, poll.id).catch(() => warnings.push("募集メッセージを更新できませんでした。"));
+  const warnings: Msg[] = [];
+  await syncNow(c.env, poll.id).catch(() => warnings.push(msg("募集メッセージを更新できませんでした。", "Couldn't update the poll message.")));
   if (body.event) {
     const err = await upsertEvent(c.env, poll, slot, body.event);
     if (err) warnings.push(err);
   }
-  return c.json({ ok: true, warnings });
+  return c.json({ ok: true, warnings: warnings.map((w) => pick(w, reqLang(c))) });
 });
 
 // 確定を取り消す（主催者）。Discord イベントを消す。チャンネルへのお知らせは［確定をお知らせする］でまとめて投稿する。
@@ -722,10 +737,10 @@ polls.delete("/:id/fix/:slotId", async (c) => {
   const now = nowSec();
   const slots = await getSlots(db, poll.id);
   const slot = slots.find((s) => s.id === c.req.param("slotId"));
-  if (!slot) throw new AppError(404, "not_found", "候補が見つかりません。画面を再読み込みしてください。");
-  if (slot.fixed_at === null) throw new AppError(409, "not_fixed", "この候補は確定していません。画面を再読み込みしてください。");
+  if (!slot) throw new AppError(404, "not_found", msg("候補が見つかりません。画面を再読み込みしてください。", "Date option not found. Please reload the page."));
+  if (slot.fixed_at === null) throw new AppError(409, "not_fixed", msg("この候補は確定していません。画面を再読み込みしてください。", "This date isn't confirmed. Please reload the page."));
 
-  const warnings: string[] = [];
+  const warnings: Msg[] = [];
   const err = await deleteEvent(c.env, poll, slot);
   if (err) warnings.push(err);
   await db.batch([
@@ -734,8 +749,8 @@ polls.delete("/:id/fix/:slotId", async (c) => {
     db.prepare("UPDATE slots SET fixed_at = NULL, day_reminded_at = NULL WHERE id = ?").bind(slot.id),
     refreshFixedStatement(db, poll, now),
   ]);
-  await syncNow(c.env, poll.id).catch(() => warnings.push("募集メッセージを更新できませんでした。"));
-  return c.json({ ok: true, warnings });
+  await syncNow(c.env, poll.id).catch(() => warnings.push(msg("募集メッセージを更新できませんでした。", "Couldn't update the poll message.")));
+  return c.json({ ok: true, warnings: warnings.map((w) => pick(w, reqLang(c))) });
 });
 
 // 確定をお知らせする（主催者）。いま確定している日時と、前回のお知らせのあとに取り消した日時を、1 つのメッセージにまとめて投稿する（§4.3）
@@ -745,22 +760,22 @@ polls.post("/:id/announce", async (c) => {
   const { poll } = c.var;
   const db = c.env.DB;
   const now = nowSec();
-  if (!canAnswer(poll.status)) throw new AppError(409, "not_published", "公開中の調整だけお知らせできます。");
+  if (!canAnswer(poll.status)) throw new AppError(409, "not_published", msg("公開中の調整だけお知らせできます。", "You can only announce dates for a published poll."));
   const slots = await getSlots(db, poll.id);
   const fixed = slots.filter((s) => s.fixed_at !== null);
   const cancelled = slots.filter((s) => s.fixed_at === null && s.announced_fixed === 1);
-  if (!fixed.length && !cancelled.length) throw new AppError(409, "nothing", "お知らせする確定日・取り消しがありません。");
+  if (!fixed.length && !cancelled.length) throw new AppError(409, "nothing", msg("お知らせする確定日・取り消しがありません。", "There are no confirmed or cancelled dates to announce."));
   // チャンネルへの投稿が続かないよう、1 つの調整につき 1 時間に 10 回まで
-  if (!(await hitRateLimit(db, `announce:${poll.id}`, 10, 3600, now))) throw new AppError(429, "rate_limited", "確定のお知らせは 1 時間に 10 回までです。");
+  if (!(await hitRateLimit(db, `announce:${poll.id}`, 10, 3600, now))) throw new AppError(429, "rate_limited", msg("確定のお知らせは 1 時間に 10 回までです。", "You can announce dates up to 10 times per hour."));
 
-  const warnings: string[] = [];
+  const warnings: Msg[] = [];
   // メンションは公開時のお知らせと同じ（ロールの調整はそのロール、それ以外は @everyone。§5.5）。
   // ロールや @everyone への通知が続かないよう、メンションは 1 つの調整につき 1 時間に 3 回まで（投稿できたときだけ数える）
   const MENTION_KEY = `fix-mention:${poll.id}`;
   let mention = body.mention;
   if (mention && !(await rateLimitAllows(db, MENTION_KEY, 3, 3600, now))) {
     mention = false;
-    warnings.push("確定のお知らせのメンションは 1 時間に 3 回までのため、今回はメンションせずに投稿しました。");
+    warnings.push(msg("確定のお知らせのメンションは 1 時間に 3 回までのため、今回はメンションせずに投稿しました。", "Mentions in announcements are limited to 3 per hour, so this was posted without a mention."));
   }
   // 予定のリマインド（§5.7）を送る回がもう過ぎていて、予定がまだ先なら、このお知らせがリマインドを兼ねる。
   // 開始までの時間を添え、あとの回で同じ日時に重ねて送らないよう記録する
@@ -779,7 +794,7 @@ polls.post("/:id/announce", async (c) => {
   try {
     await discord(c.env, "POST", `/channels/${poll.channel_id}/messages`, message);
   } catch {
-    throw new AppError(502, "discord_failed", "確定のお知らせを投稿できませんでした。Bot がこのチャンネルに投稿できるか確認してください。");
+    throw new AppError(502, "discord_failed", msg("確定のお知らせを投稿できませんでした。Bot がこのチャンネルに投稿できるか確認してください。", "Couldn't post the announcement. Check that the bot can post in this channel."));
   }
   const stmts: D1PreparedStatement[] = [
     // お知らせした内容を覚える（次のお知らせで、取り消した日時を知らせるため）
@@ -788,13 +803,13 @@ polls.post("/:id/announce", async (c) => {
   ];
   if (mention) stmts.push(hitRateLimitStatement(db, MENTION_KEY, 3600, now));
   await db.batch(stmts);
-  return c.json({ ok: true, warnings });
+  return c.json({ ok: true, warnings: warnings.map((w) => pick(w, reqLang(c))) });
 });
 
 /** 登録済みの Discord イベントの日時だけを変える（場所などはそのまま） */
-async function updateEventTime(env: Env, poll: PollRow, slot: SlotRow, time: { start_at: number; end_at: number | null; all_day: number }): Promise<string | null> {
+async function updateEventTime(env: Env, poll: PollRow, slot: SlotRow, time: { start_at: number; end_at: number | null; all_day: number }): Promise<Msg | null> {
   if (!slot.discord_event_id) return null;
-  if (time.start_at <= nowSec() + 60) return "確定した候補の開始日時が過ぎているため、Discord イベントの日時は変更しませんでした。";
+  if (time.start_at <= nowSec() + 60) return msg("確定した候補の開始日時が過ぎているため、Discord イベントの日時は変更しませんでした。", "The confirmed date has already started, so the Discord event's time was not changed.");
   const end = time.end_at ?? time.start_at + (time.all_day ? DAY : 3600);
   try {
     await discord(env, "PATCH", `/guilds/${poll.guild_id}/scheduled-events/${slot.discord_event_id}`, {
@@ -807,7 +822,7 @@ async function updateEventTime(env: Env, poll: PollRow, slot: SlotRow, time: { s
       await env.DB.prepare("UPDATE slots SET discord_event_id = NULL WHERE id = ?").bind(slot.id).run();
       return null;
     }
-    return "Discord イベントの日時を変更できませんでした。Discord で変更してください。";
+    return msg("Discord イベントの日時を変更できませんでした。Discord で変更してください。", "Couldn't change the Discord event's time. Please change it in Discord.");
   }
 }
 
@@ -816,9 +831,9 @@ async function upsertEvent(
   poll: PollRow,
   slot: SlotRow,
   ev: { type: "voice" | "external"; channelId: string | null; location: string | null },
-): Promise<string | null> {
+): Promise<Msg | null> {
   const now = nowSec();
-  if (slot.start_at <= now + 60) return "開始日時が過ぎているため、Discord イベントは登録しませんでした。";
+  if (slot.start_at <= now + 60) return msg("開始日時が過ぎているため、Discord イベントは登録しませんでした。", "The start time has passed, so no Discord event was created.");
   const end = slot.end_at ?? slot.start_at + (slot.all_day ? DAY : 3600);
   const payload: Record<string, unknown> = {
     name: (poll.title ?? "日程調整").slice(0, 100),
@@ -828,7 +843,7 @@ async function upsertEvent(
     scheduled_end_time: new Date(end * 1000).toISOString(),
   };
   if (ev.type === "voice") {
-    if (!ev.channelId) return "ボイスチャンネルが選ばれていないため、Discord イベントは登録しませんでした。";
+    if (!ev.channelId) return msg("ボイスチャンネルが選ばれていないため、Discord イベントは登録しませんでした。", "No voice channel was selected, so no Discord event was created.");
     payload.entity_type = 2;
     payload.channel_id = ev.channelId;
   } else {
@@ -849,8 +864,8 @@ async function upsertEvent(
       await env.DB.prepare("UPDATE slots SET discord_event_id = NULL WHERE id = ?").bind(slot.id).run();
       return upsertEvent(env, poll, { ...slot, discord_event_id: null }, ev);
     }
-    if (e instanceof DiscordError && e.status === 403) return "Bot に「イベントの作成」権限がないため、Discord イベントは登録しませんでした。";
-    return "Discord イベントを登録できませんでした。";
+    if (e instanceof DiscordError && e.status === 403) return msg("Bot に「イベントの作成」権限がないため、Discord イベントは登録しませんでした。", "The bot doesn't have the \"Create Events\" permission, so no Discord event was created.");
+    return msg("Discord イベントを登録できませんでした。", "Couldn't create the Discord event.");
   }
 }
 
@@ -859,10 +874,10 @@ polls.post("/:id/remind", async (c) => {
   const { poll } = c.var;
   const db = c.env.DB;
   const now = nowSec();
-  if (poll.status === "draft") throw new AppError(409, "draft", "公開してからリマインドしてください。");
-  if (poll.status === "fixed") throw new AppError(409, "fixed", "日時が確定しているため、リマインドはできません。");
+  if (poll.status === "draft") throw new AppError(409, "draft", msg("公開してからリマインドしてください。", "Publish the poll before sending a reminder."));
+  if (poll.status === "fixed") throw new AppError(409, "fixed", msg("日時が確定しているため、リマインドはできません。", "A date is already confirmed, so reminders can't be sent."));
   if (poll.last_reminded_at && now - poll.last_reminded_at < 12 * 3600) {
-    throw new AppError(429, "rate_limited", "リマインドは 12 時間に 1 回までです。");
+    throw new AppError(429, "rate_limited", msg("リマインドは 12 時間に 1 回までです。", "You can send a reminder once every 12 hours."));
   }
   const rows = await db
     .prepare("SELECT user_id FROM participants p WHERE poll_id = ? AND NOT EXISTS (SELECT 1 FROM answers a WHERE a.poll_id = p.poll_id AND a.user_id = p.user_id)")
@@ -870,7 +885,7 @@ polls.post("/:id/remind", async (c) => {
     .all<{ user_id: string }>();
   if (rows.results.length === 0) return c.json({ ok: true, count: 0 });
   const r = await db.prepare("UPDATE polls SET last_reminded_at = ? WHERE id = ? AND (last_reminded_at IS NULL OR last_reminded_at <= ?)").bind(now, poll.id, now - 12 * 3600).run();
-  if (r.meta.changes !== 1) throw new AppError(429, "rate_limited", "リマインドは 12 時間に 1 回までです。");
+  if (r.meta.changes !== 1) throw new AppError(429, "rate_limited", msg("リマインドは 12 時間に 1 回までです。", "You can send a reminder once every 12 hours."));
   const link = poll.message_id ? `\n${messageLink(poll.guild_id, poll.channel_id, poll.message_id)}` : "";
   const deadline = poll.deadline_at ? `（締切 <t:${poll.deadline_at}:f>）` : "";
   await discord(
@@ -896,12 +911,12 @@ polls.post("/:id/choices-ack", async (c) => {
 polls.post("/:id/sync-message", async (c) => {
   requireOrganizer(c);
   const { poll } = c.var;
-  if (!poll.message_id) throw new AppError(409, "no_message", "募集メッセージがありません（未公開か、メッセージが削除されています）。");
+  if (!poll.message_id) throw new AppError(409, "no_message", msg("募集メッセージがありません（未公開か、メッセージが削除されています）。", "There is no poll message (the poll isn't published, or the message was deleted)."));
   if (!(await hitRateLimit(c.env.DB, `sync:${poll.id}`, 1, 60, nowSec()))) {
-    throw new AppError(429, "rate_limited", "手動更新は 1 分に 1 回までです。");
+    throw new AppError(429, "rate_limited", msg("手動更新は 1 分に 1 回までです。", "You can refresh manually once per minute."));
   }
   const ok = await syncNow(c.env, poll.id);
-  if (!ok) throw new AppError(502, "sync_failed", "募集メッセージを更新できませんでした。時間をおいてお試しください。");
+  if (!ok) throw new AppError(502, "sync_failed", msg("募集メッセージを更新できませんでした。時間をおいてお試しください。", "Couldn't update the poll message. Please try again later."));
   return c.json({ ok: true, lastSyncedAt: nowSec() });
 });
 
@@ -914,8 +929,8 @@ polls.post("/:id/repost", async (c) => {
   const { poll } = c.var;
   const db = c.env.DB;
   const now = nowSec();
-  if (!canAnswer(poll.status)) throw new AppError(409, "not_published", "公開してから投稿してください。");
-  if (!(await hitRateLimit(db, `sync:${poll.id}`, 1, 60, now))) throw new AppError(429, "rate_limited", "投稿・更新は 1 分に 1 回までです。");
+  if (!canAnswer(poll.status)) throw new AppError(409, "not_published", msg("公開してから投稿してください。", "Publish the poll before posting."));
+  if (!(await hitRateLimit(db, `sync:${poll.id}`, 1, 60, now))) throw new AppError(429, "rate_limited", msg("投稿・更新は 1 分に 1 回までです。", "You can post or refresh once per minute."));
   await postPollMessage(c.env, poll.id, now, {
     draftOnly: false,
     prepare: (data) => data,
@@ -932,16 +947,16 @@ polls.post("/:id/repost", async (c) => {
 });
 
 /** 調整を削除する。募集メッセージを「削除されました」に変え、Discord イベントも消してから、データを消す */
-async function deletePollEverywhere(env: Env, poll: PollRow): Promise<string[]> {
+async function deletePollEverywhere(env: Env, poll: PollRow): Promise<Msg[]> {
   if (poll.message_id) {
     await discord(env, "PATCH", `/channels/${poll.channel_id}/messages/${poll.message_id}`, buildDeletedMessage(poll.title)).catch(() => undefined);
   }
   // 確定時に登録した Discord イベントも、調整と一緒に消す
-  const warnings: string[] = [];
+  const warnings: Msg[] = [];
   const eventIds = (await env.DB.prepare("SELECT discord_event_id FROM slots WHERE poll_id = ? AND discord_event_id IS NOT NULL").bind(poll.id).all<{ discord_event_id: string }>()).results;
   const results = await Promise.allSettled(eventIds.map(({ discord_event_id }) => discord(env, "DELETE", `/guilds/${poll.guild_id}/scheduled-events/${discord_event_id}`)));
   if (results.some((r) => r.status === "rejected" && !(r.reason instanceof DiscordError && r.reason.status === 404))) {
-    warnings.push("Discord イベントを削除できませんでした。Discord で削除してください。");
+    warnings.push(msg("Discord イベントを削除できませんでした。Discord で削除してください。", "Couldn't delete the Discord event. Please delete it in Discord."));
   }
   await deletePollData(env.DB, poll.id);
   return warnings;
@@ -951,7 +966,7 @@ polls.delete("/:id", async (c) => {
   requireOrganizer(c);
   const warnings = await deletePollEverywhere(c.env, c.var.poll);
   c.header("Set-Cookie", clearSessionCookie(c.var.poll.id));
-  return c.json({ ok: true, warnings });
+  return c.json({ ok: true, warnings: warnings.map((w) => pick(w, reqLang(c))) });
 });
 
 polls.delete("/:id/session", async (c) => {
@@ -970,7 +985,7 @@ const guilds = new Hono<{ Bindings: Env; Variables: ListVars }>();
 
 guilds.use("/:guildId/*", async (c: LC, next) => {
   const guildId = c.req.param("guildId") ?? "";
-  if (!/^\d{17,20}$/.test(guildId)) throw new AppError(404, "not_found", "見つかりません。");
+  if (!/^\d{17,20}$/.test(guildId)) throw new AppError(404, "not_found", msg("見つかりません。", "Not found."));
   const sid = readCookie(c.req.header("Cookie") ?? null, listCookieName(guildId));
   const list = sid ? await getListSession(c.env.DB, guildId, sid) : null;
   // 前に受け取ったリンクは使えないので、Discord に残っているリンクを開き直さないよう、作り直す手順を伝える
@@ -978,12 +993,12 @@ guilds.use("/:guildId/*", async (c: LC, next) => {
     throw new AppError(
       401,
       "list_session_expired",
-      "一覧ページの有効期限が切れています。Discord で前に受け取ったリンクは、無効になっています。Discord でもう一度 /schedule を実行し、［作成した調整を管理］を押して、新しいリンクを受け取ってください。",
+      msg("一覧ページの有効期限が切れています。Discord で前に受け取ったリンクは、無効になっています。Discord でもう一度 /schedule を実行し、［作成した調整を管理］を押して、新しいリンクを受け取ってください。", "This list page has expired. Links you received earlier in Discord no longer work. Run /schedule in Discord again and press [Manage my polls] to get a new link."),
     );
   }
   if (c.req.method !== "GET") {
     const token = c.req.header("X-CSRF-Token") ?? "";
-    if (!timingSafeEqual(token, list.csrf_token)) throw new AppError(403, "bad_csrf", "不正なリクエストです。画面を再読み込みしてください。");
+    if (!timingSafeEqual(token, list.csrf_token)) throw new AppError(403, "bad_csrf", msg("不正なリクエストです。画面を再読み込みしてください。", "Invalid request. Please reload the page."));
   }
   c.set("list", list);
   await next();
@@ -994,7 +1009,7 @@ async function ownPoll(c: LC): Promise<PollRow> {
   const poll = await getPoll(c.env.DB, c.req.param("pollId") ?? "");
   const { list } = c.var;
   if (!poll || poll.status === "cancelled" || poll.guild_id !== list.guild_id || poll.organizer_id !== list.user_id) {
-    throw new AppError(404, "not_found", "この調整は見つかりませんでした。削除された可能性があります。");
+    throw new AppError(404, "not_found", msg("この調整は見つかりませんでした。削除された可能性があります。", "This poll was not found. It may have been deleted."));
   }
   return poll;
 }
@@ -1050,7 +1065,7 @@ guilds.get("/:guildId/polls", async (c: LC) => {
 guilds.post("/:guildId/polls/:pollId/open", async (c: LC) => {
   const body = await readJson(c as unknown as Context<{ Bindings: Env }>, OpenPollBody);
   const poll = await ownPoll(c);
-  if (body.to === "summary" && poll.status === "draft") throw new AppError(409, "draft", "下書きの調整には集計画面がありません。");
+  if (body.to === "summary" && poll.status === "draft") throw new AppError(409, "draft", msg("下書きの調整には集計画面がありません。", "Draft polls don't have a results page."));
   const { sid } = await createSession(c.env.DB, poll.id, c.var.list.user_id, "organizer");
   c.header("Set-Cookie", sessionCookie(poll.id, sid));
   return c.json({ redirect: body.to === "edit" ? `/p/${poll.id}/edit` : `/p/${poll.id}` });
@@ -1059,7 +1074,7 @@ guilds.post("/:guildId/polls/:pollId/open", async (c: LC) => {
 guilds.delete("/:guildId/polls/:pollId", async (c: LC) => {
   const poll = await ownPoll(c);
   const warnings = await deletePollEverywhere(c.env, poll);
-  return c.json({ ok: true, warnings });
+  return c.json({ ok: true, warnings: warnings.map((w) => pick(w, reqLang(c))) });
 });
 
 api.route("/guilds", guilds);
