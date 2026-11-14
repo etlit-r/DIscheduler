@@ -3,23 +3,33 @@
 // - 切り替えで選んだ言語は、このブラウザの localStorage（dis.lang。Web 画面と共通）にだけ保存する
 // - 選んだ言語がまだなければ、ブラウザの言語（日本語なら日本語、それ以外は英語）のページへ移る。
 //   検索エンジンのクローラーは移さない（日本語版と英語版のどちらも、それぞれのアドレスで読まれるように）
+// - 広告の枠（ad-consent.js）より先に読み込む。別の言語のページへ移るときは、広告の枠を読み込ませない（data-lang-redirect）
 (() => {
   const KEY = "dis.lang";
   const page = document.documentElement.lang === "en" ? "en" : "ja";
   const store = (v) => {
     try {
       localStorage.setItem(KEY, v);
+      return true;
     } catch {
-      // 保存できないブラウザでは、移った先のページの言語のまま
+      return false;
     }
   };
   const link = document.querySelector("a[data-lang]");
   if (!link) return;
-  // # の後ろ（回答の完了画面の #p=、ページ内の見出し）は、もう一方の言語のページでも保つ
-  const target = link.getAttribute("href") + location.hash;
-  link.setAttribute("href", target);
-  link.addEventListener("click", () => store(link.getAttribute("data-lang")));
+  const base = link.getAttribute("href");
+  // # の後ろ（回答の完了画面の #p=、ページ内の見出し）は、もう一方の言語のページでも保つ。
+  // ページ内の見出しへ移ったあとでも保てるよう、押したときの # を使う
+  const withHash = (path) => path + location.hash;
+  link.setAttribute("href", withHash(base));
+  link.addEventListener("click", () => {
+    const lang = link.getAttribute("data-lang");
+    // 保存できないブラウザでは ?lang= で選んだ言語を伝える（移った先で、ブラウザの言語のページへ戻されないように）
+    link.setAttribute("href", store(lang) ? withHash(base) : withHash(`${base}?lang=${lang}`));
+  });
 
+  // ?lang= で言語を選んで来たときは、そのページのまま
+  if (new URLSearchParams(location.search).get("lang") === page) return;
   let saved = null;
   try {
     saved = localStorage.getItem(KEY);
@@ -35,5 +45,6 @@
   }
   if (want === page) return;
   // もう一方の言語のページへ移る（# の後ろはそのまま保つ。回答の完了画面の #p= など）
-  location.replace(target);
+  document.documentElement.setAttribute("data-lang-redirect", "");
+  location.replace(withHash(base));
 })();

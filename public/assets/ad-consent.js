@@ -4,6 +4,8 @@
 // - 選んだ内容は、このブラウザの localStorage にだけ保存する（サーバーには送らない）
 // CSP（Trusted Types）を守るため、innerHTML などは使わず DOM の API だけで組み立てる
 (() => {
+  // 別の言語のページへ移る途中（lang.js）なら、広告の枠を読み込まない
+  if (document.documentElement.hasAttribute("data-lang-redirect")) return;
   const KEY = "discheduler.ads";
   const FRAME_URL = "https://ads.etlits.dev/frame";
   // ページの言語（<html lang>）に合わせて文言を選ぶ（英語版のページは /en/ の下。docs/design.md §6.12）
