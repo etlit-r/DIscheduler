@@ -134,6 +134,8 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .tz-empty { padding: 8px 10px; color: var(--text-muted); }
 .header-actions { display: flex; align-items: center; gap: 8px; }
 .lang-switch { white-space: nowrap; }
+/* .btn の display が hidden 属性より強いので、隠すときははっきり消す（リンク中継の画面と、読み込みの途中） */
+.lang-switch[hidden] { display: none; }
 .tz-switch { width: 180px; }
 .tz-switch input { min-height: 36px; padding: 4px 8px; font-size: 0.85rem; }
 
