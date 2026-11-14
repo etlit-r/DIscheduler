@@ -4,6 +4,7 @@ import { defaultChoiceStatements, hitRateLimit, rateLimitResetIn, type PollRow, 
 import { extractParticipants, fetchMember, type Candidate } from "../discord/members";
 import { getGuildSettings } from "../guilds/settings";
 import { DAY, floorToMinute, nowSec, randomId } from "../core/lib";
+import { msg, type Msg } from "../shared/i18n";
 
 export const DRAFT_TTL = 3 * DAY;
 export const RETENTION = 180 * DAY;
@@ -20,7 +21,7 @@ export interface CreateOptions {
 }
 
 export type CreateResult =
-  | { ok: true; pollId: string; reused: boolean; notice: string | null; targetType: PollRow["target_type"] }
+  | { ok: true; pollId: string; reused: boolean; notice: Msg | null; targetType: PollRow["target_type"] }
   | { ok: false; message: string };
 
 /** 未入力（タイトルも候補もない）の下書き。あれば使い回す（§4.4） */
@@ -111,7 +112,7 @@ export interface Decided {
   targetType: TargetType;
   roleId: string | null;
   participants: Candidate[];
-  notice: string | null;
+  notice: Msg | null;
 }
 
 /**
@@ -131,7 +132,7 @@ export async function decideParticipants(
 ): Promise<Decided> {
   let targetType: TargetType = members === "manual" ? "manual" : roleId ? "role" : "channel";
   let role = targetType === "role" ? roleId : null;
-  let notice: string | null = null;
+  let notice: Msg | null = null;
   let participants: Candidate[] = [];
   if (targetType !== "manual") {
     let r = await extractParticipants(env, guildId, channelId, role);
@@ -139,7 +140,10 @@ export async function decideParticipants(
       r = await extractParticipants(env, guildId, channelId, null);
       targetType = "channel";
       role = null;
-      notice = "サーバーの既定のロールを持つメンバーがいないため、このチャンネルのメンバーを参加者にしました。";
+      notice = msg(
+        "サーバーの既定のロールを持つメンバーがいないため、このチャンネルのメンバーを参加者にしました。",
+        "No one has the server's default role, so the members of this channel were made participants.",
+      );
     }
     if (r.ok) participants = r.members;
     else {
@@ -161,7 +165,7 @@ export async function resetParticipants(
   poll: PollRow,
   members: "auto" | "manual",
   roleId: string | null,
-): Promise<{ notice: string | null; targetType: TargetType }> {
+): Promise<{ notice: Msg | null; targetType: TargetType }> {
   const d = await decideParticipants(env, poll.guild_id, poll.channel_id, poll.organizer_id, members, roleId);
   const db = env.DB;
   await db.batch([
