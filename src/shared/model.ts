@@ -32,6 +32,12 @@ export const KIND_LABEL: Record<ChoiceKind, string> = {
   ng: "参加できない",
 };
 
+export const KIND_LABEL_EN: Record<ChoiceKind, string> = {
+  ok: "Available",
+  maybe: "Maybe",
+  ng: "Not available",
+};
+
 export const DEFAULT_SCORE: Record<ChoiceKind, number> = { ok: 4, maybe: 2, ng: 0 };
 export const DEFAULT_COLOR: Record<ChoiceKind, ChoiceColor> = { ok: "green", maybe: "yellow", ng: "red" };
 
@@ -89,6 +95,52 @@ export const CHOICE_TEMPLATES: readonly ChoiceTemplate[] = [
     ],
   },
 ];
+
+/** 英語のひな形（§6.12）。並びと区分・点数・色は日本語のひな形と同じ */
+export const CHOICE_TEMPLATES_EN: readonly ChoiceTemplate[] = [
+  {
+    id: "standard",
+    name: "Standard",
+    choices: [
+      { symbol: "○", label: "Yes", kind: "ok", score: 4, color: "green" },
+      { symbol: "△", label: "Maybe", kind: "maybe", score: 2, color: "yellow" },
+      { symbol: "×", label: "No", kind: "ng", score: 0, color: "red" },
+    ],
+  },
+  {
+    id: "binary",
+    name: "Yes / No",
+    choices: [
+      { symbol: "○", label: "Yes", kind: "ok", score: 4, color: "green" },
+      { symbol: "×", label: "No", kind: "ng", score: 0, color: "red" },
+    ],
+  },
+  {
+    id: "four",
+    name: "4 levels",
+    choices: [
+      { symbol: "◎", label: "Definitely", kind: "ok", score: 5, color: "green" },
+      { symbol: "○", label: "Yes", kind: "ok", score: 4, color: "teal" },
+      { symbol: "△", label: "Maybe", kind: "maybe", score: 2, color: "yellow" },
+      { symbol: "×", label: "No", kind: "ng", score: 0, color: "red" },
+    ],
+  },
+  {
+    id: "time",
+    name: "With time notes",
+    choices: [
+      { symbol: "○", label: "Yes", kind: "ok", score: 4, color: "green" },
+      { symbol: "L", label: "Late", kind: "maybe", score: 2, color: "teal" },
+      { symbol: "E", label: "Early exit", kind: "maybe", score: 2, color: "orange" },
+      { symbol: "×", label: "No", kind: "ng", score: 0, color: "red" },
+    ],
+  },
+];
+
+/** 言語に合ったひな形 */
+export function choiceTemplates(lang: "ja" | "en"): readonly ChoiceTemplate[] {
+  return lang === "en" ? CHOICE_TEMPLATES_EN : CHOICE_TEMPLATES;
+}
 
 /** answers.prev_choice_id で「確定時点では未回答だった」を表す値 */
 export const UNANSWERED = "";

@@ -1,5 +1,6 @@
 // Web API の呼び出し
 import type { ChoiceColor, ChoiceKind, PollStatus, Role } from "../../../src/shared/model";
+import { LANG, tr } from "./i18n";
 
 export interface PollData {
   now: number;
@@ -57,7 +58,8 @@ export function setCsrf(token: string): void {
 }
 
 export async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" };
+  // エラーの文言を画面の言語で受け取る（§6.12）
+  const headers: Record<string, string> = { Accept: "application/json", "X-DI-Lang": LANG };
   if (method !== "GET") {
     headers["Content-Type"] = "application/json";
     if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
@@ -72,11 +74,11 @@ export async function request<T>(method: string, path: string, body?: unknown): 
       cache: "no-store",
     });
   } catch {
-    throw new ApiError(0, "network", "通信できませんでした。接続を確認してもう一度お試しください。");
+    throw new ApiError(0, "network", tr("通信できませんでした。接続を確認してもう一度お試しください。", "Couldn't connect. Check your connection and try again."));
   }
   const data = (await res.json().catch(() => null)) as { error?: { code: string; message: string } } | null;
   if (!res.ok) {
-    throw new ApiError(res.status, data?.error?.code ?? "error", data?.error?.message ?? "エラーが発生しました。");
+    throw new ApiError(res.status, data?.error?.code ?? "error", data?.error?.message ?? tr("エラーが発生しました。", "Something went wrong."));
   }
   return data as T;
 }

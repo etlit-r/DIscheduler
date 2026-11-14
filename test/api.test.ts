@@ -790,6 +790,30 @@ describe("8 回目のレビューのあとの確認", () => {
 });
 
 
+describe("エラーの言語（§6.12）", () => {
+  it("X-DI-Lang: en なら英語、なければ日本語で返す", async () => {
+    const s = await seedPoll({ participants: [ALICE] });
+    const res = await call(new Request(`${ORIGIN}/api/polls/${s.pollId}`, { headers: { "X-DI-Lang": "en" } }));
+    expect(((await res.json()) as { error: { message: string } }).error.message).toMatch(/expired/);
+    const ja = await call(getReq(`/api/polls/${s.pollId}`));
+    expect(((await ja.json()) as { error: { message: string } }).error.message).toMatch(/有効期限/);
+  });
+
+  it("入力チェックの文言も、画面の言語のほうだけを返す", async () => {
+    const s = await seedPoll({ participants: [ALICE] });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const patch = (lang: string) => {
+      const req = jsonReq("PATCH", `/api/polls/${s.pollId}`, { title: "" }, org);
+      req.headers.set("X-DI-Lang", lang);
+      return call(req);
+    };
+    const en = ((await (await patch("en")).json()) as { error: { message: string } }).error.message;
+    expect(en).toBe("Enter 1 to 100 characters");
+    const ja = ((await (await patch("ja")).json()) as { error: { message: string } }).error.message;
+    expect(ja).toMatch(/^1〜100 文字で入力してください$/);
+  });
+});
+
 describe("イベントの場所の既定値（§5.3.1）", () => {
   it("主催者にだけ、サーバーの既定値を返す", async () => {
     const s = await seedPoll({ participants: [ALICE] });

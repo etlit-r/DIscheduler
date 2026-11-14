@@ -1,3 +1,4 @@
+import { langFromAcceptLanguage, langFromTag } from "../src/shared/i18n";
 import { describe, expect, it } from "vitest";
 import { bestSlotId, effectiveStatus, tally } from "../src/shared/model";
 import { donationNote, isSafeChoiceText, KOFI_DONATION_NOTE, sanitizeDisplayName, sanitizeLine } from "../src/shared/text";
@@ -130,5 +131,25 @@ describe("formatSlotTime（日付を見出しにまとめるときの時間帯�
   });
   it("日付をまたぐ候補は、終わりの日付を残す", () => {
     expect(formatSlotTime({ startAt: at(2026, 11, 12, 23), endAt: at(2026, 11, 13, 1), allDay: false }, tz)).toBe("23:00–11/13(金) 01:00");
+  });
+});
+
+describe("言語（§6.12）", () => {
+  it("日本語のタグだけ日本語、ほかは英語", () => {
+    expect(langFromTag("ja")).toBe("ja");
+    expect(langFromTag("ja-JP")).toBe("ja");
+    expect(langFromTag("en-US")).toBe("en");
+    expect(langFromTag("fr")).toBe("en");
+    expect(langFromTag("jam")).toBe("en");
+  });
+  it("Accept-Language は優先度の高い言語で決め、なければ日本語", () => {
+    expect(langFromAcceptLanguage("en-US,en;q=0.9,ja;q=0.8")).toBe("en");
+    expect(langFromAcceptLanguage("de;q=0.5, ja")).toBe("ja");
+    expect(langFromAcceptLanguage(null)).toBe("ja");
+  });
+  it("英語の日時の書式", () => {
+    const at = Date.UTC(2026, 10, 18, 11) / 1000; // 2026-11-18 20:00 JST
+    expect(formatSlot({ startAt: at, endAt: at + 7200, allDay: false }, "Asia/Tokyo", "en")).toBe("Wed, Nov 18 20:00–22:00");
+    expect(formatSlot({ startAt: at, endAt: null, allDay: true }, "Asia/Tokyo", "en")).toBe("Wed, Nov 18 All day");
   });
 });
