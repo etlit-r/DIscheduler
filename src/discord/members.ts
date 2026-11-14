@@ -3,6 +3,7 @@ import type { Env } from "../core/env";
 import { LIMITS } from "../shared/model";
 import { PERM } from "./permissions";
 import { sanitizeDisplayName } from "../shared/text";
+import { msg, type Msg } from "../shared/i18n";
 import {
   discord,
   DiscordError,
@@ -22,7 +23,7 @@ export interface Candidate {
 
 export type ExtractResult =
   | { ok: true; members: Candidate[] }
-  | { ok: false; reason: "intent_disabled" | "too_many" | "error"; message: string };
+  | { ok: false; reason: "intent_disabled" | "too_many" | "error"; message: Msg };
 
 /** ギルドメンバーを全件取得（Server Members Intent が必要） */
 async function listGuildMembers(env: Env, guildId: string): Promise<DiscordMember[] | "too_many"> {
@@ -122,10 +123,13 @@ export async function extractParticipants(
       return {
         ok: false,
         reason: "intent_disabled",
-        message: "Bot の Server Members Intent が無効なため、参加者を自動で設定できませんでした。手動で参加者を選んでください。",
+        message: msg(
+          "Bot の Server Members Intent が無効なため、参加者を自動で設定できませんでした。手動で参加者を選んでください。",
+          "Participants couldn't be set automatically because the bot's Server Members Intent is off. Please choose participants manually.",
+        ),
       };
     }
-    return { ok: false, reason: "error", message: "参加者を自動で設定できませんでした。手動で参加者を選んでください。" };
+    return { ok: false, reason: "error", message: msg("参加者を自動で設定できませんでした。手動で参加者を選んでください。", "Participants couldn't be set automatically. Please choose participants manually.") };
   }
 }
 
@@ -133,7 +137,10 @@ function tooMany(): ExtractResult {
   return {
     ok: false,
     reason: "too_many",
-    message: "サーバーのメンバーが多すぎるため、参加者を自動で設定できませんでした。ロールを指定するか、手動で参加者を選んでください。",
+    message: msg(
+      "サーバーのメンバーが多すぎるため、参加者を自動で設定できませんでした。ロールを指定するか、手動で参加者を選んでください。",
+      "The server has too many members to set participants automatically. Choose a role, or choose participants manually.",
+    ),
   };
 }
 
@@ -142,7 +149,10 @@ function limit(c: Candidate[]): ExtractResult {
     return {
       ok: false,
       reason: "too_many",
-      message: `参加者が ${LIMITS.participantsMax} 人を超えるため、自動で設定できませんでした。ロールを指定するか、手動で参加者を選んでください。`,
+      message: msg(
+        `参加者が ${LIMITS.participantsMax} 人を超えるため、自動で設定できませんでした。ロールを指定するか、手動で参加者を選んでください。`,
+        `There would be more than ${LIMITS.participantsMax} participants, so they couldn't be set automatically. Choose a role, or choose participants manually.`,
+      ),
     };
   }
   return { ok: true, members: c };

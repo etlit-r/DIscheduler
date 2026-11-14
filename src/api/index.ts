@@ -304,7 +304,7 @@ polls.patch("/:id", async (c) => {
     sets.push("join_policy = ?");
     binds.push(body.joinPolicy);
   }
-  let notice: string | null = null;
+  let notice: Msg | null = null;
   if (body.members !== undefined || body.roleId !== undefined) {
     if (poll.status !== "draft") throw new AppError(409, "published", msg("公開後は参加者の決め方を変えられません。参加者の追加・削除をお使いください。", "You can't change how participants are chosen after publishing. Add or remove participants instead."));
     const members = body.members ?? (poll.target_type === "manual" ? "manual" : "auto");
@@ -319,7 +319,7 @@ polls.patch("/:id", async (c) => {
   if (poll.status !== "draft" && sets.length > 0) {
     c.executionCtx.waitUntil(syncNow(c.env, poll.id));
   }
-  return c.json({ ok: true, notice });
+  return c.json({ ok: true, notice: notice ? pick(notice, reqLang(c)) : null });
 });
 
 polls.put("/:id/slots", async (c) => {
