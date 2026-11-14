@@ -8,7 +8,7 @@ export interface Env {
   /** Bot トークン（Cloudflare の Secret として登録する） */
   DISCORD_BOT_TOKEN: string;
   /**
-   * 正式な公開アドレス（例: https://discheduler.pages.dev。docs/design.md §14）。
+   * 正式な公開アドレス（例: https://discheduler.etlits.dev。docs/design.md §14）。
    * 入力リンクや案内のアドレスに使う。これと違うアドレスへのアクセスは、正式なアドレスへ転送する
    * （旧アドレスの Worker や、Pages のデプロイごとの別名のアドレス）。未設定ならリクエストのアドレスを使う（テスト・開発用）
    */
