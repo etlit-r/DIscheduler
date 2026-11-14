@@ -1,6 +1,7 @@
 // タイムゾーンの扱い（docs/design.md §6.7）
-// 表示の書式は日本語と英語で分ける（§6.11）。言語を渡さなければ日本語。
+// 表示の書式は日本語と英語で分ける（§6.12）。言語を渡さなければ日本語。
 // サーバーは UTC の UNIX 秒で保存し、表示と入力はブラウザ側で IANA タイムゾーンを使って変換する。
+import type { Lang } from "./i18n";
 
 export const DEFAULT_TIMEZONE = "Asia/Tokyo";
 
@@ -71,8 +72,6 @@ export function zonedToEpoch(year: number, month: number, day: number, hour: num
 export function epochToZoned(epochSec: number, tz: string): Parts {
   return partsInZone(epochSec * 1000, tz);
 }
-
-import type { Lang } from "./i18n";
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 const WEEKDAYS_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
