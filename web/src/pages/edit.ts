@@ -237,7 +237,8 @@ export async function editPage(pollId: string): Promise<void> {
     dialog.addEventListener("close", () => dialog.remove());
     document.body.appendChild(dialog);
     dialog.showModal();
-    send.focus();
+    // 続けて Enter を押しただけでメンション付きの投稿をしないよう、最初は［あとで］を選んでおく
+    later.focus();
   }
 
   /** 参加者以外の回答の設定を変えて保存したあとの知らせ。［調整の再通知］で、チャンネルにメンション付きで知らせ直す（§5.5） */
