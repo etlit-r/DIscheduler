@@ -744,7 +744,8 @@ export async function editPage(pollId: string): Promise<void> {
 
     const saveBtn = h("button", {
       type: "button",
-      class: "btn btn-secondary",
+      // 公開後は［変更を保存］がこの画面の主な操作なので目立たせる。下書きでは［公開してチャンネルに投稿］を目立たせる
+      class: isDraft ? "btn btn-secondary" : "btn btn-primary",
       onClick: () => run(async () => {
         if (!confirmPendingDates()) return;
         // 公開後に「参加者以外が［回答する］を押したとき」を変えたら、チャンネルに知らせ直すよう案内する（§5.3）
