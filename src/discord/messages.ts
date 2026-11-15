@@ -42,6 +42,20 @@ export interface MessageData {
   now: number;
 }
 
+/** 候補がこの件数以上あるときは、募集メッセージに一部だけ出す */
+export const SLOT_LINES_FROM = 5;
+/** 一部だけ出すときの件数（確定した候補がこれより多ければ、確定した候補はすべて出す） */
+export const SLOT_LINES_SHOWN = 4;
+
+/** 募集メッセージに出す候補を選ぶ。確定した候補 → 「参加できる」の人数が多い → 日時が早い、の順に選び、日時順に並べる */
+export function pickShownSlots<T extends { id: string; start_at: number; fixed_at: number | null }>(slots: T[], okCount: (id: string) => number): T[] {
+  const ranked = [...slots].sort(
+    (a, b) => Number(b.fixed_at !== null) - Number(a.fixed_at !== null) || okCount(b.id) - okCount(a.id) || a.start_at - b.start_at,
+  );
+  const fixedCount = slots.filter((s) => s.fixed_at !== null).length;
+  return ranked.slice(0, Math.max(SLOT_LINES_SHOWN, fixedCount)).sort((a, b) => a.start_at - b.start_at);
+}
+
 export const NO_MENTIONS = { parse: [] as string[] };
 
 export function buildPollMessage(d: MessageData) {
@@ -78,9 +92,16 @@ export function buildPollMessage(d: MessageData) {
     "",
     t(`**候補**（${okLabel} の人数）`, `**Date options** (number of ${okLabel})`),
   );
-  for (const s of slots) {
+  // 候補が多いとボタンまでスクロールしにくくなるので、5 件以上あるときは一部だけ出す（§5.5）。
+  // 確定した候補と、「参加できる」区分の人数が多い候補を優先し（同じなら日時の早い順）、日時順に並べる
+  const shown = slots.length >= SLOT_LINES_FROM ? pickShownSlots(slots, (id) => tl.get(id)?.ok ?? 0) : slots;
+  for (const s of shown) {
     const mark = s.fixed_at !== null ? "✅" : s.id === best ? "★" : "・";
     lines.push(`${mark} ${slotLabel(s, L)}　${t(`${tl.get(s.id)?.ok ?? 0} 人`, String(tl.get(s.id)?.ok ?? 0))}`);
+  }
+  if (shown.length < slots.length) {
+    const rest = slots.length - shown.length;
+    lines.push(t(`ほか ${rest} 件（すべての候補は［集計を見る］か［回答する］から見られます）`, `${rest} more (see all date options with [View results] or [Answer])`));
   }
   lines.push(
     "",

@@ -4,7 +4,7 @@ import { bestSlotId, effectiveStatus, tally } from "../src/shared/model";
 import { donationNote, isSafeChoiceText, KOFI_DONATION_NOTE, sanitizeDisplayName, sanitizeLine } from "../src/shared/text";
 import { epochToZoned, formatSlot, formatSlotTime, nextCronAt, zonedToEpoch } from "../src/shared/time";
 import { canViewChannel } from "../src/discord/members";
-import { buildDayReminderMessage, buildDeletedMessage, buildFixedMessage, buildPollMessage, escapeMarkdown } from "../src/discord/messages";
+import { buildDayReminderMessage, buildDeletedMessage, buildFixedMessage, buildPollMessage, escapeMarkdown, pickShownSlots } from "../src/discord/messages";
 
 describe("集計と最有力候補（§6.9.3）", () => {
   const choices = [
@@ -175,5 +175,35 @@ describe("チャンネルに投稿するメッセージの言語（§6.12）", (
     const text = JSON.stringify(buildPollMessage({ poll: { ...poll, lang: "ja" }, slots: [], choices: [], participants: [], answers: [], now: 1800000000 }));
     expect(text).toContain("日程調整");
     expect(text).toContain('"label":"回答する"');
+  });
+});
+
+describe("募集メッセージの候補の省略（§5.5）", () => {
+  const poll = {
+    id: "AAAAAAAAAAAAAAAAAAAAAA", guild_id: "1", channel_id: "2", message_id: "3", organizer_id: "4", title: "t", description: null,
+    timezone: "Asia/Tokyo", timezone_set: 1, target_type: "channel", target_id: null, join_policy: "open", status: "open",
+    deadline_at: 1900000000, choices_version: 1, lang: "ja",
+  } as unknown as Parameters<typeof buildPollMessage>[0]["poll"];
+  const slot = (i: number, fixed = false) => ({ id: `s${i}`, poll_id: poll.id, start_at: 1900000000 + i * 86400, end_at: null, all_day: 1, position: i, fixed_at: fixed ? 1 : null, discord_event_id: null, announced_fixed: 0, day_reminded_at: null });
+  const choices = [
+    { id: "ok", poll_id: poll.id, symbol: "○", label: "参加", kind: "ok", score: 2, color: "green", position: 0 },
+    { id: "ng", poll_id: poll.id, symbol: "×", label: "不可", kind: "ng", score: 0, color: "red", position: 1 },
+  ];
+  const lineCount = (n: number) => {
+    const slots = Array.from({ length: n }, (_, i) => slot(i));
+    const desc = buildPollMessage({ poll, slots, choices, participants: [], answers: [], now: 1800000000 } as unknown as Parameters<typeof buildPollMessage>[0]).embeds[0]!.description;
+    return { lines: desc.split("\n").filter((l) => l.includes("<t:") && l.includes("人")).length, desc };
+  };
+  it("4 件まではすべて出し、5 件以上は 4 件と残りの件数を出す", () => {
+    expect(lineCount(4).lines).toBe(4);
+    expect(lineCount(4).desc).not.toContain("ほか");
+    expect(lineCount(5).lines).toBe(4);
+    expect(lineCount(5).desc).toContain("ほか 1 件");
+    expect(lineCount(16).desc).toContain("ほか 12 件");
+  });
+  it("確定した候補と、参加できる人が多い候補を優先し、日時順に並べる", () => {
+    const slots = Array.from({ length: 8 }, (_, i) => slot(i, i === 7));
+    const ok: Record<string, number> = { s5: 3, s2: 2, s6: 2 };
+    expect(pickShownSlots(slots, (id) => ok[id] ?? 0).map((s) => s.id)).toEqual(["s2", "s5", "s6", "s7"]);
   });
 });
