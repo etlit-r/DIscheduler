@@ -44,24 +44,25 @@ export interface MessageData {
 
 /** 候補がこの件数以上あるときは、募集メッセージに一部だけ出す */
 export const SLOT_LINES_FROM = 5;
-/** 一部だけ出すときの件数（確定した候補がこれより多ければ、確定した候補はすべて出す） */
+/** 一部だけ出すときの件数（確定した候補と★の候補を合わせてこれより多ければ、それらはすべて出す） */
 export const SLOT_LINES_SHOWN = 4;
 
 /**
  * 募集メッセージに出す候補を選ぶ。確定した候補 → 成績の良い候補（★と同じ比べ方。§6.9.3）→ 日時が早い、の順に選び、日時順に並べる。
  * ★の候補（3 件まで）は必ず入る
  */
-export function pickShownSlots<T extends { id: string; start_at: number; fixed_at: number | null }>(slots: T[], tallies: Map<string, SlotTally>): T[] {
+export function pickShownSlots<T extends { id: string; start_at: number; fixed_at: number | null }>(slots: T[], tallies: Map<string, SlotTally>, best: ReadonlySet<string>): T[] {
+  const must = (s: T) => s.fixed_at !== null || best.has(s.id);
   const t = (id: string): SlotTally => tallies.get(id) ?? { slotId: id, byChoice: {}, ok: 0, maybe: 0, ng: 0, answered: 0, score: 0 };
   const ranked = [...slots].sort(
     (a, b) =>
       Number(b.fixed_at !== null) - Number(a.fixed_at !== null) ||
+      Number(best.has(b.id)) - Number(best.has(a.id)) ||
       // 誰も回答していない候補は、回答のある候補より後ろにする
       Number(t(b.id).answered > 0) - Number(t(a.id).answered > 0) ||
       compareSlots({ id: a.id, startAt: a.start_at }, t(a.id), { id: b.id, startAt: b.start_at }, t(b.id)),
   );
-  const fixedCount = slots.filter((s) => s.fixed_at !== null).length;
-  return ranked.slice(0, Math.max(SLOT_LINES_SHOWN, fixedCount)).sort((a, b) => a.start_at - b.start_at);
+  return ranked.slice(0, Math.max(SLOT_LINES_SHOWN, slots.filter(must).length)).sort((a, b) => a.start_at - b.start_at);
 }
 
 export const NO_MENTIONS = { parse: [] as string[] };
@@ -102,7 +103,7 @@ export function buildPollMessage(d: MessageData) {
   );
   // 候補が多いとボタンまでスクロールしにくくなるので、5 件以上あるときは一部だけ出す（§5.5）。
   // 確定した候補と、成績の良い候補（★と同じ比べ方）を優先し、日時順に並べる
-  const shown = slots.length >= SLOT_LINES_FROM ? pickShownSlots(slots, tl) : slots;
+  const shown = slots.length >= SLOT_LINES_FROM ? pickShownSlots(slots, tl, best) : slots;
   for (const s of shown) {
     const mark = s.fixed_at !== null ? "✅" : best.has(s.id) ? "★" : "・";
     lines.push(`${mark} ${slotLabel(s, L)}　${t(`${tl.get(s.id)?.ok ?? 0} 人`, String(tl.get(s.id)?.ok ?? 0))}`);
