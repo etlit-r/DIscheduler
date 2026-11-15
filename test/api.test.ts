@@ -822,6 +822,19 @@ describe("調整の再通知（§5.5）", () => {
     expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/renotify`, {}, org))).status).toBe(429);
   });
 
+  it("公開中でない調整と、募集メッセージがない調整は再通知できない", async () => {
+    const calls = mockDiscord();
+    const draft = await seedPoll({ status: "draft", messageId: null });
+    const d = await login(draft.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${draft.pollId}/renotify`, {}, d))).status).toBe(409);
+    const noMsg = await seedPoll({ messageId: null });
+    const n = await login(noMsg.pollId, ORGANIZER, "organizer", "edit");
+    const res = await call(jsonReq("POST", `/api/polls/${noMsg.pollId}/renotify`, {}, n));
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe("no_message");
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
+  });
+
   it("参加者は再通知できない", async () => {
     const s = await seedPoll();
     const alice = await login(s.pollId, ALICE, "participant");
