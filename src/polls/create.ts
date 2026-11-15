@@ -10,7 +10,7 @@ export const DRAFT_TTL = 3 * DAY;
 /** 確定していない調整（募集中・締切後）のデータを残す期間（締切から） */
 export const RETENTION = 180 * DAY;
 /** 確定した調整のデータを残す期間（いちばん遅い確定日時から。§7.4） */
-export const FIXED_RETENTION = 30 * DAY;
+export const FIXED_RETENTION = 10 * DAY;
 export const DEFAULT_DEADLINE_DAYS = 7;
 
 export interface CreateOptions {

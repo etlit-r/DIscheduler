@@ -377,7 +377,7 @@ polls.put("/:id/slots", async (c) => {
   // 新しく追加した候補の時間帯を、サーバーの最近使った時間帯として覚える（§6.3.1）
   const newRanges = rangesFromSlots(body.slots.filter((s) => !s.id), poll.timezone);
   if (newRanges.length) stmts.push(saveRecentTimesStatement(db, poll.guild_id, mergeRanges(newRanges, await getRecentTimes(db, poll.guild_id)), now));
-  // 確定した候補の日時が変わったら、データの削除時刻も決め直す（いちばん遅い確定日時から 30 日後）
+  // 確定した候補の日時が変わったら、データの削除時刻も決め直す（いちばん遅い確定日時から 10 日後）
   stmts.push(poll.status === "fixed" ? refreshFixedStatement(db, poll, now) : db.prepare("UPDATE polls SET updated_at = ? WHERE id = ?").bind(now, poll.id));
   await db.batch(stmts);
   if (poll.status !== "draft") c.executionCtx.waitUntil(syncNow(c.env, poll.id));
@@ -694,7 +694,7 @@ async function deleteEvent(env: Env, poll: PollRow, slot: SlotRow): Promise<Msg 
 
 /**
  * 調整のステータスと削除時刻を、確定した候補の有無から決め直す文（確定・取り消しが重なっても、slots の状態と食い違わないよう SQL の中で数える）。
- * 削除時刻は、確定した候補があれば いちばん遅い確定日時（過去なら今）から FIXED_RETENTION（30 日）後、なければ締切から RETENTION（6 か月）後（§7.4）
+ * 削除時刻は、確定した候補があれば いちばん遅い確定日時（過去なら今）から FIXED_RETENTION（10 日）後、なければ締切から RETENTION（6 か月）後（§7.4）
  */
 function refreshFixedStatement(db: D1Database, poll: PollRow, now: number): D1PreparedStatement {
   return db
