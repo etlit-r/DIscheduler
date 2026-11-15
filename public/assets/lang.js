@@ -17,7 +17,11 @@
   };
   const link = document.querySelector("a[data-lang]");
   if (!link) return;
-  const base = link.getAttribute("href");
+  // もう一方の言語のページのアドレスは、リンクの属性からではなく今のページのアドレスから組み立てる
+  // （ページの中の文字をそのままリンクに入れないため。英語版は /en/ の下に同じ構成で置いている）
+  const target = page === "en" ? "ja" : "en";
+  const here = location.pathname.replace(/[^A-Za-z0-9_\-./]/g, "");
+  const base = page === "en" ? here.replace(/^\/en(\/|$)/, "/") : `/en${here}`;
   const withLang = (path, lang) => `${path}${path.includes("?") ? "&" : "?"}lang=${lang}`;
   // URL の ?lang= ＞ このブラウザで選んだ言語 ＞ ブラウザの言語（Web 画面と同じ）
   const q = new URLSearchParams(location.search).get("lang");
@@ -46,12 +50,12 @@
   // 切り替えのリンクには ?lang= を付ける。新しいタブで開くとき（右クリックのメニューや中クリック）はクリックの処理を通らず
   // 言語を保存できないので、移った先で保存した言語やブラウザの言語のページへ戻されないように。クローラーには付けない
   const sync = () =>
-    link.setAttribute("href", withHash(isBot() ? base : withLang(base, link.getAttribute("data-lang"))));
+    link.setAttribute("href", withHash(isBot() ? base : withLang(base, target)));
   sync();
   // 新しいタブで開くとき（クリックの処理を通らない）も、今の # を使う
   window.addEventListener("hashchange", sync);
   link.addEventListener("click", () => {
-    const lang = link.getAttribute("data-lang");
+    const lang = target;
     if (!store(lang) && !noStore) {
       // 保存できないブラウザでは ?lang= で選んだ言語を伝える（移った先で、ブラウザの言語のページへ戻されないように）。
       // 戻るでこのページへ戻ったときも、このページの言語のままにする
@@ -87,11 +91,11 @@
     if (noStore) {
       // 保存できないブラウザでは、同じサイトの中のリンクにも ?lang= を付けて、次のページでも言語を保つ
       for (const a of document.querySelectorAll('a[href^="/"]:not([href^="//"]):not([data-lang])')) {
-        const href = a.getAttribute("href");
-        const i = href.indexOf("#");
-        const path = i < 0 ? href : href.slice(0, i);
-        const hash = i < 0 ? "" : href.slice(i);
-        if (!/[?&]lang=/.test(path)) a.setAttribute("href", withLang(path, page) + hash);
+        // リンクの文字をそのまま使わず、パスと # の後ろを決まった文字だけにしてから組み立て直す
+        if (a.search) continue;
+        const path = a.pathname.replace(/[^A-Za-z0-9_\-./]/g, "");
+        const hash = a.hash.slice(1).replace(/[^A-Za-z0-9_\-.=&]/g, "");
+        a.setAttribute("href", `${withLang(path, page)}${hash ? `#${hash}` : ""}`);
       }
     }
     return;
