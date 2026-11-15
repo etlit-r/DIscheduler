@@ -790,6 +790,30 @@ describe("8 回目のレビューのあとの確認", () => {
 });
 
 
+describe("調整の再通知（§5.5）", () => {
+  it("主催者は、募集メッセージへの返信でロール（なければ @everyone）にメンションして知らせ直せる。1 時間に 1 回まで", async () => {
+    const s = await seedPoll({ joinPolicy: "open" });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const calls = mockDiscord();
+    const res = await call(jsonReq("POST", `/api/polls/${s.pollId}/renotify`, {}, org));
+    expect(res.status).toBe(200);
+    const post = calls.find((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)!;
+    const body = post.body as { content: string; allowed_mentions: { parse: string[] }; message_reference: { message_id: string } };
+    expect(body.content).toContain("チャンネルを見られる人なら");
+    expect(body.content).toContain("@everyone");
+    expect(body.allowed_mentions.parse).toEqual(["everyone"]);
+    expect(body.message_reference.message_id).toBe("500000000000000001");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/renotify`, {}, org))).status).toBe(429);
+  });
+
+  it("参加者は再通知できない", async () => {
+    const s = await seedPoll();
+    const alice = await login(s.pollId, ALICE, "participant");
+    mockDiscord();
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/renotify`, {}, alice))).status).toBe(403);
+  });
+});
+
 describe("エラーの言語（§6.12）", () => {
   it("X-DI-Lang: en なら英語、なければ日本語で返す", async () => {
     const s = await seedPoll({ participants: [ALICE] });

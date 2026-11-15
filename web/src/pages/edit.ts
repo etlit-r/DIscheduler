@@ -166,6 +166,44 @@ export async function editPage(pollId: string): Promise<void> {
     return warnings;
   }
 
+  /** 参加者以外の回答の設定を変えて保存したあとの知らせ。［調整の再通知］で、チャンネルにメンション付きで知らせ直す（§5.5） */
+  function renotifyNotice(warnings: string[]): HTMLElement {
+    const status = h("span", { role: "status" });
+    const btn = h(
+      "button",
+      {
+        type: "button",
+        class: "btn btn-primary btn-small",
+        onClick: () =>
+          run(async () => {
+            btn.disabled = true;
+            try {
+              await request("POST", `/api/polls/${pollId}/renotify`, {});
+              await reloadAll(notice("ok", tr("チャンネルに調整を再通知しました。", "Re-announced the poll in the channel.")));
+            } catch (e) {
+              btn.disabled = false;
+              status.textContent = ` ${errorText(e, "edit", tr("再通知できませんでした。", "Couldn't re-announce."))}`;
+            }
+          }),
+      },
+      tr("調整の再通知", "Re-announce the poll"),
+    );
+    return notice(
+      "warn",
+      h("p", {}, h("strong", {}, tr("保存しました。", "Saved.")), " ", tr("参加者を変更するには再通知が必要です。", "To let the change reach members, the poll needs to be re-announced.")),
+      h(
+        "p",
+        { class: "small" },
+        tr(
+          "［調整の再通知］を押すと、募集メッセージへの返信で、参加者のロール（ロールがなければ @everyone）にメンションして知らせ直します（1 時間に 1 回まで）。",
+          "[Re-announce the poll] replies to the poll message and mentions the participants' role (or @everyone without one). Once per hour.",
+        ),
+      ),
+      ...warnings.map((w) => h("p", {}, w)),
+      h("p", {}, btn, status),
+    );
+  }
+
   async function run(action: () => Promise<void>) {
     if (busy) return;
     busy = true;
@@ -634,8 +672,9 @@ export async function editPage(pollId: string): Promise<void> {
         "fieldset",
         {},
         h("legend", {}, tr("参加者以外が［回答する］を押したとき", "When a non-participant presses [Answer]")),
-        h("div", { class: "field-inline field-check" }, jpClosed, h("label", { for: "jp-closed" }, tr("回答できない", "They can't answer"))),
+        // 既定は「参加者に追加して回答できる」（§5.3）。上に置く
         h("div", { class: "field-inline field-check" }, jpOpen, h("label", { for: "jp-open" }, tr("チャンネルを見られる人なら、参加者に追加して回答できる", "Anyone who can see the channel is added as a participant and can answer"))),
+        h("div", { class: "field-inline field-check" }, jpClosed, h("label", { for: "jp-closed" }, tr("回答できない", "They can't answer"))),
       ),
     );
   }
@@ -708,8 +747,16 @@ export async function editPage(pollId: string): Promise<void> {
       class: "btn btn-secondary",
       onClick: () => run(async () => {
         if (!confirmPendingDates()) return;
+        // 公開後に「参加者以外が［回答する］を押したとき」を変えたら、チャンネルに知らせ直すよう案内する（§5.3）
+        const joinPolicyChanged = !isDraft && joinPolicy !== d.poll.joinPolicy;
         const warnings = await save();
-        await reloadAll(warnings.length ? notice("warn", tr("保存しました。", "Saved."), ...warnings.map((w) => h("p", {}, w))) : notice("ok", tr("保存しました。", "Saved.")));
+        await reloadAll(
+          joinPolicyChanged
+            ? renotifyNotice(warnings)
+            : warnings.length
+              ? notice("warn", tr("保存しました。", "Saved."), ...warnings.map((w) => h("p", {}, w)))
+              : notice("ok", tr("保存しました。", "Saved.")),
+        );
         // 画面の下のほうで押したときも保存できたと分かるよう、下にも少しのあいだ知らせる
         toast(warnings.length ? "warn" : "ok", warnings.length ? tr("保存しました（画面の上に注意があります）", "Saved (see the note at the top)") : tr("保存しました", "Saved"));
       }),
