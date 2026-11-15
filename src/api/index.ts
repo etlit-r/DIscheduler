@@ -40,7 +40,7 @@ import { fetchMember, searchMembers } from "../discord/members";
 import { buildAnnounceMessage, buildDeletedMessage, buildRenotifyMessage, buildFixedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink, pollTitle, rawPollTitle, slotWhen } from "../discord/messages";
 import { discord, DiscordError, type DiscordChannel, type DiscordRole } from "../discord/rest";
 import { AppError, DAY, floorToMinute, nowSec, randomId, timingSafeEqual } from "../core/lib";
-import { DEFAULT_DEADLINE_DAYS, resetParticipants, RETENTION } from "../polls/create";
+import { DEFAULT_DEADLINE_DAYS, FIXED_RETENTION, resetParticipants, RETENTION } from "../polls/create";
 import { canAnswer, effectiveStatus, LIMITS, reminderAt, UNANSWERED } from "../shared/model";
 import { isValidTimeZone, nextCronAt } from "../shared/time";
 import { isValidDonationUrl } from "../shared/text";
@@ -377,7 +377,7 @@ polls.put("/:id/slots", async (c) => {
   // 新しく追加した候補の時間帯を、サーバーの最近使った時間帯として覚える（§6.3.1）
   const newRanges = rangesFromSlots(body.slots.filter((s) => !s.id), poll.timezone);
   if (newRanges.length) stmts.push(saveRecentTimesStatement(db, poll.guild_id, mergeRanges(newRanges, await getRecentTimes(db, poll.guild_id)), now));
-  // 確定した候補の日時が変わったら、データの削除時刻も決め直す（いちばん遅い確定日時から 6 か月後）
+  // 確定した候補の日時が変わったら、データの削除時刻も決め直す（いちばん遅い確定日時から 30 日後）
   stmts.push(poll.status === "fixed" ? refreshFixedStatement(db, poll, now) : db.prepare("UPDATE polls SET updated_at = ? WHERE id = ?").bind(now, poll.id));
   await db.batch(stmts);
   if (poll.status !== "draft") c.executionCtx.waitUntil(syncNow(c.env, poll.id));
@@ -692,16 +692,19 @@ async function deleteEvent(env: Env, poll: PollRow, slot: SlotRow): Promise<Msg 
   return null;
 }
 
-/** 調整のステータスと削除時刻を、確定した候補の有無から決め直す文（確定・取り消しが重なっても、slots の状態と食い違わないよう SQL の中で数える） */
+/**
+ * 調整のステータスと削除時刻を、確定した候補の有無から決め直す文（確定・取り消しが重なっても、slots の状態と食い違わないよう SQL の中で数える）。
+ * 削除時刻は、確定した候補があれば いちばん遅い確定日時（過去なら今）から FIXED_RETENTION（30 日）後、なければ締切から RETENTION（6 か月）後（§7.4）
+ */
 function refreshFixedStatement(db: D1Database, poll: PollRow, now: number): D1PreparedStatement {
   return db
     .prepare(
       "UPDATE polls SET " +
         "status = CASE WHEN EXISTS (SELECT 1 FROM slots WHERE poll_id = ?1 AND fixed_at IS NOT NULL) THEN 'fixed' ELSE 'open' END, " +
-        "purge_after = COALESCE((SELECT MAX(MAX(start_at), ?2) FROM slots WHERE poll_id = ?1 AND fixed_at IS NOT NULL), MAX(COALESCE(deadline_at, ?2), ?2)) + ?3, " +
+        "purge_after = COALESCE((SELECT MAX(MAX(start_at), ?2) + ?4 FROM slots WHERE poll_id = ?1 AND fixed_at IS NOT NULL), MAX(COALESCE(deadline_at, ?2), ?2) + ?3), " +
         "updated_at = ?2 WHERE id = ?1",
     )
-    .bind(poll.id, now, RETENTION);
+    .bind(poll.id, now, RETENTION, FIXED_RETENTION);
 }
 
 // 候補を確定する。確定済みの候補はそのまま残し、複数の候補を確定できる（§4.3）。

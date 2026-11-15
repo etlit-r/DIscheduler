@@ -516,7 +516,7 @@ describe("複数の候補の確定と取り消し", () => {
     expect((await call(jsonReq("DELETE", `/api/polls/${s.pollId}/fix/${s.slotIds[0]}`, undefined, org))).status).toBe(409);
   });
 
-  it("データの削除時刻は、いちばん遅い確定日時から 6 か月後。確定がなくなれば締切から 6 か月後に戻る", async () => {
+  it("データの削除時刻は、いちばん遅い確定日時から 30 日後。確定がなくなれば締切から 6 か月後に戻る", async () => {
     mockDiscord();
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
@@ -526,7 +526,7 @@ describe("複数の候補の確定と取り消し", () => {
     const RET = 180 * 86400;
     await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org));
     await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[2], event: null }, org));
-    expect((await purge()).purge_after).toBe(Math.max(startOf.get(s.slotIds[0]!)!, startOf.get(s.slotIds[2]!)!) + RET);
+    expect((await purge()).purge_after).toBe(Math.max(startOf.get(s.slotIds[0]!)!, startOf.get(s.slotIds[2]!)!) + 30 * 86400);
     await call(jsonReq("DELETE", `/api/polls/${s.pollId}/fix/${s.slotIds[0]}`, undefined, org));
     await call(jsonReq("DELETE", `/api/polls/${s.pollId}/fix/${s.slotIds[2]}`, undefined, org));
     const p = await purge();
