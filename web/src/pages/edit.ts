@@ -15,7 +15,7 @@ import {
   type ChoiceKind,
 } from "../../../src/shared/model";
 import { epochToZoned, formatSlot, zonedToEpoch } from "../lib/time";
-import { tr, LANG } from "../lib/i18n";
+import { staticHref, tr, LANG } from "../lib/i18n";
 
 /** 英語の画面で使う月の名前 */
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -780,7 +780,7 @@ export async function editPage(pollId: string): Promise<void> {
                   h("h1", {}, tr("調整を削除しました", "Poll deleted")),
                   h("p", {}, tr("データはすべて削除されました。", "All data has been deleted.")),
                   ...(r.warnings ?? []).map((w) => notice("warn", w)),
-                  h("p", {}, h("a", { href: tr("/manual/", "/en/manual/") }, tr("DIscheduler のマニュアルへ", "Go to the DIscheduler manual"))),
+                  h("p", {}, h("a", { href: staticHref("/manual/", "/en/manual/") }, tr("DIscheduler のマニュアルへ", "Go to the DIscheduler manual"))),
                   donationLine(d.donationUrl),
                 ),
               );

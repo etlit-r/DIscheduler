@@ -15,6 +15,11 @@ function detect(): Lang {
     }
     return fromUrl;
   }
+  return savedOrBrowser();
+}
+
+/** URL の ?lang= を見ずに決まる言語（保存した言語＞ブラウザの言語）。静的ページ（public/assets/lang.js）もこの順で決める */
+function savedOrBrowser(): Lang {
   try {
     const saved = localStorage.getItem(KEY);
     if (isLang(saved)) return saved;
@@ -28,6 +33,16 @@ function detect(): Lang {
 /** 画面の言語。リンク中継の画面（/l）では、読み込み直さずに切り替える（setLangInPlace） */
 export let LANG: Lang = detect();
 document.documentElement.lang = LANG;
+
+/**
+ * 静的ページ（マニュアル・セキュリティ方針・回答の完了画面など）へのリンク。画面の言語のほうのページを指す。
+ * 静的ページは ?lang= がなければ保存した言語かブラウザの言語のページへ移るので、それが画面の言語と違うとき
+ * （保存できないブラウザで ?lang= で選んだときなど）は ?lang= を付けて、画面の言語のまま開かせる
+ */
+export function staticHref(ja: string, en: string): string {
+  const path = tr(ja, en);
+  return savedOrBrowser() === LANG ? path : `${path}?lang=${LANG}`;
+}
 
 /** 日本語と英語のうち、画面の言語のほうを返す */
 export function tr(ja: string, en: string): string {
