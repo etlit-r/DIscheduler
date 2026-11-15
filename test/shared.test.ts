@@ -217,6 +217,13 @@ describe("募集メッセージの候補の省略（§5.5）", () => {
     // s1 は ○1 ×0（★）。s2〜s5 は ○2 ×2（「参加できる」は多いが、×も多い）
     const answers = [ans("s1", "a", "ok"), ...["s2", "s3", "s4", "s5"].flatMap((id) => [ans(id, "a", "ok"), ans(id, "b", "ok"), ans(id, "c", "ng"), ans(id, "d", "ng")])];
     const tl = tally(s, choices as never, answers);
-    expect(pickShownSlots(slots, tl).map((x) => x.id)).toEqual(["s1", "s2", "s3", "s7"]);
+    expect(pickShownSlots(slots, tl, bestSlotIds(s, tl)).map((x) => x.id)).toEqual(["s1", "s2", "s3", "s7"]);
+  });
+  it("確定した候補と★の候補を合わせて 4 件より多ければ、それらをすべて出す", () => {
+    const slots = Array.from({ length: 8 }, (_, i) => slot(i, i >= 6));
+    const s = slots.map((x) => ({ id: x.id, startAt: x.start_at }));
+    // s0〜s2 が同じ成績で★（3 件）。s6・s7 は確定
+    const tl = tally(s, choices as never, ["s0", "s1", "s2"].map((slotId) => ({ slotId, userId: "a", choiceId: "ok" })).concat([{ slotId: "s3", userId: "a", choiceId: "ng" }]));
+    expect(pickShownSlots(slots, tl, bestSlotIds(s, tl)).map((x) => x.id)).toEqual(["s0", "s1", "s2", "s6", "s7"]);
   });
 });
