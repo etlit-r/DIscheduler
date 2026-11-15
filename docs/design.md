@@ -853,13 +853,8 @@ CREATE TABLE polls (
                   CHECK (status IN ('draft','open','closed','fixed','cancelled')),
   deadline_at     INTEGER,                   -- UNIX 秒 (UTC)。未指定なら公開時に「公開から 7 日後」を入れる
                                              -- 締切を過ぎたかは画面・API で deadline_at と現在時刻から判定する（status の closed への変更は 1 日 2 回の Cron なので待たない）
-  fixed_slot_id   TEXT,                      -- 使わない（0009 で slots に移した。古い Worker のために列だけ残す）
-  fixed_at        INTEGER,                   -- 使わない（同上）
-  discord_event_id TEXT,                     -- 使わない（同上）
   choices_version INTEGER NOT NULL DEFAULT 1, -- 選択肢を変更するたびに +1（§6.9.4）
   last_synced_at  INTEGER,                   -- 募集メッセージ最終更新（主催者の画面に表示。§6.5）
-  last_reminded_at INTEGER,                  -- 使っていない（以前のリマインドの回数制限。いまは rate_limits の remind:{pollId} で数える）
-  day_reminded_slot_at INTEGER,              -- 使わない（0009 で slots.day_reminded_at に移した）
   remind_day_offset INTEGER NOT NULL DEFAULT 0, -- 予定のリマインドを当日（0）か前日（1）に送るか（§5.7）
   remind_hour     INTEGER NOT NULL DEFAULT 17, -- 予定のリマインドを送る時（0〜23。調整のタイムゾーン）
   publishing_at   INTEGER,                   -- 公開処理中の印（同時の公開で二重に投稿しないため。§5.5）
