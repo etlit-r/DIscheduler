@@ -177,10 +177,6 @@ export async function editPage(pollId: string): Promise<void> {
     );
 
   /**
-   * 参加者以外の回答の設定を変えて保存したら、ポップアップ（モーダルのダイアログ）で再通知を促す（§5.3）。
-   * 画面の上の知らせだけでは、下のほうで保存した人が気づかずに離れてしまうため。閉じても、画面の上の知らせから再通知できる
-   */
-  /**
    * 再通知を投稿する。投稿できなければエラーの文言を返す（ボタンの近くに出すため）。
    * 投稿できたら画面を読み込み直して知らせる（読み込み直しの失敗は、run が画面の上に出す）
    */
@@ -196,6 +192,10 @@ export async function editPage(pollId: string): Promise<void> {
     return null;
   }
 
+  /**
+   * 参加者以外の回答の設定を変えて保存したら、ポップアップ（モーダルのダイアログ）で再通知を促す（§5.3）。
+   * 画面の上の知らせだけでは、下のほうで保存した人が気づかずに離れてしまうため。閉じても、画面の上の知らせから再通知できる
+   */
   function openRenotifyDialog(warnings: string[]): void {
     const status = h("p", { class: "dialog-error", role: "alert" });
     status.hidden = true;
@@ -229,6 +229,10 @@ export async function editPage(pollId: string): Promise<void> {
       status,
       h("div", { class: "row row-end" }, later, send),
     );
+    // 投稿している間は Esc で閉じない（失敗したときのエラーを、ポップアップの中に出すため）
+    dialog.addEventListener("cancel", (e) => {
+      if (send.disabled) e.preventDefault();
+    });
     // 閉じたら画面から取り除く（Esc で閉じたときも）
     dialog.addEventListener("close", () => dialog.remove());
     document.body.appendChild(dialog);
