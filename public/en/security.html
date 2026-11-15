@@ -68,7 +68,7 @@
           <ul>
             <li>Answers are shared only among the participants of a poll and are not visible to anyone else.</li>
             <li>No password or login is required. Answer links are delivered in messages only the recipient can see.</li>
-            <li>Only the data needed for scheduling is stored, and it is deleted automatically 10 days after the confirmed date (6 months after the deadline if no date is confirmed).</li>
+            <li>Only the data needed for scheduling is stored, and it is deleted automatically 10 days after the confirmed date (3 months after the deadline if no date is confirmed).</li>
             <li>The bot works with only the permissions it needs, without the Administrator permission.</li>
           </ul>
         </section>
@@ -106,7 +106,7 @@
           <table class="data">
             <thead><tr><th scope="col">Data</th><th scope="col">Kept until</th></tr></thead>
             <tbody>
-              <tr><td>Discord server ID, channel ID, user IDs and display names (participants only)</td><td>The poll is deleted (at most 10 days after the confirmed date, or 6 months after the deadline if no date is confirmed)</td></tr>
+              <tr><td>Discord server ID, channel ID, user IDs and display names (participants only)</td><td>The poll is deleted (at most 10 days after the confirmed date, or 3 months after the deadline if no date is confirmed)</td></tr>
               <tr><td>Poll title, description and date options</td><td>Same as above</td></tr>
               <tr><td>Each participant's answers (○△×) and comment</td><td>Same as above (shown to all participants of the same poll)</td></tr>
               <tr><td>The poll's time zone (set by the organizer)</td><td>Same as above</td></tr>
@@ -132,7 +132,7 @@
               <tr><th scope="row">Sessions</th><td><code>HttpOnly</code> / <code>Secure</code> / <code>SameSite=Strict</code> cookies that expire after 12 hours and are valid for a single poll (an organizer's "My polls" uses a separate session limited to the polls they organize in that server)</td></tr>
               <tr><th scope="row">Web attacks</th><td>Strict CSP, CSRF tokens, Origin checks, prepared statements and XSS protection</td></tr>
               <tr><th scope="row">Access control</th><td>Answers are shared only among participants. Only the organizer can confirm or delete</td></tr>
-              <tr><th scope="row">Data minimization</th><td>Only the minimum data is stored, and it is permanently deleted 10 days after the confirmed date (6 months after the deadline if no date is confirmed)</td></tr>
+              <tr><th scope="row">Data minimization</th><td>Only the minimum data is stored, and it is permanently deleted 10 days after the confirmed date (3 months after the deadline if no date is confirmed)</td></tr>
               <tr><th scope="row">Availability</th><td>Cloudflare DDoS protection, rate limits (including limits on creating polls) and input size limits</td></tr>
               <tr><th scope="row">Development</th><td>Minimal dependencies, Dependabot, CodeQL, secret scanning, branch protection and SHA-pinned GitHub Actions</td></tr>
             </tbody>
@@ -151,7 +151,7 @@
             <thead><tr><th scope="col">Item</th><th scope="col">Details and response</th></tr></thead>
             <tbody>
               <tr><th scope="row">Forwarded answer links</th><td>If a participant gives their answer link to someone else, that person can view and answer as them once within 10 minutes. Links are single use, valid for 10 minutes and for one poll only, which limits the impact. Please don't share your answer links.</td></tr>
-              <tr><th scope="row">Retention</th><td>Schedule data remains for 6 months after the deadline if no date is confirmed, or 10 days after the confirmed date, so it can be used for looking back or rescheduling. Organizers can delete it at any time.</td></tr>
+              <tr><th scope="row">Retention</th><td>Schedule data remains for 3 months after the deadline if no date is confirmed, or 10 days after the confirmed date, so it can be used for looking back or rescheduling. Organizers can delete it at any time.</td></tr>
               <tr><th scope="row">Commands right after adding the bot</th><td>Right after the bot is added, anyone who can send messages can use the commands in every channel. To limit where they work, an admin should choose the channels in the Integrations settings.</td></tr>
               <tr><th scope="row">Cloudflare and Discord</th><td>Data is stored on Cloudflare and exchanged through Discord. Their infrastructure or staff could access it; this depends on each company's policies. Storing as little data as possible keeps the impact small.</td></tr>
               <tr><th scope="row">Free plan</th><td>There is no uptime guarantee (SLA). On busy days that go over Cloudflare's free tier, the service is unavailable until 00:00 UTC. This costs nothing, and answers already entered are not lost.</td></tr>
