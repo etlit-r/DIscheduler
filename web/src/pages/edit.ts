@@ -180,6 +180,22 @@ export async function editPage(pollId: string): Promise<void> {
    * 参加者以外の回答の設定を変えて保存したら、ポップアップ（モーダルのダイアログ）で再通知を促す（§5.3）。
    * 画面の上の知らせだけでは、下のほうで保存した人が気づかずに離れてしまうため。閉じても、画面の上の知らせから再通知できる
    */
+  /**
+   * 再通知を投稿する。投稿できなければエラーの文言を返す（ボタンの近くに出すため）。
+   * 投稿できたら画面を読み込み直して知らせる（読み込み直しの失敗は、run が画面の上に出す）
+   */
+  async function renotify(onPosted?: () => void): Promise<string | null> {
+    try {
+      await request("POST", `/api/polls/${pollId}/renotify`, {});
+    } catch (e) {
+      return errorText(e, "edit", tr("再通知できませんでした。", "Couldn't re-announce."));
+    }
+    onPosted?.();
+    toast("ok", tr("チャンネルに調整を再通知しました", "Re-announced the poll in the channel"));
+    await reloadAll(notice("ok", tr("チャンネルに調整を再通知しました。", "Re-announced the poll in the channel.")));
+    return null;
+  }
+
   function openRenotifyDialog(warnings: string[]): void {
     const status = h("p", { class: "dialog-error", role: "alert" });
     status.hidden = true;
@@ -194,15 +210,12 @@ export async function editPage(pollId: string): Promise<void> {
           void run(async () => {
             send.disabled = true;
             later.disabled = true;
-            try {
-              await request("POST", `/api/polls/${pollId}/renotify`, {});
-              dialog.close();
-              await reloadAll(notice("ok", tr("チャンネルに調整を再通知しました。", "Re-announced the poll in the channel.")));
-              toast("ok", tr("チャンネルに調整を再通知しました", "Re-announced the poll in the channel"));
-            } catch (e) {
+            // 投稿できたら閉じてから読み込み直す（読み込み直しに失敗しても、閉じたポップアップに出さないように）
+            const error = await renotify(() => dialog.close());
+            if (error) {
               send.disabled = false;
               later.disabled = false;
-              status.textContent = errorText(e, "edit", tr("再通知できませんでした。", "Couldn't re-announce."));
+              status.textContent = error;
               status.hidden = false;
             }
           }),
@@ -234,12 +247,10 @@ export async function editPage(pollId: string): Promise<void> {
         onClick: () =>
           run(async () => {
             btn.disabled = true;
-            try {
-              await request("POST", `/api/polls/${pollId}/renotify`, {});
-              await reloadAll(notice("ok", tr("チャンネルに調整を再通知しました。", "Re-announced the poll in the channel.")));
-            } catch (e) {
+            const error = await renotify();
+            if (error) {
               btn.disabled = false;
-              status.textContent = ` ${errorText(e, "edit", tr("再通知できませんでした。", "Couldn't re-announce."))}`;
+              status.textContent = ` ${error}`;
             }
           }),
       },
