@@ -2,6 +2,7 @@ import "./app.css";
 import { apiError } from "./lib/api";
 import { redrawError, showError } from "./ui/common";
 import { answerPage } from "./pages/answer";
+import { deletedPage } from "./pages/deleted";
 import { donePage } from "./pages/done";
 import { editPage } from "./pages/edit";
 import { linkPage } from "./pages/link";
@@ -53,7 +54,7 @@ async function route(): Promise<void> {
   if (path === "/l") return linkPage();
   const g = /^\/g\/(\d{17,20})\/polls\/?$/.exec(path);
   if (g) return minePage(g[1]!);
-  const m = /^\/p\/([A-Za-z0-9_-]{22})(?:\/(edit|answer|done))?\/?$/.exec(path);
+  const m = /^\/p\/([A-Za-z0-9_-]{22})(?:\/(edit|answer|done|deleted))?\/?$/.exec(path);
   if (!m) return showError(apiError(404, "not_found", "ページが見つかりません。", "Page not found."));
   const id = m[1]!;
   switch (m[2]) {
@@ -63,6 +64,8 @@ async function route(): Promise<void> {
       return answerPage(id);
     case "done":
       return donePage(id);
+    case "deleted":
+      return deletedPage();
     default:
       return summaryPage(id);
   }

@@ -345,17 +345,17 @@ describe("主催者だけの操作", () => {
     expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false }, alice))).status).toBe(403);
   });
 
-  it("確定のお知らせのメンションは 1 時間に 3 回まで（超えたらメンションなしで投稿する）", async () => {
+  it("確定のお知らせのメンションは 1 時間に 5 回まで（超えたらメンションなしで投稿する）", async () => {
     const calls = mockDiscord();
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
     await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org));
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       const res = await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: true }, org));
       expect(res.status).toBe(200);
     }
     const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).map((c) => c.body as { content: string });
-    expect(posts.map((p) => p.content.includes("@everyone"))).toEqual([true, true, true, false]);
+    expect(posts.map((p) => p.content.includes("@everyone"))).toEqual([true, true, true, true, true, false]);
   });
 
   it("予定のリマインドの回が過ぎてから確定した日時は、お知らせに開始までの時間を添え、あとで重ねて送らない", async () => {
@@ -411,6 +411,21 @@ describe("主催者だけの操作", () => {
     const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).map((c) => c.body as { content: string });
     // 失敗した 3 回のあとの 4 回目も、メンションつきで送る
     expect(posts.at(-1)!.content).toContain("@everyone");
+  });
+
+  it("未回答者へのリマインドは 1 時間に 5 回まで", async () => {
+    const calls = mockDiscord();
+    const s = await seedPoll({ participants: [ALICE] });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    for (let i = 0; i < 5; i++) {
+      const res = await call(jsonReq("POST", `/api/polls/${s.pollId}/remind`, {}, org));
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as { count: number }).count).toBe(1);
+    }
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/remind`, {}, org))).status).toBe(429);
+    const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).map((c) => c.body as { content: string });
+    expect(posts).toHaveLength(5);
+    expect(posts[0]!.content).toContain(`<@${ALICE}>`);
   });
 
   it("手動更新は 1 分に 1 回まで", async () => {
@@ -790,6 +805,44 @@ describe("8 回目のレビューのあとの確認", () => {
 });
 
 
+describe("調整の再通知（§5.5）", () => {
+  it("主催者は、募集メッセージへの返信でロール（なければ @everyone）にメンションして知らせ直せる。1 時間に 5 回まで", async () => {
+    const s = await seedPoll({ joinPolicy: "open" });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const calls = mockDiscord();
+    const res = await call(jsonReq("POST", `/api/polls/${s.pollId}/renotify`, {}, org));
+    expect(res.status).toBe(200);
+    const post = calls.find((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)!;
+    const body = post.body as { content: string; allowed_mentions: { parse: string[] }; message_reference: { message_id: string } };
+    expect(body.content).toContain("チャンネルを見られる人なら");
+    expect(body.content).toContain("@everyone");
+    expect(body.allowed_mentions.parse).toEqual(["everyone"]);
+    expect(body.message_reference.message_id).toBe("500000000000000001");
+    for (let i = 0; i < 4; i++) expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/renotify`, {}, org))).status).toBe(200);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/renotify`, {}, org))).status).toBe(429);
+  });
+
+  it("公開中でない調整と、募集メッセージがない調整は再通知できない", async () => {
+    const calls = mockDiscord();
+    const draft = await seedPoll({ status: "draft", messageId: null });
+    const d = await login(draft.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${draft.pollId}/renotify`, {}, d))).status).toBe(409);
+    const noMsg = await seedPoll({ messageId: null });
+    const n = await login(noMsg.pollId, ORGANIZER, "organizer", "edit");
+    const res = await call(jsonReq("POST", `/api/polls/${noMsg.pollId}/renotify`, {}, n));
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe("no_message");
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
+  });
+
+  it("参加者は再通知できない", async () => {
+    const s = await seedPoll();
+    const alice = await login(s.pollId, ALICE, "participant");
+    mockDiscord();
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/renotify`, {}, alice))).status).toBe(403);
+  });
+});
+
 describe("エラーの言語（§6.12）", () => {
   it("X-DI-Lang: en なら英語、なければ日本語で返す", async () => {
     const s = await seedPoll({ participants: [ALICE] });
@@ -957,6 +1010,28 @@ describe("主催者の調整一覧（§6.11）", () => {
     expect(await db().prepare("SELECT id FROM polls WHERE id = ?").bind(others.pollId).first()).not.toBeNull();
     expect((await call(jsonReq("DELETE", `/api/guilds/200000000000000001/polls/${mine.pollId}`, {}, { cookie, csrf }))).status).toBe(200);
     expect(await db().prepare("SELECT id FROM polls WHERE id = ?").bind(mine.pollId).first()).toBeNull();
+  });
+
+  it("作成画面で削除したとき、同じブラウザに本人の一覧のセッションがあれば一覧の場所を返す（発行はしない）", async () => {
+    mockDiscord(() => ({}));
+    const withList = await seedPoll();
+    const without = await seedPoll();
+    const othersList = await seedPoll();
+    const del = async (pollId: string, listCookie: string | null) => {
+      const org = await login(pollId, ORGANIZER, "organizer", "edit");
+      const cookie = listCookie ? `${org.cookie}; ${listCookie}` : org.cookie;
+      const res = await call(jsonReq("DELETE", `/api/polls/${pollId}`, {}, { cookie, csrf: org.csrf }));
+      expect(res.status).toBe(200);
+      // 一覧のセッションは発行しない（消すための Cookie だけ）
+      expect(res.headers.get("Set-Cookie")).not.toContain("__Host-l_");
+      return ((await res.json()) as { listUrl: string | null }).listUrl;
+    };
+    const { cookie } = await listLogin("200000000000000001", ORGANIZER);
+    expect(await del(withList.pollId, cookie)).toBe("/g/200000000000000001/polls");
+    expect(await del(without.pollId, null)).toBeNull();
+    // 別の人の一覧のセッションでは返さない
+    const alices = await listLogin("200000000000000001", ALICE);
+    expect(await del(othersList.pollId, alices.cookie)).toBeNull();
   });
 
   it("別のサーバーの一覧には、そのサーバーのセッションがなければ入れない", async () => {

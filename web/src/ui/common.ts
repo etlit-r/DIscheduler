@@ -308,7 +308,8 @@ export function reopenHint(kind: PageKind): string {
 /** 画面の中に出すエラーの文。リンクの期限切れなら、新しいリンクを受け取る方法を添える */
 export function errorText(e: unknown, kind: PageKind, fallback: string): string {
   if (!(e instanceof ApiError)) return e instanceof Error ? e.message : fallback;
-  if (e.status === 401 && !SELF_EXPLAINING.has(e.code)) return `${e.text()}${reopenHint(kind)}`;
+  // 英語は文と文の間に空白を入れる
+  if (e.status === 401 && !SELF_EXPLAINING.has(e.code)) return `${e.text()}${LANG === "en" ? " " : ""}${reopenHint(kind)}`;
   return e.text();
 }
 
@@ -462,4 +463,17 @@ export function statusBanner(d: PollData): HTMLElement | null {
   if (d.poll.status === "closed") return notice("info", tr("締切を過ぎています。回答の入力・変更はできます。", "The deadline has passed. You can still enter or change your answer."));
   if (d.poll.status === "draft") return notice("info", tr("この調整はまだ公開されていません。", "This poll has not been published yet."));
   return null;
+}
+
+/**
+ * 画面の下のほうに少しのあいだ出す知らせ（トースト）。画面の上の知らせは、下のほうを見ているときに気づけないため。
+ * 同じ内容を画面の上の知らせでも出すので、読み上げはそちらに任せる（二重に読み上げないよう、トーストは読み上げの対象から外す）
+ */
+export function toast(kind: "ok" | "warn", text: string): void {
+  document.querySelector(".toast")?.remove();
+  const el = h("div", { class: `toast toast-${kind}`, aria: { hidden: "true" } }, text);
+  document.body.appendChild(el);
+  // 少しのあいだ出して、薄くしてから消す
+  setTimeout(() => el.classList.add("is-hiding"), 2500);
+  setTimeout(() => el.remove(), 3000);
 }

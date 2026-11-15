@@ -259,6 +259,7 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .in-label { width: 140px; }
 .in-score { width: 72px; }
 .danger-zone { border-color: var(--c-red-soft); }
+.danger-zone .notice { margin-top: 12px; margin-bottom: 0; }
 
 @media (max-width: 480px) {
   .site-header .container { flex-wrap: wrap; }
@@ -270,3 +271,10 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .fix-actions .btn { white-space: nowrap; }
 .tally-table tbody th { min-width: 8em; }
 .tz-note { margin: 0 0 6px; }
+
+/* 保存したときなどに、画面の下のほうに少しのあいだ出す知らせ（ui/common の toast）。下の固定のボタンの列より上に出す */
+.toast { position: fixed; left: 50%; bottom: calc(88px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 20; max-width: calc(100vw - 32px); padding: 10px 18px; border-radius: 999px; font-weight: 600; box-shadow: 0 8px 24px rgb(0 0 0 / 35%); transition: opacity .4s; }
+.toast-ok { background: #157f4c; color: #fff; }
+.toast-warn { background: #f0c35a; color: #1a1a1a; }
+.toast.is-hiding { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }

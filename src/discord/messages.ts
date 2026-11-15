@@ -148,6 +148,23 @@ export function buildAnnounceMessage(poll: Pick<PollRow, "title" | "target_type"
 }
 
 /**
+ * 調整の再通知（§5.5）。参加者以外の回答の設定を変えたあとなどに、主催者が［調整の再通知］で投稿する。
+ * 募集を始めたお知らせと同じく、募集メッセージへの返信で、参加者のロール（なければ @everyone）をメンションする
+ */
+export function buildRenotifyMessage(poll: Pick<PollRow, "title" | "target_type" | "target_id" | "lang" | "join_policy">, pollMessageId: string) {
+  const t = translator(poll.lang);
+  const who =
+    poll.join_policy === "open"
+      ? t("チャンネルを見られる人なら、参加者でなくても回答できます。", "Anyone who can see this channel can answer, even if they aren't a participant yet.")
+      : t("回答できるのは、この調整の参加者だけです。", "Only the participants of this poll can answer.");
+  const text = t(
+    `**${pollTitle(poll)}** の回答を受け付けています。${who}募集メッセージの［回答する］から入力できます。`,
+    `**${pollTitle(poll)}** is accepting answers. ${who} Press [Answer] on the poll message to enter your availability.`,
+  );
+  return withPollMention(poll, text, pollMessageId);
+}
+
+/**
  * 予定のリマインド（§5.7）。日付で書く。時刻のある予定は Discord のタイムスタンプ記法（見る人のタイムゾーンで日付と時刻を表示）、
  * 終日の予定は調整のタイムゾーンでの日付（例: 11/7(土)）。メンションは公開時のお知らせと同じ。
  * 募集メッセージがあれば、その返信にしてリンクも添える
