@@ -2,7 +2,7 @@
 // 個人ごとの回答は載せず、候補ごとの「参加できる」区分の人数と回答率だけを出す。
 // チャンネルの全員が読むので、言語は見る人ごとではなく、調整の言語（polls.lang。§6.12）で書く。
 import type { ChoiceRow, ParticipantRow, PollRow, SlotRow, AnswerRow } from "../db";
-import { bestSlotIds, effectiveStatus, tally } from "../shared/model";
+import { bestSlotIds, compareSlots, effectiveStatus, tally, type SlotTally } from "../shared/model";
 import { formatDate } from "../shared/time";
 import { translator, type Lang } from "../shared/i18n";
 
@@ -47,10 +47,18 @@ export const SLOT_LINES_FROM = 5;
 /** 一部だけ出すときの件数（確定した候補がこれより多ければ、確定した候補はすべて出す） */
 export const SLOT_LINES_SHOWN = 4;
 
-/** 募集メッセージに出す候補を選ぶ。確定した候補 → 「参加できる」の人数が多い → 日時が早い、の順に選び、日時順に並べる */
-export function pickShownSlots<T extends { id: string; start_at: number; fixed_at: number | null }>(slots: T[], okCount: (id: string) => number): T[] {
+/**
+ * 募集メッセージに出す候補を選ぶ。確定した候補 → 成績の良い候補（★と同じ比べ方。§6.9.3）→ 日時が早い、の順に選び、日時順に並べる。
+ * ★の候補（3 件まで）は必ず入る
+ */
+export function pickShownSlots<T extends { id: string; start_at: number; fixed_at: number | null }>(slots: T[], tallies: Map<string, SlotTally>): T[] {
+  const t = (id: string): SlotTally => tallies.get(id) ?? { slotId: id, byChoice: {}, ok: 0, maybe: 0, ng: 0, answered: 0, score: 0 };
   const ranked = [...slots].sort(
-    (a, b) => Number(b.fixed_at !== null) - Number(a.fixed_at !== null) || okCount(b.id) - okCount(a.id) || a.start_at - b.start_at,
+    (a, b) =>
+      Number(b.fixed_at !== null) - Number(a.fixed_at !== null) ||
+      // 誰も回答していない候補は、回答のある候補より後ろにする
+      Number(t(b.id).answered > 0) - Number(t(a.id).answered > 0) ||
+      compareSlots({ id: a.id, startAt: a.start_at }, t(a.id), { id: b.id, startAt: b.start_at }, t(b.id)),
   );
   const fixedCount = slots.filter((s) => s.fixed_at !== null).length;
   return ranked.slice(0, Math.max(SLOT_LINES_SHOWN, fixedCount)).sort((a, b) => a.start_at - b.start_at);
@@ -93,8 +101,8 @@ export function buildPollMessage(d: MessageData) {
     t(`**候補**（${okLabel} の人数）`, `**Date options** (number of ${okLabel})`),
   );
   // 候補が多いとボタンまでスクロールしにくくなるので、5 件以上あるときは一部だけ出す（§5.5）。
-  // 確定した候補と、「参加できる」区分の人数が多い候補を優先し（同じなら日時の早い順）、日時順に並べる
-  const shown = slots.length >= SLOT_LINES_FROM ? pickShownSlots(slots, (id) => tl.get(id)?.ok ?? 0) : slots;
+  // 確定した候補と、成績の良い候補（★と同じ比べ方）を優先し、日時順に並べる
+  const shown = slots.length >= SLOT_LINES_FROM ? pickShownSlots(slots, tl) : slots;
   for (const s of shown) {
     const mark = s.fixed_at !== null ? "✅" : best.has(s.id) ? "★" : "・";
     lines.push(`${mark} ${slotLabel(s, L)}　${t(`${tl.get(s.id)?.ok ?? 0} 人`, String(tl.get(s.id)?.ok ?? 0))}`);

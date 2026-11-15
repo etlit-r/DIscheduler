@@ -210,9 +210,13 @@ describe("募集メッセージの候補の省略（§5.5）", () => {
     expect(lineCount(5).desc).toContain("ほか 1 件");
     expect(lineCount(16).desc).toContain("ほか 12 件");
   });
-  it("確定した候補と、参加できる人が多い候補を優先し、日時順に並べる", () => {
+  it("確定した候補と、成績の良い候補（★と同じ比べ方）を優先し、日時順に並べる", () => {
     const slots = Array.from({ length: 8 }, (_, i) => slot(i, i === 7));
-    const ok: Record<string, number> = { s5: 3, s2: 2, s6: 2 };
-    expect(pickShownSlots(slots, (id) => ok[id] ?? 0).map((s) => s.id)).toEqual(["s2", "s5", "s6", "s7"]);
+    const s = slots.map((x) => ({ id: x.id, startAt: x.start_at }));
+    const ans = (slotId: string, userId: string, choiceId: string) => ({ slotId, userId, choiceId });
+    // s1 は ○1 ×0（★）。s2〜s5 は ○2 ×2（「参加できる」は多いが、×も多い）
+    const answers = [ans("s1", "a", "ok"), ...["s2", "s3", "s4", "s5"].flatMap((id) => [ans(id, "a", "ok"), ans(id, "b", "ok"), ans(id, "c", "ng"), ans(id, "d", "ng")])];
+    const tl = tally(s, choices as never, answers);
+    expect(pickShownSlots(slots, tl).map((x) => x.id)).toEqual(["s1", "s2", "s3", "s7"]);
   });
 });
