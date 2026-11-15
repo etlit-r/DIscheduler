@@ -463,3 +463,16 @@ export function statusBanner(d: PollData): HTMLElement | null {
   if (d.poll.status === "draft") return notice("info", tr("この調整はまだ公開されていません。", "This poll has not been published yet."));
   return null;
 }
+
+/**
+ * 画面の下のほうに少しのあいだ出す知らせ（トースト）。画面の上の知らせは、下のほうを見ているときに気づけないため。
+ * 同じ内容を画面の上の知らせでも出すので、読み上げはそちらに任せる（二重に読み上げないよう、トーストは読み上げの対象から外す）
+ */
+export function toast(kind: "ok" | "warn", text: string): void {
+  document.querySelector(".toast")?.remove();
+  const el = h("div", { class: `toast toast-${kind}`, aria: { hidden: "true" } }, text);
+  document.body.appendChild(el);
+  // 少しのあいだ出して、薄くしてから消す
+  setTimeout(() => el.classList.add("is-hiding"), 2500);
+  setTimeout(() => el.remove(), 3000);
+}

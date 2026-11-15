@@ -1,6 +1,6 @@
 // S2: 調整の作成・編集（主催者。docs/design.md §6.3, §6.9）
 import { ApiError, loadPoll, request, type PollData } from "../lib/api";
-import { browserTimeZone, choiceMark, dateTimeText, donationLine, rememberDonation, showError, slotText, statusBanner, syncPanel, timeZoneSelect, errorText } from "../ui/common";
+import { browserTimeZone, choiceMark, dateTimeText, donationLine, rememberDonation, showError, slotText, statusBanner, syncPanel, timeZoneSelect, errorText, toast } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
 import {
   CHOICE_COLORS,
@@ -710,6 +710,8 @@ export async function editPage(pollId: string): Promise<void> {
         if (!confirmPendingDates()) return;
         const warnings = await save();
         await reloadAll(warnings.length ? notice("warn", tr("保存しました。", "Saved."), ...warnings.map((w) => h("p", {}, w))) : notice("ok", tr("保存しました。", "Saved.")));
+        // 画面の下のほうで押したときも保存できたと分かるよう、下にも少しのあいだ知らせる
+        toast(warnings.length ? "warn" : "ok", warnings.length ? tr("保存しました（画面の上に注意があります）", "Saved (see the note at the top)") : tr("保存しました", "Saved"));
       }),
     }, isDraft ? tr("下書きを保存", "Save draft") : tr("変更を保存", "Save changes"));
     const publishBtn = isDraft
