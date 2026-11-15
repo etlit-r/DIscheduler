@@ -1,6 +1,6 @@
 // S2: 調整の作成・編集（主催者。docs/design.md §6.3, §6.9）
 import { ApiError, loadPoll, request, type PollData } from "../lib/api";
-import { browserTimeZone, choiceMark, dateTimeText, donationLine, rememberDonation, showError, slotText, statusBanner, syncPanel, timeZoneSelect, errorText } from "../ui/common";
+import { browserTimeZone, choiceMark, dateTimeText, rememberDonation, showError, slotText, statusBanner, syncPanel, timeZoneSelect, errorText, toast } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
 import {
   CHOICE_COLORS,
@@ -15,7 +15,8 @@ import {
   type ChoiceKind,
 } from "../../../src/shared/model";
 import { epochToZoned, formatSlot, zonedToEpoch } from "../lib/time";
-import { staticHref, tr, LANG } from "../lib/i18n";
+import { tr, LANG } from "../lib/i18n";
+import { deletedPage, passDeletedWarnings } from "./deleted";
 
 /** 英語の画面で使う月の名前 */
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -94,6 +95,8 @@ export async function editPage(pollId: string): Promise<void> {
   let searchResults: { userId: string; displayName: string }[] = [];
   let roles: { id: string; name: string }[] | null = null;
   let busy = false;
+  /** 削除に失敗したときのエラー。削除ボタンは画面の一番下にあるので、上の知らせとは別にボタンのすぐ下にも出す */
+  let deleteError: HTMLElement | null = null;
 
   const isDraft = d.poll.status === "draft";
   const choicesLocked = d.poll.status === "closed" || d.poll.status === "fixed";
@@ -166,14 +169,56 @@ export async function editPage(pollId: string): Promise<void> {
     return warnings;
   }
 
-  async function run(action: () => Promise<void>) {
+  /** 参加者以外の回答の設定を変えて保存したあとの知らせ。［調整の再通知］で、チャンネルにメンション付きで知らせ直す（§5.5） */
+  function renotifyNotice(warnings: string[]): HTMLElement {
+    const status = h("span", { role: "status" });
+    const btn = h(
+      "button",
+      {
+        type: "button",
+        class: "btn btn-primary btn-small",
+        onClick: () =>
+          run(async () => {
+            btn.disabled = true;
+            try {
+              await request("POST", `/api/polls/${pollId}/renotify`, {});
+              await reloadAll(notice("ok", tr("チャンネルに調整を再通知しました。", "Re-announced the poll in the channel.")));
+            } catch (e) {
+              btn.disabled = false;
+              status.textContent = ` ${errorText(e, "edit", tr("再通知できませんでした。", "Couldn't re-announce."))}`;
+            }
+          }),
+      },
+      tr("調整の再通知", "Re-announce the poll"),
+    );
+    return notice(
+      "warn",
+      h("p", {}, h("strong", {}, tr("保存しました。", "Saved.")), " ", tr("参加者を変更するには再通知が必要です。", "To let the change reach members, the poll needs to be re-announced.")),
+      h(
+        "p",
+        { class: "small" },
+        tr(
+          "［調整の再通知］を押すと、募集メッセージへの返信で、参加者のロール（ロールがなければ @everyone）にメンションして知らせ直します（1 時間に 5 回まで）。",
+          "[Re-announce the poll] replies to the poll message and mentions the participants' role (or @everyone without one). Up to 5 times per hour.",
+        ),
+      ),
+      ...warnings.map((w) => h("p", {}, w)),
+      h("p", {}, btn, status),
+    );
+  }
+
+  /** onError: エラーの文言を受け取り、画面の上の知らせのほかに出したいとき（削除ボタンの下など）に使う。描き直したあとに呼ぶ */
+  async function run(action: () => Promise<void>, fallback = tr("エラーが発生しました。", "Something went wrong."), onError?: (text: string) => void) {
     if (busy) return;
     busy = true;
+    deleteError = null;
     try {
       await action();
     } catch (e) {
-      message = notice("error", errorText(e, "edit", tr("エラーが発生しました。", "Something went wrong.")));
-      draw();
+      const text = errorText(e, "edit", fallback);
+      message = notice("error", text);
+      if (onError) onError(text);
+      else draw();
     } finally {
       busy = false;
     }
@@ -634,8 +679,9 @@ export async function editPage(pollId: string): Promise<void> {
         "fieldset",
         {},
         h("legend", {}, tr("参加者以外が［回答する］を押したとき", "When a non-participant presses [Answer]")),
-        h("div", { class: "field-inline field-check" }, jpClosed, h("label", { for: "jp-closed" }, tr("回答できない", "They can't answer"))),
+        // 既定は「参加者に追加して回答できる」（§5.3）。上に置く
         h("div", { class: "field-inline field-check" }, jpOpen, h("label", { for: "jp-open" }, tr("チャンネルを見られる人なら、参加者に追加して回答できる", "Anyone who can see the channel is added as a participant and can answer"))),
+        h("div", { class: "field-inline field-check" }, jpClosed, h("label", { for: "jp-closed" }, tr("回答できない", "They can't answer"))),
       ),
     );
   }
@@ -705,11 +751,30 @@ export async function editPage(pollId: string): Promise<void> {
 
     const saveBtn = h("button", {
       type: "button",
-      class: "btn btn-secondary",
+      // 公開後は［変更を保存］がこの画面の主な操作なので目立たせる。下書きでは［公開してチャンネルに投稿］を目立たせる
+      class: isDraft ? "btn btn-secondary" : "btn btn-primary",
       onClick: () => run(async () => {
         if (!confirmPendingDates()) return;
+        // 公開後に「参加者以外が［回答する］を押したとき」を変えたら、チャンネルに知らせ直すよう案内する（§5.3）
+        const joinPolicyChanged = !isDraft && joinPolicy !== d.poll.joinPolicy;
         const warnings = await save();
-        await reloadAll(warnings.length ? notice("warn", tr("保存しました。", "Saved."), ...warnings.map((w) => h("p", {}, w))) : notice("ok", tr("保存しました。", "Saved.")));
+        await reloadAll(
+          joinPolicyChanged
+            ? renotifyNotice(warnings)
+            : warnings.length
+              ? notice("warn", tr("保存しました。", "Saved."), ...warnings.map((w) => h("p", {}, w)))
+              : notice("ok", tr("保存しました。", "Saved.")),
+        );
+        // 画面の下のほうで押したときも保存できたと分かるよう、下にも少しのあいだ知らせる
+        // 再通知の案内（画面の上）も、注意と同じく気づけるようにする
+        toast(
+          warnings.length || joinPolicyChanged ? "warn" : "ok",
+          joinPolicyChanged
+            ? tr("保存しました（画面の上で再通知できます）", "Saved (you can re-announce at the top)")
+            : warnings.length
+              ? tr("保存しました（画面の上に注意があります）", "Saved (see the note at the top)")
+              : tr("保存しました", "Saved"),
+        );
       }),
     }, isDraft ? tr("下書きを保存", "Save draft") : tr("変更を保存", "Save changes"));
     const publishBtn = isDraft
@@ -771,21 +836,25 @@ export async function editPage(pollId: string): Promise<void> {
             class: "btn btn-danger btn-small",
             onClick: () => run(async () => {
               if (!confirm(tr("この調整を削除します。元に戻せません。よろしいですか？", "Delete this poll? This can't be undone."))) return;
-              const r = await request<{ warnings?: string[] }>("DELETE", `/api/polls/${pollId}`, {});
-              render(
-                document.getElementById("app")!,
-                h(
-                  "section",
-                  { class: "page" },
-                  h("h1", {}, tr("調整を削除しました", "Poll deleted")),
-                  h("p", {}, tr("データはすべて削除されました。", "All data has been deleted.")),
-                  ...(r.warnings ?? []).map((w) => notice("warn", w)),
-                  h("p", {}, h("a", { href: staticHref("/manual/", "/en/manual/") }, tr("DIscheduler のマニュアルへ", "Go to the DIscheduler manual"))),
-                  donationLine(d.donationUrl),
-                ),
-              );
+              const r = await request<{ warnings?: string[]; listUrl?: string | null }>("DELETE", `/api/polls/${pollId}`, {});
+              const warnings = r.warnings ?? [];
+              // 一覧のセッションがあれば一覧に戻り、そこで削除できたことを知らせる（§6.11）
+              if (r.listUrl && /^\/g\/\d{17,20}\/polls$/.test(r.listUrl)) {
+                passDeletedWarnings(warnings);
+                location.assign(`${r.listUrl}?deleted=1`);
+                return;
+              }
+              // なければ完了画面。再読み込みしても「見つかりません」にならないよう、アドレスも変える
+              history.replaceState(null, "", `/p/${pollId}/deleted`);
+              deletedPage({ warnings, donationUrl: d.donationUrl });
+            }, tr("削除できませんでした。", "Couldn't delete the poll."), (text) => {
+              const el = notice("error", text);
+              deleteError = el;
+              draw();
+              el.scrollIntoView({ block: "nearest" });
             }),
           }, tr("この調整を削除", "Delete this poll")),
+          deleteError,
         ),
         d.poll.deadlineAt && !isDraft ? h("p", { class: "muted small" }, tr(`現在の締切: ${dateTimeText(d.poll.deadlineAt, tz)}`, `Current deadline: ${dateTimeText(d.poll.deadlineAt, tz)}`)) : null,
       ),

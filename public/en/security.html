@@ -80,7 +80,7 @@
           <li>It doesn't read message content (the Message Content Intent is not used)</li>
           <li>It doesn't read message history from before it was added either (it doesn't ask for the Read Message History permission and has no code that fetches channel messages)</li>
           <li>It doesn't store email addresses, IP addresses or avatar images</li>
-          <li>It doesn't mention roles or <code>@everyone</code> except when a poll is published, when dates are announced, and in event reminders (these mention the role used to choose the participants, or <code>@everyone</code> without one. Mentions in date announcements are limited to 3 per poll per hour)</li>
+          <li>It doesn't mention roles or <code>@everyone</code> except when a poll is published, when dates are announced, and in event reminders (these mention the role used to choose the participants, or <code>@everyone</code> without one. Mentions in date announcements, re-announcements and reminders are each limited to 5 per poll per hour)</li>
           <!-- no-ad:start --><li>It doesn't load outside analytics, ads or CDNs</li><!-- no-ad:end -->
           <!-- ad:start --><li>It doesn't load outside analytics or CDNs. Ads are shown only on the home page, this page and the answer-saved page, inside a frame isolated from the site, and you can decline them (they never appear on the create, answer or results pages or in Discord messages. See <a href="#ads">About ads</a>)</li><!-- ad:end -->
           <!-- donation:start --><li>The donation link is a plain link to an outside service; no scripts or images from the support service are loaded</li><!-- donation:end -->

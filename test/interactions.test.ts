@@ -77,8 +77,10 @@ describe("/schedule と /di", () => {
       // ロールを指定していないので、ロールの指定をすすめる
       expect(json).toContain("参加者はロールで決めるのがおすすめです。");
       const db = (env as unknown as Env).DB;
-      const poll = await db.prepare("SELECT id, status, title FROM polls WHERE organizer_id = ? AND channel_id = ? AND status = 'draft'").bind(ORGANIZER, CHANNEL).first<{ id: string; title: string | null }>();
+      const poll = await db.prepare("SELECT id, status, title, join_policy FROM polls WHERE organizer_id = ? AND channel_id = ? AND status = 'draft'").bind(ORGANIZER, CHANNEL).first<{ id: string; title: string | null; join_policy: string }>();
       expect(poll!.title).toBeNull();
+      // 参加者以外が［回答する］を押したときは、既定でチャンネルを見られる人を参加者に追加する（§5.3）
+      expect(poll!.join_policy).toBe("open");
       const ps = await db.prepare("SELECT user_id FROM participants WHERE poll_id = ?").bind(poll!.id).all<{ user_id: string }>();
       expect(ps.results.map((p) => p.user_id).sort()).toEqual([ORGANIZER, ALICE].sort()); // Bot は除外
     });
@@ -188,6 +190,39 @@ describe("募集メッセージのボタン", () => {
       e(),
     );
     expect(JSON.stringify(calls.find((c) => c.path.includes("/messages/@original"))!.body)).toContain("/l#t=");
+  });
+});
+
+describe("参加者以外が［回答する］を押したとき（§5.3）", () => {
+  const press = (who: string, pollId: string, perms = "1024") =>
+    signed({ type: 3, id: "9", application_id: "1", token: "tok", guild_id: GUILD, channel_id: CHANNEL, member: member(who, perms), data: { custom_id: `answer:${pollId}` } });
+  const reply = (calls: { path: string; body: unknown }[]) => JSON.stringify(calls.find((c) => c.path.includes("/messages/@original"))!.body);
+
+  it("参加者以外は回答できない設定なら、その旨を伝える", async () => {
+    const s = await seedPoll({ joinPolicy: "closed" });
+    const calls = mockDiscord();
+    await call(await press(OUTSIDER, s.pollId), e());
+    expect(reply(calls)).toContain("参加者以外は回答できない設定です");
+    expect(reply(calls)).not.toContain("/l#t=");
+  });
+
+  it("参加者でない主催者が押したら、回答できない理由と集計画面のリンクを返す（設定が閉じているとき）", async () => {
+    const s = await seedPoll({ joinPolicy: "closed", participants: [ALICE] });
+    const calls = mockDiscord();
+    await call(await press(ORGANIZER, s.pollId), e());
+    const body = reply(calls);
+    expect(body).toContain("参加者には入っていないため回答できません");
+    expect(body).toContain("集計を見る");
+    expect(body).toContain("/l#t=");
+  });
+
+  it("参加者を追加できる設定なら、参加者でない主催者も参加者に追加して回答できる", async () => {
+    const s = await seedPoll({ joinPolicy: "open", participants: [ALICE] });
+    const calls = mockDiscord();
+    await call(await press(ORGANIZER, s.pollId), e());
+    expect(reply(calls)).toContain("回答する");
+    const p = await (env as unknown as Env).DB.prepare("SELECT 1 AS x FROM participants WHERE poll_id = ? AND user_id = ?").bind(s.pollId, ORGANIZER).first();
+    expect(p).not.toBeNull();
   });
 });
 

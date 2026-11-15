@@ -158,7 +158,6 @@ async function handleCreate(env: Env, i: Interaction, origin: string, guildId: s
   const rawTitle = strOption(i, "title");
   // 空白だけなどで空になったら、タイトルなし（Web 画面で入力する）として扱う
   const title = rawTitle ? sanitizeLine(rawTitle, 100) || null : null;
-  const members = strOption(i, "members");
   const roleId = strOption(i, "role");
   const deadline = intOption(i, "deadline");
   const result = await createOrReuseDraft(env, {
@@ -166,7 +165,8 @@ async function handleCreate(env: Env, i: Interaction, origin: string, guildId: s
     channelId,
     organizerId: userId,
     title,
-    members: members === "auto" || members === "manual" ? members : null,
+    // 参加者の決め方はコマンドでは選ばない（サーバーの既定値か role で決め、作成画面で変える。§5.2）
+    members: null,
     roleId: roleId && /^\d{17,20}$/.test(roleId) ? roleId : null,
     deadlineDays: deadline && deadline >= 1 && deadline <= 90 ? Math.floor(deadline) : null,
     // 調整の言語（チャンネルに投稿するメッセージと最初の選択肢）は、作った主催者の Discord の言語にする（§6.12）
@@ -292,29 +292,33 @@ async function handlePollButton(
   }
   const isOrganizer = poll.organizer_id === userId;
   let participant = await getParticipant(env.DB, poll.id, userId);
+  const canView = hasPermission(i.member?.permissions, PERM.VIEW_CHANNEL);
+  // 参加者以外でも、チャンネルを見られる人なら参加者に追加して回答できる設定（join_policy = open。§5.3）。主催者も同じ
+  if (!participant && kind === "answer" && poll.join_policy === "open" && canView) {
+    const name = sanitizeDisplayName(memberDisplayName(i.member!), 64);
+    await env.DB.prepare("INSERT OR IGNORE INTO participants (poll_id, user_id, display_name) VALUES (?, ?, ?)").bind(poll.id, userId, name).run();
+    participant = await getParticipant(env.DB, poll.id, userId);
+  }
   if (!participant && !isOrganizer) {
-    const canView = hasPermission(i.member?.permissions, PERM.VIEW_CHANNEL);
-    if (kind === "answer" && poll.join_policy === "open" && canView) {
-      const name = sanitizeDisplayName(memberDisplayName(i.member!), 64);
-      await env.DB.prepare("INSERT OR IGNORE INTO participants (poll_id, user_id, display_name) VALUES (?, ?, ?)").bind(poll.id, userId, name).run();
-      participant = await getParticipant(env.DB, poll.id, userId);
-    } else {
-      await editOriginal(
-        env,
-        i,
-        t(
-          "この調整の参加者ではないため、回答・閲覧できません。参加したい場合は主催者に追加を依頼してください。",
-          "You're not a participant in this poll, so you can't answer or view it. If you'd like to join, ask the organizer to add you.",
-        ),
-      );
-      return;
-    }
+    await editOriginal(
+      env,
+      i,
+      kind === "answer" && poll.join_policy === "closed"
+        ? t(
+            "この調整は、参加者以外は回答できない設定です。あなたは参加者に入っていないため、回答できません。参加したい場合は、主催者に参加者への追加を依頼してください。",
+            "This poll is set so that only participants can answer, and you aren't one of them. If you'd like to join, ask the organizer to add you as a participant.",
+          )
+        : t(
+            "この調整の参加者ではないため、回答・閲覧できません。参加したい場合は、主催者に参加者への追加を依頼してください。",
+            "You're not a participant in this poll, so you can't answer or view it. If you'd like to join, ask the organizer to add you as a participant.",
+          ),
+    );
+    return;
   }
   const status = effectiveStatus(poll.status, poll.deadline_at, nowSec());
-  if (kind === "answer" && !participant) {
-    // 主催者が参加者に入っていない場合は、集計の閲覧に切り替える
-    kind = "view";
-  }
+  // 主催者が参加者に入っていない調整で［回答する］を押したときは、回答できない理由を書いて、集計画面のリンクを渡す
+  const organizerOnlyView = kind === "answer" && !participant;
+  if (organizerOnlyView) kind = "view";
   if (kind === "answer" && !canAnswer(status)) {
     await editOriginal(env, i, t("この調整にはいま回答できません。", "This poll isn't accepting answers right now."));
     return;
@@ -322,6 +326,19 @@ async function handlePollButton(
   const role = isOrganizer ? "organizer" : "participant";
   const url = await issueLink(env.DB, origin, poll.id, userId, role, kind);
   const label = kind === "answer" ? t("回答する", "Answer") : t("集計を見る", "View results");
+  if (organizerOnlyView) {
+    await editOriginal(
+      env,
+      i,
+      t(
+        `<@${userId}> あなたは「${pollTitle(poll)}」の主催者ですが、参加者には入っていないため回答できません${poll.join_policy === "closed" ? "（この調整は、参加者以外は回答できない設定です）" : ""}。回答するには、作成画面で自分を参加者に追加してください。集計画面は下のボタンから開けます（10 分有効・1 回限り。他の人に渡さないでください）。`,
+        `<@${userId}> You organize "${pollTitle(poll)}" but aren't one of its participants, so you can't answer${poll.join_policy === "closed" ? " (this poll is set so that only participants can answer)" : ""}. To answer, add yourself as a participant on the edit page. You can open the results page with the button below (valid for 10 minutes, single use. Don't share it with anyone).`,
+      ),
+      [{ type: 1, components: [linkButton(label, url)] }],
+      userId,
+    );
+    return;
+  }
   const note =
     status === "fixed"
       ? t("日時は確定していますが、予定が変わった場合は回答を変更できます。", "A date is confirmed, but you can still change your answer if your plans change.")

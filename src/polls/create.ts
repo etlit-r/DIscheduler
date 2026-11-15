@@ -120,8 +120,9 @@ export async function createOrReuseDraft(env: Env, opts: CreateOptions): Promise
     stmts.push(
       db
         .prepare(
-          "INSERT INTO polls (id, guild_id, channel_id, organizer_id, title, target_type, target_id, deadline_at, lang, created_at, updated_at, purge_after) " +
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          // 参加者以外が［回答する］を押したときは、既定でチャンネルを見られる人を参加者に追加する（join_policy = open。§5.3）
+          "INSERT INTO polls (id, guild_id, channel_id, organizer_id, title, target_type, target_id, deadline_at, lang, join_policy, created_at, updated_at, purge_after) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)",
         )
         .bind(pollId, o.guildId, o.channelId, o.organizerId, o.title, finalTarget, o.roleId, deadlineAt, o.lang, now, now, now + DRAFT_TTL),
     );

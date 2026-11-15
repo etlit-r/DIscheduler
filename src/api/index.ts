@@ -37,7 +37,7 @@ import {
   type SessionRow,
 } from "../db";
 import { fetchMember, searchMembers } from "../discord/members";
-import { buildAnnounceMessage, buildDeletedMessage, buildFixedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink, pollTitle, rawPollTitle, slotWhen } from "../discord/messages";
+import { buildAnnounceMessage, buildDeletedMessage, buildRenotifyMessage, buildFixedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink, pollTitle, rawPollTitle, slotWhen } from "../discord/messages";
 import { discord, DiscordError, type DiscordChannel, type DiscordRole } from "../discord/rest";
 import { AppError, DAY, floorToMinute, nowSec, randomId, timingSafeEqual } from "../core/lib";
 import { DEFAULT_DEADLINE_DAYS, resetParticipants, RETENTION } from "../polls/create";
@@ -54,6 +54,12 @@ type Vars = { session: SessionRow; poll: PollRow };
 type C = Context<{ Bindings: Env; Variables: Vars }>;
 
 export const api = new Hono<{ Bindings: Env; Variables: Vars }>();
+
+/**
+ * 主催者の操作でロール・@everyone・未回答者にメンションする投稿（確定のお知らせ・調整の再通知・リマインド）の上限。
+ * 1 つの調整につき 1 時間あたり。慣れないうちの作り直しや出し直しで足りなくならないよう、どれも同じ回数にそろえる
+ */
+const MENTION_LIMIT = 5;
 
 // --- 共通の前処理 ---
 
@@ -771,12 +777,12 @@ polls.post("/:id/announce", async (c) => {
 
   const warnings: Msg[] = [];
   // メンションは公開時のお知らせと同じ（ロールの調整はそのロール、それ以外は @everyone。§5.5）。
-  // ロールや @everyone への通知が続かないよう、メンションは 1 つの調整につき 1 時間に 3 回まで（投稿できたときだけ数える）
+  // ロールや @everyone への通知が続かないよう、メンションは 1 つの調整につき 1 時間に MENTION_LIMIT 回まで（投稿できたときだけ数える）
   const MENTION_KEY = `fix-mention:${poll.id}`;
   let mention = body.mention;
-  if (mention && !(await rateLimitAllows(db, MENTION_KEY, 3, 3600, now))) {
+  if (mention && !(await rateLimitAllows(db, MENTION_KEY, MENTION_LIMIT, 3600, now))) {
     mention = false;
-    warnings.push(msg("確定のお知らせのメンションは 1 時間に 3 回までのため、今回はメンションせずに投稿しました。", "Mentions in announcements are limited to 3 per hour, so this was posted without a mention."));
+    warnings.push(msg(`確定のお知らせのメンションは 1 時間に ${MENTION_LIMIT} 回までのため、今回はメンションせずに投稿しました。`, `Mentions in announcements are limited to ${MENTION_LIMIT} per hour, so this was posted without a mention.`));
   }
   // 予定のリマインド（§5.7）を送る回がもう過ぎていて、予定がまだ先なら、このお知らせがリマインドを兼ねる。
   // 開始までの時間を添え、あとの回で同じ日時に重ねて送らないよう記録する
@@ -873,6 +879,29 @@ async function upsertEvent(
   }
 }
 
+// 調整の再通知（主催者。§5.5）。参加者以外の回答の設定を変えたあとなどに、募集メッセージへの返信で、
+// 参加者のロール（なければ @everyone）にメンションして知らせ直す。通知が続かないよう、1 つの調整につき 1 時間に MENTION_LIMIT 回まで
+polls.post("/:id/renotify", async (c) => {
+  requireOrganizer(c);
+  const { poll } = c.var;
+  const now = nowSec();
+  if (!canAnswer(effectiveStatus(poll.status, poll.deadline_at, now))) {
+    throw new AppError(409, "not_published", msg("公開中の調整だけ再通知できます。", "You can only re-announce a published poll."));
+  }
+  if (!poll.message_id) {
+    throw new AppError(409, "no_message", msg("募集メッセージがありません。先にチャンネルに投稿し直してください。", "There is no poll message. Repost it to the channel first."));
+  }
+  if (!(await hitRateLimit(c.env.DB, `renotify:${poll.id}`, MENTION_LIMIT, 3600, now))) {
+    throw new AppError(429, "rate_limited", msg(`調整の再通知は 1 時間に ${MENTION_LIMIT} 回までです。`, `You can re-announce a poll up to ${MENTION_LIMIT} times per hour.`));
+  }
+  try {
+    await discord(c.env, "POST", `/channels/${poll.channel_id}/messages`, buildRenotifyMessage(poll, poll.message_id));
+  } catch {
+    throw new AppError(502, "discord_failed", msg("再通知を投稿できませんでした。Bot がこのチャンネルに投稿できるか確認してください。", "Couldn't post the re-announcement. Check that the bot can post in this channel."));
+  }
+  return c.json({ ok: true });
+});
+
 polls.post("/:id/remind", async (c) => {
   requireOrganizer(c);
   const { poll } = c.var;
@@ -880,16 +909,15 @@ polls.post("/:id/remind", async (c) => {
   const now = nowSec();
   if (poll.status === "draft") throw new AppError(409, "draft", msg("公開してからリマインドしてください。", "Publish the poll before sending a reminder."));
   if (poll.status === "fixed") throw new AppError(409, "fixed", msg("日時が確定しているため、リマインドはできません。", "A date is already confirmed, so reminders can't be sent."));
-  if (poll.last_reminded_at && now - poll.last_reminded_at < 12 * 3600) {
-    throw new AppError(429, "rate_limited", msg("リマインドは 12 時間に 1 回までです。", "You can send a reminder once every 12 hours."));
-  }
   const rows = await db
     .prepare("SELECT user_id FROM participants p WHERE poll_id = ? AND NOT EXISTS (SELECT 1 FROM answers a WHERE a.poll_id = p.poll_id AND a.user_id = p.user_id)")
     .bind(poll.id)
     .all<{ user_id: string }>();
   if (rows.results.length === 0) return c.json({ ok: true, count: 0 });
-  const r = await db.prepare("UPDATE polls SET last_reminded_at = ? WHERE id = ? AND (last_reminded_at IS NULL OR last_reminded_at <= ?)").bind(now, poll.id, now - 12 * 3600).run();
-  if (r.meta.changes !== 1) throw new AppError(429, "rate_limited", msg("リマインドは 12 時間に 1 回までです。", "You can send a reminder once every 12 hours."));
+  // メンションの上限（1 つの調整につき 1 時間に MENTION_LIMIT 回）
+  if (!(await hitRateLimit(db, `remind:${poll.id}`, MENTION_LIMIT, 3600, now))) {
+    throw new AppError(429, "rate_limited", msg(`リマインドは 1 時間に ${MENTION_LIMIT} 回までです。`, `You can send up to ${MENTION_LIMIT} reminders per hour.`));
+  }
   const link = poll.message_id ? `\n${messageLink(poll.guild_id, poll.channel_id, poll.message_id)}` : "";
   // チャンネルに投稿するので、調整の言語で書く（§6.12）
   const t = translator(poll.lang);
@@ -976,9 +1004,16 @@ async function deletePollEverywhere(env: Env, poll: PollRow): Promise<Msg[]> {
 
 polls.delete("/:id", async (c) => {
   requireOrganizer(c);
-  const warnings = await deletePollEverywhere(c.env, c.var.poll);
-  c.header("Set-Cookie", clearSessionCookie(c.var.poll.id));
-  return c.json({ ok: true, warnings: localize(c, warnings) });
+  const { poll } = c.var;
+  // 同じブラウザに、この主催者の一覧のセッション（§6.11）がまだあれば、削除後に一覧へ戻れるよう一覧の場所を返す。
+  // 一覧のセッションはここでは発行しない（調整のセッションで、ほかの調整まで扱えるようにしないため。security-design S-3）。
+  // 削除したあとにここで失敗して、削除できたのにエラーを返すことがないよう、先に調べる
+  const listSid = readCookie(c.req.header("Cookie") ?? null, listCookieName(poll.guild_id));
+  const list = listSid ? await getListSession(c.env.DB, poll.guild_id, listSid) : null;
+  const listUrl = list && list.user_id === poll.organizer_id ? `/g/${poll.guild_id}/polls` : null;
+  const warnings = await deletePollEverywhere(c.env, poll);
+  c.header("Set-Cookie", clearSessionCookie(poll.id));
+  return c.json({ ok: true, warnings: localize(c, warnings), listUrl });
 });
 
 polls.delete("/:id/session", async (c) => {
