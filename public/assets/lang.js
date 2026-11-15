@@ -39,12 +39,13 @@
       // 外せなくても、言語は保存できている
     }
   }
-  // # の後ろ（回答の完了画面の #p=、ページ内の見出し）は、もう一方の言語のページでも保つ。
-  // ページ内の見出しへ移ったあとでも保てるよう、今の # を使う
-  // アドレス欄の # はだれでも書き換えられるので、見出しの名前と #p= に使う文字（英数字と _ - . = &）だけを残してからリンクに入れる
+  // # の後ろは、回答の完了画面の #p=（調整の ID。［集計画面を見る］に使う）だけを、もう一方の言語のページでも保つ。
+  // ページ内の見出し（トップページの #features など）は引き継がず、切り替え先のページは先頭から開く
+  // （前に押した見出しのリンクの # がアドレスに残っていると、思わぬ位置へ移ってしまうため）。
+  // アドレス欄の # はだれでも書き換えられるので、#p= と決まった形（22 文字の英数字・_・-）のときだけ使う
   const safeHash = () => {
-    const h = location.hash.slice(1).replace(/[^A-Za-z0-9_\-.=&]/g, "");
-    return h ? `#${h}` : "";
+    const m = /^#p=([A-Za-z0-9_-]{22})$/.exec(location.hash);
+    return m ? `#p=${m[1]}` : "";
   };
   const withHash = (path) => path + safeHash();
   // 切り替えのリンクには ?lang= を付ける。新しいタブで開くとき（右クリックのメニューや中クリック）はクリックの処理を通らず
@@ -52,7 +53,7 @@
   const sync = () =>
     link.setAttribute("href", withHash(isBot() ? base : withLang(base, target)));
   sync();
-  // 新しいタブで開くとき（クリックの処理を通らない）も、今の # を使う
+  // # が変わったら（回答の完了画面の #p=）、新しいタブで開くとき（クリックの処理を通らない）のためにリンクも直す
   window.addEventListener("hashchange", sync);
   link.addEventListener("click", () => {
     const lang = target;
@@ -102,7 +103,7 @@
   }
   // 検索エンジンのクローラーと自動操作のブラウザは、?lang= があっても移さない
   if (fromUrl && isBot()) return;
-  // もう一方の言語のページへ移る（# の後ろはそのまま保つ。回答の完了画面の #p= など）
+  // もう一方の言語のページへ移る（回答の完了画面の #p= だけを保つ）
   document.documentElement.setAttribute("data-lang-redirect", "");
   location.replace(withHash(fromUrl ? withLang(base, fromUrl) : base));
 })();
