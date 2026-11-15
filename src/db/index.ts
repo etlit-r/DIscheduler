@@ -19,20 +19,13 @@ export interface PollRow {
   join_policy: "closed" | "open";
   status: PollStatus;
   deadline_at: number | null;
-  /** 使わない（0009 で slots.fixed_at・slots.discord_event_id に移した。古い Worker のために列だけ残している） */
-  fixed_slot_id: string | null;
-  fixed_at: number | null;
-  discord_event_id: string | null;
   choices_version: number;
   last_synced_at: number | null;
-  last_reminded_at: number | null;
   publishing_at: number | null;
   /** 予定のリマインドを、予定の当日（0）か前日（1）に送るか（§5.7） */
   remind_day_offset: number;
   /** 予定のリマインドを送る時（0〜23。調整のタイムゾーン） */
   remind_hour: number;
-  /** 使わない（0009 で slots.day_reminded_at に移した） */
-  day_reminded_slot_at: number | null;
   choices_changed_at: number | null;
   /** 調整の言語（§6.12）。チャンネルに投稿するメッセージの言語 */
   lang: Lang;

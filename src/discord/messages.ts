@@ -2,7 +2,7 @@
 // 個人ごとの回答は載せず、候補ごとの「参加できる」区分の人数と回答率だけを出す。
 // チャンネルの全員が読むので、言語は見る人ごとではなく、調整の言語（polls.lang。§6.12）で書く。
 import type { ChoiceRow, ParticipantRow, PollRow, SlotRow, AnswerRow } from "../db";
-import { bestSlotId, effectiveStatus, tally } from "../shared/model";
+import { bestSlotIds, compareSlots, effectiveStatus, tally, type SlotTally } from "../shared/model";
 import { formatDate } from "../shared/time";
 import { translator, type Lang } from "../shared/i18n";
 
@@ -42,6 +42,29 @@ export interface MessageData {
   now: number;
 }
 
+/** 候補がこの件数以上あるときは、募集メッセージに一部だけ出す */
+export const SLOT_LINES_FROM = 5;
+/** 一部だけ出すときの件数（確定した候補と★の候補を合わせてこれより多ければ、それらはすべて出す） */
+export const SLOT_LINES_SHOWN = 4;
+
+/**
+ * 募集メッセージに出す候補を選ぶ。確定した候補 → ★の候補 → 回答のある候補を成績の良い順（★と同じ比べ方。§6.9.3。同じなら日時が早い順）、
+ * の順に選び、日時順に並べる。確定した候補と★の候補は、合わせて SLOT_LINES_SHOWN 件を超えてもすべて入れる
+ */
+export function pickShownSlots<T extends { id: string; start_at: number; fixed_at: number | null }>(slots: T[], tallies: Map<string, SlotTally>, best: ReadonlySet<string>): T[] {
+  const must = (s: T) => s.fixed_at !== null || best.has(s.id);
+  const t = (id: string): SlotTally => tallies.get(id) ?? { slotId: id, byChoice: {}, ok: 0, maybe: 0, ng: 0, answered: 0, score: 0 };
+  const ranked = [...slots].sort(
+    (a, b) =>
+      Number(b.fixed_at !== null) - Number(a.fixed_at !== null) ||
+      Number(best.has(b.id)) - Number(best.has(a.id)) ||
+      // 誰も回答していない候補は、回答のある候補より後ろにする
+      Number(t(b.id).answered > 0) - Number(t(a.id).answered > 0) ||
+      compareSlots({ id: a.id, startAt: a.start_at }, t(a.id), { id: b.id, startAt: b.start_at }, t(b.id)),
+  );
+  return ranked.slice(0, Math.max(SLOT_LINES_SHOWN, slots.filter(must).length)).sort((a, b) => a.start_at - b.start_at);
+}
+
 export const NO_MENTIONS = { parse: [] as string[] };
 
 export function buildPollMessage(d: MessageData) {
@@ -52,7 +75,7 @@ export function buildPollMessage(d: MessageData) {
     choices,
     answers.map((a) => ({ slotId: a.slot_id, userId: a.user_id, choiceId: a.choice_id })),
   );
-  const best = bestSlotId(slots.map((s) => ({ id: s.id, startAt: s.start_at })), tl);
+  const best = bestSlotIds(slots.map((s) => ({ id: s.id, startAt: s.start_at, fixed: s.fixed_at !== null })), tl);
   const answered = new Set(answers.map((a) => a.user_id)).size;
   const okLabel = choices.filter((c) => c.kind === "ok").map((c) => c.symbol).join("");
   const L = poll.lang;
@@ -78,9 +101,16 @@ export function buildPollMessage(d: MessageData) {
     "",
     t(`**候補**（${okLabel} の人数）`, `**Date options** (number of ${okLabel})`),
   );
-  for (const s of slots) {
-    const mark = s.fixed_at !== null ? "✅" : s.id === best ? "★" : "・";
+  // 候補が多いとボタンまでスクロールしにくくなるので、5 件以上あるときは一部だけ出す（§5.5）。
+  // 確定した候補と、成績の良い候補（★と同じ比べ方）を優先し、日時順に並べる
+  const shown = slots.length >= SLOT_LINES_FROM ? pickShownSlots(slots, tl, best) : slots;
+  for (const s of shown) {
+    const mark = s.fixed_at !== null ? "✅" : best.has(s.id) ? "★" : "・";
     lines.push(`${mark} ${slotLabel(s, L)}　${t(`${tl.get(s.id)?.ok ?? 0} 人`, String(tl.get(s.id)?.ok ?? 0))}`);
+  }
+  if (shown.length < slots.length) {
+    const rest = slots.length - shown.length;
+    lines.push(t(`ほか ${rest} 件（すべての候補は［集計を見る］か［回答する］から見られます）`, `${rest} more (see all date options with [View results] or [Answer])`));
   }
   lines.push(
     "",

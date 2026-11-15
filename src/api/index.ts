@@ -40,7 +40,7 @@ import { fetchMember, searchMembers } from "../discord/members";
 import { buildAnnounceMessage, buildDeletedMessage, buildRenotifyMessage, buildFixedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink, pollTitle, rawPollTitle, slotWhen } from "../discord/messages";
 import { discord, DiscordError, type DiscordChannel, type DiscordRole } from "../discord/rest";
 import { AppError, DAY, floorToMinute, nowSec, randomId, timingSafeEqual } from "../core/lib";
-import { DEFAULT_DEADLINE_DAYS, resetParticipants, RETENTION } from "../polls/create";
+import { DEFAULT_DEADLINE_DAYS, FIXED_RETENTION, resetParticipants, RETENTION } from "../polls/create";
 import { canAnswer, effectiveStatus, LIMITS, reminderAt, UNANSWERED } from "../shared/model";
 import { isValidTimeZone, nextCronAt } from "../shared/time";
 import { isValidDonationUrl } from "../shared/text";
@@ -142,7 +142,7 @@ api.post("/session", async (c) => {
     );
   }
   const poll = await getPoll(c.env.DB, link.poll_id);
-  if (!poll || poll.status === "cancelled") throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
+  if (!poll) throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
   if (link.role === "participant" && !(await getParticipant(c.env.DB, poll.id, link.user_id))) {
     throw new AppError(403, "not_participant", msg("この調整の参加者ではありません。", "You are not a participant in this poll."));
   }
@@ -168,7 +168,7 @@ async function loadSession(c: C, next: () => Promise<void>) {
   // GET /:id は、調整と関連データをハンドラで 1 文で読むので、ここでは読まない（同じ行を 2 回読まないため）
   const isDetail = c.req.method === "GET" && /^\/api\/polls\/[A-Za-z0-9_-]{22}\/?$/.test(c.req.path);
   const poll = isDetail ? null : await getPoll(c.env.DB, id);
-  if (!isDetail && (!poll || poll.status === "cancelled")) throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
+  if (!isDetail && !poll) throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
   if (c.req.method !== "GET") {
     const token = c.req.header("X-CSRF-Token") ?? "";
     if (!timingSafeEqual(token, session.csrf_token)) throw new AppError(403, "bad_csrf", msg("不正なリクエストです。画面を再読み込みしてください。", "Invalid request. Please reload the page."));
@@ -195,7 +195,7 @@ polls.get("/:id", async (c) => {
   const isOrganizer = session.role === "organizer";
   // 調整と関連データは 1 文で読む（画面を開くたびに呼ばれるため、問い合わせの回数を抑える）
   const data = await readPollWithData(db, session.poll_id);
-  if (!data || data.poll.status === "cancelled") throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
+  if (!data) throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
   const { poll, slots, choices, participants, answers } = data;
   if (poll.status === "draft" && !isOrganizer) throw new AppError(404, "not_found", msg("この調整はまだ公開されていません。", "This poll has not been published yet."));
   const me = participants.find((p) => p.user_id === session.user_id);
@@ -377,7 +377,7 @@ polls.put("/:id/slots", async (c) => {
   // 新しく追加した候補の時間帯を、サーバーの最近使った時間帯として覚える（§6.3.1）
   const newRanges = rangesFromSlots(body.slots.filter((s) => !s.id), poll.timezone);
   if (newRanges.length) stmts.push(saveRecentTimesStatement(db, poll.guild_id, mergeRanges(newRanges, await getRecentTimes(db, poll.guild_id)), now));
-  // 確定した候補の日時が変わったら、データの削除時刻も決め直す（いちばん遅い確定日時から 6 か月後）
+  // 確定した候補の日時が変わったら、データの削除時刻も決め直す（いちばん遅い確定日時から 10 日後）
   stmts.push(poll.status === "fixed" ? refreshFixedStatement(db, poll, now) : db.prepare("UPDATE polls SET updated_at = ? WHERE id = ?").bind(now, poll.id));
   await db.batch(stmts);
   if (poll.status !== "draft") c.executionCtx.waitUntil(syncNow(c.env, poll.id));
@@ -692,16 +692,19 @@ async function deleteEvent(env: Env, poll: PollRow, slot: SlotRow): Promise<Msg 
   return null;
 }
 
-/** 調整のステータスと削除時刻を、確定した候補の有無から決め直す文（確定・取り消しが重なっても、slots の状態と食い違わないよう SQL の中で数える） */
+/**
+ * 調整のステータスと削除時刻を、確定した候補の有無から決め直す文（確定・取り消しが重なっても、slots の状態と食い違わないよう SQL の中で数える）。
+ * 削除時刻は、確定した候補があれば いちばん遅い確定日時（過去なら今）から FIXED_RETENTION（10 日）後、なければ締切から RETENTION（3 か月）後（§7.4）
+ */
 function refreshFixedStatement(db: D1Database, poll: PollRow, now: number): D1PreparedStatement {
   return db
     .prepare(
       "UPDATE polls SET " +
         "status = CASE WHEN EXISTS (SELECT 1 FROM slots WHERE poll_id = ?1 AND fixed_at IS NOT NULL) THEN 'fixed' ELSE 'open' END, " +
-        "purge_after = COALESCE((SELECT MAX(MAX(start_at), ?2) FROM slots WHERE poll_id = ?1 AND fixed_at IS NOT NULL), MAX(COALESCE(deadline_at, ?2), ?2)) + ?3, " +
+        "purge_after = COALESCE((SELECT MAX(MAX(start_at), ?2) + ?4 FROM slots WHERE poll_id = ?1 AND fixed_at IS NOT NULL), MAX(COALESCE(deadline_at, ?2), ?2) + ?3), " +
         "updated_at = ?2 WHERE id = ?1",
     )
-    .bind(poll.id, now, RETENTION);
+    .bind(poll.id, now, RETENTION, FIXED_RETENTION);
 }
 
 // 候補を確定する。確定済みの候補はそのまま残し、複数の候補を確定できる（§4.3）。
@@ -1055,7 +1058,7 @@ guilds.use("/:guildId/*", async (c: LC, next) => {
 async function ownPoll(c: LC): Promise<PollRow> {
   const poll = await getPoll(c.env.DB, c.req.param("pollId") ?? "");
   const { list } = c.var;
-  if (!poll || poll.status === "cancelled" || poll.guild_id !== list.guild_id || poll.organizer_id !== list.user_id) {
+  if (!poll || poll.guild_id !== list.guild_id || poll.organizer_id !== list.user_id) {
     throw new AppError(404, "not_found", msg("この調整は見つかりませんでした。削除された可能性があります。", "This poll was not found. It may have been deleted."));
   }
   return poll;
@@ -1070,7 +1073,7 @@ guilds.get("/:guildId/polls", async (c: LC) => {
       "(SELECT COUNT(*) FROM participants pa WHERE pa.poll_id = p.id) AS participants, " +
       "(SELECT COUNT(*) FROM participants pa WHERE pa.poll_id = p.id AND pa.answered_at IS NOT NULL) AS answered " +
       "FROM polls p " +
-      "WHERE p.guild_id = ? AND p.organizer_id = ? AND p.status != 'cancelled' ORDER BY p.updated_at DESC LIMIT 200",
+      "WHERE p.guild_id = ? AND p.organizer_id = ? ORDER BY p.updated_at DESC LIMIT 200",
   )
     .bind(list.guild_id, list.user_id)
     .all<{

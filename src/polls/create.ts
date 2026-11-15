@@ -7,7 +7,12 @@ import { DAY, floorToMinute, nowSec, randomId } from "../core/lib";
 import { msg, type Lang, type Msg } from "../shared/i18n";
 
 export const DRAFT_TTL = 3 * DAY;
-export const RETENTION = 180 * DAY;
+/** 確定していない調整（募集中・締切後）のデータを残す期間（締切から。個人の予定が入っているので長く残さない。§7.4） */
+export const RETENTION = 90 * DAY;
+/** サーバーで最近使った時間帯を残す期間（最後に使ってから。時刻だけで個人の情報は入らない。§6.3.1） */
+export const RECENT_TIMES_RETENTION = 180 * DAY;
+/** 確定した調整のデータを残す期間（いちばん遅い確定日時から。§7.4） */
+export const FIXED_RETENTION = 10 * DAY;
 export const DEFAULT_DEADLINE_DAYS = 7;
 
 export interface CreateOptions {

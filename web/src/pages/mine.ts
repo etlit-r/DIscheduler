@@ -144,7 +144,7 @@ export async function minePage(guildId: string): Promise<void> {
         shown.length
           ? h("ul", { class: "mine-list" }, ...shown.map(item))
           : h("p", { class: "muted" }, polls.length ? tr("この状態の調整はありません。", "No polls with this status.") : tr("このサーバーであなたが主催している調整はありません。Discord で /schedule を実行すると作成できます。", "You don't organize any polls in this server. Run /schedule in Discord to create one.")),
-        h("p", { class: "muted small" }, tr("削除した調整は元に戻せません。何も入力していない下書きは 3 日、公開した調整は締切（確定した場合は確定した日時）から 6 ヶ月で自動的に削除されます。", "Deleted polls can't be restored. Empty drafts are deleted automatically after 3 days, and published polls 6 months after the deadline (or the confirmed date).")),
+        h("p", { class: "muted small" }, tr("削除した調整は元に戻せません。何も入力していない下書きは 3 日、公開した調整は締切から 3 ヶ月、日時を確定した調整は確定した日時から 10 日で自動的に削除されます。", "Deleted polls can't be restored. Empty drafts are deleted automatically after 3 days, published polls 3 months after the deadline, and polls with a confirmed date 10 days after that date.")),
       ),
     );
   }

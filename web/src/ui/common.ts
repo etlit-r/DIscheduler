@@ -281,7 +281,6 @@ export const STATUS_LABEL: Record<string, string> = {
   open: tr("募集中", "Open"),
   closed: tr("締切後", "Closed"),
   fixed: tr("確定", "Confirmed"),
-  cancelled: tr("削除済み", "Deleted"),
 };
 
 /** エラーが出た画面の種類。リンクの期限が切れたときに、どのボタンを押し直せばよいかの案内を変える */

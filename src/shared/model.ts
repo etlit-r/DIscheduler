@@ -4,7 +4,7 @@
 import { epochToZoned, zonedToEpoch } from "./time";
 export type ChoiceKind = "ok" | "maybe" | "ng";
 export type ChoiceColor = "green" | "teal" | "yellow" | "orange" | "red" | "gray";
-export type PollStatus = "draft" | "open" | "closed" | "fixed" | "cancelled";
+export type PollStatus = "draft" | "open" | "closed" | "fixed";
 export type Role = "organizer" | "participant";
 export type Purpose = "edit" | "answer" | "view";
 
@@ -160,6 +160,8 @@ export interface AnswerLike {
 export interface SlotLike {
   id: string;
   startAt: number;
+  /** 確定した候補か（★の判定から外す。§6.9.3） */
+  fixed?: boolean;
 }
 
 export interface SlotTally {
@@ -194,27 +196,41 @@ export function tally(slots: readonly SlotLike[], choices: readonly ChoiceLike[]
   return result;
 }
 
+/** ★を付ける候補の数の上限。いちばん良い候補がこれより多く並んだら、どれにも付けない（絞れていないため） */
+export const BEST_SLOTS_MAX = 3;
+
 /**
  * 最有力候補（★）の判定（§6.9.3）
- * 1. ng が少ない 2. 点数の合計が大きい 3. ok が多い 4. 日時が早い
- * 誰も回答していなければ null
+ * 1. ng が少ない 2. 点数の合計が大きい 3. ok が多い、で比べ、いちばん良い候補をすべて返す（同じ成績なら複数）。
+ * その数が BEST_SLOTS_MAX を超えたとき（全部同じ成績のときなど）と、誰も回答していないときは空。
+ * 確定した候補（fixed）は「確定」と表示するので、★の判定から外す（同じ成績の件数にも数えない）
  */
-export function bestSlotId(slots: readonly SlotLike[], tallies: Map<string, SlotTally>): string | null {
-  let best: { slot: SlotLike; t: SlotTally } | null = null;
+export function bestSlotIds(slots: readonly SlotLike[], tallies: Map<string, SlotTally>): Set<string> {
+  let top: SlotTally | null = null;
+  let ids: string[] = [];
   for (const slot of slots) {
+    if (slot.fixed) continue;
     const t = tallies.get(slot.id);
     if (!t || t.answered === 0) continue;
-    if (!best || compareSlots(slot, t, best.slot, best.t) < 0) best = { slot, t };
+    const cmp = top ? compareTally(t, top) : -1;
+    if (cmp < 0) {
+      top = t;
+      ids = [slot.id];
+    } else if (cmp === 0) ids.push(slot.id);
   }
-  return best ? best.slot.id : null;
+  return new Set(ids.length <= BEST_SLOTS_MAX ? ids : []);
+}
+
+/** 成績だけの比較（負なら a が上）。日時は見ない */
+function compareTally(ta: SlotTally, tb: SlotTally): number {
+  if (ta.ng !== tb.ng) return ta.ng - tb.ng;
+  if (ta.score !== tb.score) return tb.score - ta.score;
+  return tb.ok - ta.ok;
 }
 
 /** 並び順「点数の高い順」用の比較（負なら a が上） */
 export function compareSlots(a: SlotLike, ta: SlotTally, b: SlotLike, tb: SlotTally): number {
-  if (ta.ng !== tb.ng) return ta.ng - tb.ng;
-  if (ta.score !== tb.score) return tb.score - ta.score;
-  if (ta.ok !== tb.ok) return tb.ok - ta.ok;
-  return a.startAt - b.startAt;
+  return compareTally(ta, tb) || a.startAt - b.startAt;
 }
 
 /** 締切を過ぎたかを含めた実際の状態（Cron の状態変更を待たない） */

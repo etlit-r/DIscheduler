@@ -181,7 +181,7 @@ export async function answerPage(pollId: string): Promise<void> {
           ? [tr("日時はすべて", "All times are shown in "), h("strong", {}, timeZoneLabel(d.poll.timezone, slotStarts)), tr("で表示しています。", ".")]
           : [tr("候補の日時は調整のタイムゾーンの", "Date options are shown in the poll's time zone, "), h("strong", {}, timeZoneLabel(d.poll.timezone, slotStarts)), tr("、「あなたの時刻」は", ", and \"Your time\" in "), h("strong", {}, timeZoneLabel(tz, slotStarts)), tr("で表示しています。", ".")]),
       ),
-      list,
+      // ［すべて○］［すべて×］は候補の一覧のすぐ上に置く（まとめて選んでから、いくつかを変える使い方のため）
       editable && first && last
         ? h(
             "div",
@@ -190,6 +190,7 @@ export async function answerPage(pollId: string): Promise<void> {
             h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { for (const s of d.slots) draft.set(s.id, last.id); draw(); } }, tr(`すべて${last.symbol}`, `All ${last.symbol}`)),
           )
         : null,
+      list,
       h("div", { class: "field" }, h("label", { for: "comment" }, tr("ひとこと（任意・100 文字まで）", "Comment (optional, up to 100 characters)")), commentInput),
       h("p", { class: "muted small" }, tr("あなたの回答とひとことは、この調整の参加者全員に表示されます。参加者以外には表示されません。", "Your answers and comment are shown to all participants in this poll. They are not shown to anyone else.")),
       h("div", { class: "row row-end" }, h("a", { class: "btn btn-secondary", href: `/p/${pollId}` }, tr("集計表を見る", "View results")), saveBtn),

@@ -1,10 +1,10 @@
 import { langFromAcceptLanguage, langFromTag } from "../src/shared/i18n";
 import { describe, expect, it } from "vitest";
-import { bestSlotId, effectiveStatus, tally } from "../src/shared/model";
+import { bestSlotIds, effectiveStatus, tally } from "../src/shared/model";
 import { donationNote, isSafeChoiceText, KOFI_DONATION_NOTE, sanitizeDisplayName, sanitizeLine } from "../src/shared/text";
 import { epochToZoned, formatSlot, formatSlotTime, nextCronAt, zonedToEpoch } from "../src/shared/time";
 import { canViewChannel } from "../src/discord/members";
-import { buildDayReminderMessage, buildDeletedMessage, buildFixedMessage, buildPollMessage, escapeMarkdown } from "../src/discord/messages";
+import { buildDayReminderMessage, buildDeletedMessage, buildFixedMessage, buildPollMessage, escapeMarkdown, pickShownSlots } from "../src/discord/messages";
 
 describe("集計と最有力候補（§6.9.3）", () => {
   const choices = [
@@ -23,18 +23,35 @@ describe("集計と最有力候補（§6.9.3）", () => {
       { slotId: "b", userId: "1", choiceId: "maybe" },
       { slotId: "b", userId: "2", choiceId: "maybe" },
     ];
-    expect(bestSlotId(slots, tally(slots, choices, answers))).toBe("b");
+    expect([...bestSlotIds(slots, tally(slots, choices, answers))]).toEqual(["b"]);
   });
-  it("同じなら点数、次に日時が早い候補", () => {
+  it("同じなら点数で比べ、成績が同じ候補にはすべて付ける", () => {
     const answers = [
       { slotId: "a", userId: "1", choiceId: "maybe" },
       { slotId: "b", userId: "1", choiceId: "ok" },
     ];
-    expect(bestSlotId(slots, tally(slots, choices, answers))).toBe("b");
-    expect(bestSlotId(slots, tally(slots, choices, [{ slotId: "a", userId: "1", choiceId: "ok" }, { slotId: "b", userId: "1", choiceId: "ok" }]))).toBe("a");
+    expect([...bestSlotIds(slots, tally(slots, choices, answers))]).toEqual(["b"]);
+    expect([...bestSlotIds(slots, tally(slots, choices, [{ slotId: "a", userId: "1", choiceId: "ok" }, { slotId: "b", userId: "1", choiceId: "ok" }]))]).toEqual(["a", "b"]);
+  });
+  it("いちばん良い候補が 4 件以上並んだら（全部同じなど）★ なし", () => {
+    const four = ["a", "b", "c", "d"].map((id, i) => ({ id, startAt: i }));
+    const ng = (ids: string[]) => ids.map((slotId) => ({ slotId, userId: "1", choiceId: "ng" }));
+    expect(bestSlotIds(four, tally(four, choices, ng(["a", "b", "c", "d"]))).size).toBe(0);
+    expect([...bestSlotIds(four, tally(four, choices, ng(["a", "b", "c", "d"]).map((x) => (x.slotId === "d" ? { ...x, choiceId: "ok" } : x))))]).toEqual(["d"]);
+    expect([...bestSlotIds(four, tally(four, choices, ng(["a", "b", "c"]).concat([{ slotId: "d", userId: "1", choiceId: "ok" }])))]).toEqual(["d"]);
+    // 3 件までの同点なら付ける
+    expect(bestSlotIds(four, tally(four, choices, ng(["d"]).concat(["a", "b", "c"].map((slotId) => ({ slotId, userId: "1", choiceId: "ok" }))))).size).toBe(3);
+  });
+  it("確定した候補は★の判定から外す（同じ成績の件数にも数えない）", () => {
+    const four = ["a", "b", "c", "d"].map((id, i) => ({ id, startAt: i, fixed: i < 2 }));
+    const ok = four.map((s) => ({ slotId: s.id, userId: "1", choiceId: "ok" }));
+    expect([...bestSlotIds(four, tally(four, choices, ok))]).toEqual(["c", "d"]);
+    // 確定した候補のほうが成績が良くても、確定していない中でいちばん良い候補に付ける
+    const better = [{ slotId: "a", userId: "1", choiceId: "ok" }, { slotId: "c", userId: "1", choiceId: "maybe" }, { slotId: "d", userId: "1", choiceId: "ng" }];
+    expect([...bestSlotIds(four, tally(four, choices, better))]).toEqual(["c"]);
   });
   it("誰も回答していなければ ★ なし", () => {
-    expect(bestSlotId(slots, tally(slots, choices, []))).toBeNull();
+    expect(bestSlotIds(slots, tally(slots, choices, [])).size).toBe(0);
   });
   it("締切を過ぎたら closed として扱う", () => {
     expect(effectiveStatus("open", 100, 200)).toBe("closed");
@@ -175,5 +192,46 @@ describe("チャンネルに投稿するメッセージの言語（§6.12）", (
     const text = JSON.stringify(buildPollMessage({ poll: { ...poll, lang: "ja" }, slots: [], choices: [], participants: [], answers: [], now: 1800000000 }));
     expect(text).toContain("日程調整");
     expect(text).toContain('"label":"回答する"');
+  });
+});
+
+describe("募集メッセージの候補の省略（§5.5）", () => {
+  const poll = {
+    id: "AAAAAAAAAAAAAAAAAAAAAA", guild_id: "1", channel_id: "2", message_id: "3", organizer_id: "4", title: "t", description: null,
+    timezone: "Asia/Tokyo", timezone_set: 1, target_type: "channel", target_id: null, join_policy: "open", status: "open",
+    deadline_at: 1900000000, choices_version: 1, lang: "ja",
+  } as unknown as Parameters<typeof buildPollMessage>[0]["poll"];
+  const slot = (i: number, fixed = false) => ({ id: `s${i}`, poll_id: poll.id, start_at: 1900000000 + i * 86400, end_at: null, all_day: 1, position: i, fixed_at: fixed ? 1 : null, discord_event_id: null, announced_fixed: 0, day_reminded_at: null });
+  const choices = [
+    { id: "ok", poll_id: poll.id, symbol: "○", label: "参加", kind: "ok", score: 2, color: "green", position: 0 },
+    { id: "ng", poll_id: poll.id, symbol: "×", label: "不可", kind: "ng", score: 0, color: "red", position: 1 },
+  ];
+  const lineCount = (n: number) => {
+    const slots = Array.from({ length: n }, (_, i) => slot(i));
+    const desc = buildPollMessage({ poll, slots, choices, participants: [], answers: [], now: 1800000000 } as unknown as Parameters<typeof buildPollMessage>[0]).embeds[0]!.description;
+    return { lines: desc.split("\n").filter((l) => l.includes("<t:") && l.includes("人")).length, desc };
+  };
+  it("4 件まではすべて出し、5 件以上は 4 件と残りの件数を出す", () => {
+    expect(lineCount(4).lines).toBe(4);
+    expect(lineCount(4).desc).not.toContain("ほか");
+    expect(lineCount(5).lines).toBe(4);
+    expect(lineCount(5).desc).toContain("ほか 1 件");
+    expect(lineCount(16).desc).toContain("ほか 12 件");
+  });
+  it("確定した候補と、成績の良い候補（★と同じ比べ方）を優先し、日時順に並べる", () => {
+    const slots = Array.from({ length: 8 }, (_, i) => slot(i, i === 7));
+    const s = slots.map((x) => ({ id: x.id, startAt: x.start_at }));
+    const ans = (slotId: string, userId: string, choiceId: string) => ({ slotId, userId, choiceId });
+    // s1 は ○1 ×0（★）。s2〜s5 は ○2 ×2（「参加できる」は多いが、×も多い）
+    const answers = [ans("s1", "a", "ok"), ...["s2", "s3", "s4", "s5"].flatMap((id) => [ans(id, "a", "ok"), ans(id, "b", "ok"), ans(id, "c", "ng"), ans(id, "d", "ng")])];
+    const tl = tally(s, choices as never, answers);
+    expect(pickShownSlots(slots, tl, bestSlotIds(s, tl)).map((x) => x.id)).toEqual(["s1", "s2", "s3", "s7"]);
+  });
+  it("確定した候補と★の候補を合わせて 4 件より多ければ、それらをすべて出す", () => {
+    const slots = Array.from({ length: 8 }, (_, i) => slot(i, i >= 6));
+    const s = slots.map((x) => ({ id: x.id, startAt: x.start_at }));
+    // s0〜s2 が同じ成績で★（3 件）。s6・s7 は確定
+    const tl = tally(s, choices as never, ["s0", "s1", "s2"].map((slotId) => ({ slotId, userId: "a", choiceId: "ok" })).concat([{ slotId: "s3", userId: "a", choiceId: "ng" }]));
+    expect(pickShownSlots(slots, tl, bestSlotIds(s, tl)).map((x) => x.id)).toEqual(["s0", "s1", "s2", "s6", "s7"]);
   });
 });

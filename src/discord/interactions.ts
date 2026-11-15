@@ -282,7 +282,7 @@ async function handlePollButton(
   const t = trOf(i);
   const poll = await getPoll(env.DB, pollId);
   // custom_id は改ざんできるため、調整のサーバーとチャンネルが押された場所と一致するかを確かめる
-  if (!poll || poll.guild_id !== guildId || poll.channel_id !== channelId || poll.status === "draft" || poll.status === "cancelled") {
+  if (!poll || poll.guild_id !== guildId || poll.channel_id !== channelId || poll.status === "draft") {
     await editOriginal(env, i, t("この調整は見つかりませんでした。削除された可能性があります。", "This poll was not found. It may have been deleted."));
     return;
   }
@@ -382,7 +382,7 @@ async function handleList(env: Env, i: Interaction, guildId: string, channelId: 
 /** ［作成した調整を管理］: このサーバーで自分が主催した調整の一覧ページ（S9。§6.11）のリンクを本人にだけ返す */
 async function handleManage(env: Env, i: Interaction, origin: string, guildId: string, userId: string): Promise<void> {
   const t = trOf(i);
-  const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM polls WHERE guild_id = ? AND organizer_id = ? AND status != 'cancelled'")
+  const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM polls WHERE guild_id = ? AND organizer_id = ?")
     .bind(guildId, userId)
     .first<{ n: number }>();
   if (!row || row.n === 0) {
