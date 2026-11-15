@@ -4,7 +4,7 @@
 import { epochToZoned, zonedToEpoch } from "./time";
 export type ChoiceKind = "ok" | "maybe" | "ng";
 export type ChoiceColor = "green" | "teal" | "yellow" | "orange" | "red" | "gray";
-export type PollStatus = "draft" | "open" | "closed" | "fixed" | "cancelled";
+export type PollStatus = "draft" | "open" | "closed" | "fixed";
 export type Role = "organizer" | "participant";
 export type Purpose = "edit" | "answer" | "view";
 

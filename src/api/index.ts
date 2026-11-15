@@ -142,7 +142,7 @@ api.post("/session", async (c) => {
     );
   }
   const poll = await getPoll(c.env.DB, link.poll_id);
-  if (!poll || poll.status === "cancelled") throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
+  if (!poll) throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
   if (link.role === "participant" && !(await getParticipant(c.env.DB, poll.id, link.user_id))) {
     throw new AppError(403, "not_participant", msg("この調整の参加者ではありません。", "You are not a participant in this poll."));
   }
@@ -168,7 +168,7 @@ async function loadSession(c: C, next: () => Promise<void>) {
   // GET /:id は、調整と関連データをハンドラで 1 文で読むので、ここでは読まない（同じ行を 2 回読まないため）
   const isDetail = c.req.method === "GET" && /^\/api\/polls\/[A-Za-z0-9_-]{22}\/?$/.test(c.req.path);
   const poll = isDetail ? null : await getPoll(c.env.DB, id);
-  if (!isDetail && (!poll || poll.status === "cancelled")) throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
+  if (!isDetail && !poll) throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
   if (c.req.method !== "GET") {
     const token = c.req.header("X-CSRF-Token") ?? "";
     if (!timingSafeEqual(token, session.csrf_token)) throw new AppError(403, "bad_csrf", msg("不正なリクエストです。画面を再読み込みしてください。", "Invalid request. Please reload the page."));
@@ -195,7 +195,7 @@ polls.get("/:id", async (c) => {
   const isOrganizer = session.role === "organizer";
   // 調整と関連データは 1 文で読む（画面を開くたびに呼ばれるため、問い合わせの回数を抑える）
   const data = await readPollWithData(db, session.poll_id);
-  if (!data || data.poll.status === "cancelled") throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
+  if (!data) throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
   const { poll, slots, choices, participants, answers } = data;
   if (poll.status === "draft" && !isOrganizer) throw new AppError(404, "not_found", msg("この調整はまだ公開されていません。", "This poll has not been published yet."));
   const me = participants.find((p) => p.user_id === session.user_id);
@@ -1058,7 +1058,7 @@ guilds.use("/:guildId/*", async (c: LC, next) => {
 async function ownPoll(c: LC): Promise<PollRow> {
   const poll = await getPoll(c.env.DB, c.req.param("pollId") ?? "");
   const { list } = c.var;
-  if (!poll || poll.status === "cancelled" || poll.guild_id !== list.guild_id || poll.organizer_id !== list.user_id) {
+  if (!poll || poll.guild_id !== list.guild_id || poll.organizer_id !== list.user_id) {
     throw new AppError(404, "not_found", msg("この調整は見つかりませんでした。削除された可能性があります。", "This poll was not found. It may have been deleted."));
   }
   return poll;
@@ -1073,7 +1073,7 @@ guilds.get("/:guildId/polls", async (c: LC) => {
       "(SELECT COUNT(*) FROM participants pa WHERE pa.poll_id = p.id) AS participants, " +
       "(SELECT COUNT(*) FROM participants pa WHERE pa.poll_id = p.id AND pa.answered_at IS NOT NULL) AS answered " +
       "FROM polls p " +
-      "WHERE p.guild_id = ? AND p.organizer_id = ? AND p.status != 'cancelled' ORDER BY p.updated_at DESC LIMIT 200",
+      "WHERE p.guild_id = ? AND p.organizer_id = ? ORDER BY p.updated_at DESC LIMIT 200",
   )
     .bind(list.guild_id, list.user_id)
     .all<{
