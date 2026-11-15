@@ -195,8 +195,8 @@ export async function editPage(pollId: string): Promise<void> {
         "p",
         { class: "small" },
         tr(
-          "［調整の再通知］を押すと、募集メッセージへの返信で、参加者のロール（ロールがなければ @everyone）にメンションして知らせ直します（1 時間に 1 回まで）。",
-          "[Re-announce the poll] replies to the poll message and mentions the participants' role (or @everyone without one). Once per hour.",
+          "［調整の再通知］を押すと、募集メッセージへの返信で、参加者のロール（ロールがなければ @everyone）にメンションして知らせ直します（1 時間に 5 回まで）。",
+          "[Re-announce the poll] replies to the poll message and mentions the participants' role (or @everyone without one). Up to 5 times per hour.",
         ),
       ),
       ...warnings.map((w) => h("p", {}, w)),

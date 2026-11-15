@@ -55,6 +55,12 @@ type C = Context<{ Bindings: Env; Variables: Vars }>;
 
 export const api = new Hono<{ Bindings: Env; Variables: Vars }>();
 
+/**
+ * 主催者の操作でロール・@everyone・未回答者にメンションする投稿（確定のお知らせ・調整の再通知・リマインド）の上限。
+ * 1 つの調整につき 1 時間あたり。慣れないうちの作り直しや出し直しで足りなくならないよう、どれも同じ回数にそろえる
+ */
+const MENTION_LIMIT = 5;
+
 // --- 共通の前処理 ---
 
 /** 画面の言語（エラーと警告の文言に使う。§6.12） */
@@ -771,12 +777,12 @@ polls.post("/:id/announce", async (c) => {
 
   const warnings: Msg[] = [];
   // メンションは公開時のお知らせと同じ（ロールの調整はそのロール、それ以外は @everyone。§5.5）。
-  // ロールや @everyone への通知が続かないよう、メンションは 1 つの調整につき 1 時間に 3 回まで（投稿できたときだけ数える）
+  // ロールや @everyone への通知が続かないよう、メンションは 1 つの調整につき 1 時間に MENTION_LIMIT 回まで（投稿できたときだけ数える）
   const MENTION_KEY = `fix-mention:${poll.id}`;
   let mention = body.mention;
-  if (mention && !(await rateLimitAllows(db, MENTION_KEY, 3, 3600, now))) {
+  if (mention && !(await rateLimitAllows(db, MENTION_KEY, MENTION_LIMIT, 3600, now))) {
     mention = false;
-    warnings.push(msg("確定のお知らせのメンションは 1 時間に 3 回までのため、今回はメンションせずに投稿しました。", "Mentions in announcements are limited to 3 per hour, so this was posted without a mention."));
+    warnings.push(msg(`確定のお知らせのメンションは 1 時間に ${MENTION_LIMIT} 回までのため、今回はメンションせずに投稿しました。`, `Mentions in announcements are limited to ${MENTION_LIMIT} per hour, so this was posted without a mention.`));
   }
   // 予定のリマインド（§5.7）を送る回がもう過ぎていて、予定がまだ先なら、このお知らせがリマインドを兼ねる。
   // 開始までの時間を添え、あとの回で同じ日時に重ねて送らないよう記録する
@@ -874,7 +880,7 @@ async function upsertEvent(
 }
 
 // 調整の再通知（主催者。§5.5）。参加者以外の回答の設定を変えたあとなどに、募集メッセージへの返信で、
-// 参加者のロール（なければ @everyone）にメンションして知らせ直す。通知が続かないよう、1 つの調整につき 1 時間に 1 回まで
+// 参加者のロール（なければ @everyone）にメンションして知らせ直す。通知が続かないよう、1 つの調整につき 1 時間に MENTION_LIMIT 回まで
 polls.post("/:id/renotify", async (c) => {
   requireOrganizer(c);
   const { poll } = c.var;
@@ -885,8 +891,8 @@ polls.post("/:id/renotify", async (c) => {
   if (!poll.message_id) {
     throw new AppError(409, "no_message", msg("募集メッセージがありません。先にチャンネルに投稿し直してください。", "There is no poll message. Repost it to the channel first."));
   }
-  if (!(await hitRateLimit(c.env.DB, `renotify:${poll.id}`, 1, 3600, now))) {
-    throw new AppError(429, "rate_limited", msg("調整の再通知は 1 時間に 1 回までです。", "You can re-announce a poll once per hour."));
+  if (!(await hitRateLimit(c.env.DB, `renotify:${poll.id}`, MENTION_LIMIT, 3600, now))) {
+    throw new AppError(429, "rate_limited", msg(`調整の再通知は 1 時間に ${MENTION_LIMIT} 回までです。`, `You can re-announce a poll up to ${MENTION_LIMIT} times per hour.`));
   }
   try {
     await discord(c.env, "POST", `/channels/${poll.channel_id}/messages`, buildRenotifyMessage(poll, poll.message_id));
@@ -903,16 +909,16 @@ polls.post("/:id/remind", async (c) => {
   const now = nowSec();
   if (poll.status === "draft") throw new AppError(409, "draft", msg("公開してからリマインドしてください。", "Publish the poll before sending a reminder."));
   if (poll.status === "fixed") throw new AppError(409, "fixed", msg("日時が確定しているため、リマインドはできません。", "A date is already confirmed, so reminders can't be sent."));
-  if (poll.last_reminded_at && now - poll.last_reminded_at < 12 * 3600) {
-    throw new AppError(429, "rate_limited", msg("リマインドは 12 時間に 1 回までです。", "You can send a reminder once every 12 hours."));
-  }
   const rows = await db
     .prepare("SELECT user_id FROM participants p WHERE poll_id = ? AND NOT EXISTS (SELECT 1 FROM answers a WHERE a.poll_id = p.poll_id AND a.user_id = p.user_id)")
     .bind(poll.id)
     .all<{ user_id: string }>();
   if (rows.results.length === 0) return c.json({ ok: true, count: 0 });
-  const r = await db.prepare("UPDATE polls SET last_reminded_at = ? WHERE id = ? AND (last_reminded_at IS NULL OR last_reminded_at <= ?)").bind(now, poll.id, now - 12 * 3600).run();
-  if (r.meta.changes !== 1) throw new AppError(429, "rate_limited", msg("リマインドは 12 時間に 1 回までです。", "You can send a reminder once every 12 hours."));
+  // メンションの上限（1 つの調整につき 1 時間に MENTION_LIMIT 回）。last_reminded_at は記録として残す
+  if (!(await hitRateLimit(db, `remind:${poll.id}`, MENTION_LIMIT, 3600, now))) {
+    throw new AppError(429, "rate_limited", msg(`リマインドは 1 時間に ${MENTION_LIMIT} 回までです。`, `You can send up to ${MENTION_LIMIT} reminders per hour.`));
+  }
+  await db.prepare("UPDATE polls SET last_reminded_at = ? WHERE id = ?").bind(now, poll.id).run();
   const link = poll.message_id ? `\n${messageLink(poll.guild_id, poll.channel_id, poll.message_id)}` : "";
   // チャンネルに投稿するので、調整の言語で書く（§6.12）
   const t = translator(poll.lang);

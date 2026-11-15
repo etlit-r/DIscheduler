@@ -151,7 +151,7 @@ export async function summaryPage(pollId: string): Promise<void> {
         type: "button",
         class: "btn btn-secondary btn-small",
         onClick: async () => {
-          if (!confirm(tr("未回答の人にメンション付きでリマインドを投稿します。よろしいですか？（12 時間に 1 回まで）", "Post a reminder that mentions everyone who hasn't answered? (Once every 12 hours)"))) return;
+          if (!confirm(tr("未回答の人にメンション付きでリマインドを投稿します。よろしいですか？（1 時間に 5 回まで）", "Post a reminder that mentions everyone who hasn't answered? (Up to 5 per hour)"))) return;
           btn.disabled = true;
           try {
             const r = await request<{ count: number }>("POST", `/api/polls/${d.poll.id}/remind`, {});
