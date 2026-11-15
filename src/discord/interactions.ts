@@ -158,7 +158,6 @@ async function handleCreate(env: Env, i: Interaction, origin: string, guildId: s
   const rawTitle = strOption(i, "title");
   // 空白だけなどで空になったら、タイトルなし（Web 画面で入力する）として扱う
   const title = rawTitle ? sanitizeLine(rawTitle, 100) || null : null;
-  const members = strOption(i, "members");
   const roleId = strOption(i, "role");
   const deadline = intOption(i, "deadline");
   const result = await createOrReuseDraft(env, {
@@ -166,7 +165,8 @@ async function handleCreate(env: Env, i: Interaction, origin: string, guildId: s
     channelId,
     organizerId: userId,
     title,
-    members: members === "auto" || members === "manual" ? members : null,
+    // 参加者の決め方はコマンドでは選ばない（サーバーの既定値か role で決め、作成画面で変える。§5.2）
+    members: null,
     roleId: roleId && /^\d{17,20}$/.test(roleId) ? roleId : null,
     deadlineDays: deadline && deadline >= 1 && deadline <= 90 ? Math.floor(deadline) : null,
     // 調整の言語（チャンネルに投稿するメッセージと最初の選択肢）は、作った主催者の Discord の言語にする（§6.12）

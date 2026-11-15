@@ -23,17 +23,6 @@ function commandDef(name: string) {
         required: false,
       },
       {
-        type: 3,
-        name: "members",
-        description: "How to choose participants",
-        description_localizations: { ja: "参加者の決め方" },
-        required: false,
-        choices: [
-          { name: "auto", name_localizations: { ja: "自動（チャンネルのメンバー）" }, value: "auto" },
-          { name: "manual", name_localizations: { ja: "手動で選ぶ" }, value: "manual" },
-        ],
-      },
-      {
         type: 8,
         name: "role",
         description: "Participants are members with this role",

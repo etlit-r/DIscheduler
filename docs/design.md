@@ -129,11 +129,11 @@ sequenceDiagram
    | オプション | 既定値（指定しない場合） | Web 画面（S2）での変更 |
    |------------|--------------------------|------------------------|
    | `title`（最大 100 文字） | 空欄（S2 で入力する）。空白や見えない文字だけの値も空欄として扱う | 可。**公開には必須** |
-   | `members`（`auto`／`manual`） | `auto`（コマンドを実行したチャンネルを閲覧できるメンバー） | 可 |
    | `role` | なし | 可（指定するとそのロールのメンバーが参加者） |
    | `deadline` | 公開した時点から 7 日後 | 可 |
 
    - コマンドのオプションは、慣れた人が入力を省くための近道という位置づけで、すべて S2 で入力・変更できる。
+   - 参加者の決め方（自動／手動）はオプションにしない。`role` を指定しなければサーバーの既定値（§5.3.1。初期値はコマンドを実行したチャンネルを閲覧できるメンバー）で決め、手動にするときは S2 で切り替える（コマンドの入力欄に使う場面の少ない選択肢が並ぶと、かえって迷うため）。
 2. Worker は 3 秒以内に「遅延応答（ephemeral）」を返し、メンバー取得等は `ctx.waitUntil` で継続する。
 3. 主催者だけに見えるメッセージで「調整を作成する」リンクを返す。
 4. Web 画面でタイトルと候補日時を入力し「公開」すると、チャンネルに募集メッセージ（埋め込み＋ボタン）が投稿される。タイトルが空のままでは公開できない。
@@ -257,7 +257,7 @@ sequenceDiagram
 
 ### 5.3 参加者の決定（R1）
 
-参加者の決め方は **選択式** とし、調整ごとに S2 画面（または `/schedule`・`/di` の `members` オプション）で選ぶ。
+参加者の決め方は **選択式** とし、調整ごとに S2 画面で選ぶ（`/schedule`・`/di` では `role` だけ指定できる）。
 
 | モード | 既定 | 内容 | 必要な設定 |
 |--------|------|------|------------|
@@ -269,7 +269,7 @@ Server Members Intent が無効のまま `auto` が選ばれた場合（API が 
 
 #### 5.3.1 サーバーの既定値
 
-主催者が `/schedule`（`/di`）で `members`・`role` を指定しなかったときに使う参加者の決め方を、サーバーごとに決めておける。
+主催者が `/schedule`（`/di`）で `role` を指定しなかったときに使う参加者の決め方を、サーバーごとに決めておける。
 
 | 既定値 | 参加者 |
 |--------|--------|
@@ -838,7 +838,7 @@ CREATE TABLE polls (
   description     TEXT CHECK (length(description) <= 1000),
   timezone        TEXT NOT NULL DEFAULT 'Asia/Tokyo', -- IANA 名。主催者のブラウザ TZ で上書き（§6.7）
   timezone_set    INTEGER NOT NULL DEFAULT 0,       -- 1 = 主催者が設定済み（以後ブラウザ TZ で上書きしない）
-  target_type     TEXT NOT NULL CHECK (target_type IN ('channel','role','manual')), -- members=auto かつ role なし → channel、role あり → role、members=manual → manual
+  target_type     TEXT NOT NULL CHECK (target_type IN ('channel','role','manual')), -- 自動かつ role なし → channel、role あり → role、手動 → manual
   target_id       TEXT,
   join_policy     TEXT NOT NULL DEFAULT 'closed' CHECK (join_policy IN ('closed','open')),
   status          TEXT NOT NULL DEFAULT 'draft'
