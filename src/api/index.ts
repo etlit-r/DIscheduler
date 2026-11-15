@@ -694,7 +694,7 @@ async function deleteEvent(env: Env, poll: PollRow, slot: SlotRow): Promise<Msg 
 
 /**
  * 調整のステータスと削除時刻を、確定した候補の有無から決め直す文（確定・取り消しが重なっても、slots の状態と食い違わないよう SQL の中で数える）。
- * 削除時刻は、確定した候補があれば いちばん遅い確定日時（過去なら今）から FIXED_RETENTION（10 日）後、なければ締切から RETENTION（6 か月）後（§7.4）
+ * 削除時刻は、確定した候補があれば いちばん遅い確定日時（過去なら今）から FIXED_RETENTION（10 日）後、なければ締切から RETENTION（3 か月）後（§7.4）
  */
 function refreshFixedStatement(db: D1Database, poll: PollRow, now: number): D1PreparedStatement {
   return db

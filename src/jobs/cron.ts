@@ -5,7 +5,7 @@ import { deletePolls } from "../db";
 import { syncCommands } from "../discord/commands";
 import { discord } from "../discord/rest";
 import { nowSec } from "../core/lib";
-import { RETENTION } from "../polls/create";
+import { RECENT_TIMES_RETENTION } from "../polls/create";
 import { syncNow } from "../polls/sync";
 import { REMINDER_CRON, runDayReminder } from "./day-reminder";
 
@@ -122,7 +122,7 @@ async function cleanup(env: Env, now: number): Promise<void> {
     db.prepare("DELETE FROM list_tokens WHERE expires_at <= ?").bind(now),
     db.prepare("DELETE FROM list_sessions WHERE expires_at <= ?").bind(now),
     // 最近使った時間帯は、最後に使ってから保持期間（6 ヶ月）を過ぎたら消す
-    db.prepare("DELETE FROM guild_recent_times WHERE updated_at <= ?").bind(now - RETENTION),
+    db.prepare("DELETE FROM guild_recent_times WHERE updated_at <= ?").bind(now - RECENT_TIMES_RETENTION),
   ]);
   // 保持期間を過ぎた調整を、件数によらず 1 回の batch で削除する
   await deletePolls(db, { sql: "purge_after <= ?", value: now });
