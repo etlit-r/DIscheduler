@@ -7,7 +7,7 @@ import { editPage } from "./pages/edit";
 import { linkPage } from "./pages/link";
 import { minePage } from "./pages/mine";
 import { summaryPage } from "./pages/summary";
-import { LANG, setLang, setLangInPlace, tr } from "./lib/i18n";
+import { LANG, setLang, setLangInPlace, staticHref, tr } from "./lib/i18n";
 
 /** 画面の枠（index.html）の文言と、言語の切り替えボタンを、画面の言語に合わせる（§6.12） */
 function applyShell(): void {
@@ -15,8 +15,12 @@ function applyShell(): void {
   if (skip) skip.textContent = tr("本文へ移動", "Skip to content");
   const loading = document.querySelector(".loading");
   if (loading) loading.textContent = tr("読み込んでいます…", "Loading…");
+  document.querySelector(".site-header .brand")?.setAttribute("href", staticHref("/", "/en/"));
   const security = document.getElementById("footer-security");
-  if (security) security.textContent = tr("セキュリティ方針", "Security policy");
+  if (security) {
+    security.textContent = tr("セキュリティ方針", "Security policy");
+    security.setAttribute("href", staticHref("/security", "/en/security"));
+  }
   // 言語の切り替え。もう一方の言語の名前を、その言語で書く
   const sw = document.getElementById("lang-switch");
   if (sw) {
