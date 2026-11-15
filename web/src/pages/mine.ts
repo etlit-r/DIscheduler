@@ -6,6 +6,7 @@ import { dateTimeText, showError, STATUS_LABEL, viewerTimeZone } from "../ui/com
 import { formatSlot } from "../lib/time";
 import type { PollStatus } from "../../../src/shared/model";
 import { tr } from "../lib/i18n";
+import { deletedText, takeDeletedWarnings } from "./deleted";
 
 interface MinePoll {
   id: string;
@@ -41,6 +42,12 @@ export async function minePage(guildId: string): Promise<void> {
   const tz = viewerTimeZone();
   let filter: Filter = "all";
   let message: HTMLElement | null = null;
+  // 作成画面で調整を削除して戻ってきたとき（?deleted=1）は、削除できたことを知らせる。再読み込みで出し直さないよう、アドレスからは消す
+  if (new URLSearchParams(location.search).get("deleted") === "1") {
+    const warnings = takeDeletedWarnings();
+    message = notice(warnings.length ? "warn" : "ok", deletedText(), ...warnings.map((w) => h("p", {}, w)));
+    history.replaceState(null, "", location.pathname);
+  }
   let busy = false;
 
   async function open(p: MinePoll, to: "edit" | "summary"): Promise<void> {

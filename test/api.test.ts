@@ -999,6 +999,28 @@ describe("主催者の調整一覧（§6.11）", () => {
     expect(await db().prepare("SELECT id FROM polls WHERE id = ?").bind(mine.pollId).first()).toBeNull();
   });
 
+  it("作成画面で削除したとき、同じブラウザに本人の一覧のセッションがあれば一覧の場所を返す（発行はしない）", async () => {
+    mockDiscord(() => ({}));
+    const withList = await seedPoll();
+    const without = await seedPoll();
+    const othersList = await seedPoll();
+    const del = async (pollId: string, listCookie: string | null) => {
+      const org = await login(pollId, ORGANIZER, "organizer", "edit");
+      const cookie = listCookie ? `${org.cookie}; ${listCookie}` : org.cookie;
+      const res = await call(jsonReq("DELETE", `/api/polls/${pollId}`, {}, { cookie, csrf: org.csrf }));
+      expect(res.status).toBe(200);
+      // 一覧のセッションは発行しない（消すための Cookie だけ）
+      expect(res.headers.get("Set-Cookie")).not.toContain("__Host-l_");
+      return ((await res.json()) as { listUrl: string | null }).listUrl;
+    };
+    const { cookie } = await listLogin("200000000000000001", ORGANIZER);
+    expect(await del(withList.pollId, cookie)).toBe("/g/200000000000000001/polls");
+    expect(await del(without.pollId, null)).toBeNull();
+    // 別の人の一覧のセッションでは返さない
+    const alices = await listLogin("200000000000000001", ALICE);
+    expect(await del(othersList.pollId, alices.cookie)).toBeNull();
+  });
+
   it("別のサーバーの一覧には、そのサーバーのセッションがなければ入れない", async () => {
     const { cookie } = await listLogin("200000000000000001", ORGANIZER);
     expect((await call(getReq(`/api/guilds/${OTHER_GUILD}/polls`, cookie))).status).toBe(401);
