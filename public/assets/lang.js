@@ -22,8 +22,19 @@
   // URL の ?lang= ＞ このブラウザで選んだ言語 ＞ ブラウザの言語（Web 画面と同じ）
   const q = new URLSearchParams(location.search).get("lang");
   const fromUrl = q === "ja" || q === "en" ? q : null;
-  // 保存できないと分かったブラウザでは、切り替えのリンクにも最初から ?lang= を付ける（新しいタブで開くときのため）
+  // 保存できないと分かったブラウザ（noStore）では、サイト内のリンクと元のページのアドレスにも ?lang= を付ける
   let noStore = fromUrl !== null && !store(fromUrl);
+  const isBot = () => navigator.webdriver || /bot|crawl|spider|slurp|preview/i.test(navigator.userAgent);
+  // 保存できたら、アドレス欄から ?lang= を外す（共有したアドレスで、相手の言語を決めてしまわないように）
+  if (fromUrl !== null && !noStore) {
+    try {
+      const here = new URL(location.href);
+      here.searchParams.delete("lang");
+      history.replaceState(history.state, "", here.href);
+    } catch {
+      // 外せなくても、言語は保存できている
+    }
+  }
   // # の後ろ（回答の完了画面の #p=、ページ内の見出し）は、もう一方の言語のページでも保つ。
   // ページ内の見出しへ移ったあとでも保てるよう、今の # を使う
   // アドレス欄の # はだれでも書き換えられるので、見出しの名前と #p= に使う文字（英数字と _ - . = &）だけを残してからリンクに入れる
@@ -32,8 +43,10 @@
     return h ? `#${h}` : "";
   };
   const withHash = (path) => path + safeHash();
+  // 切り替えのリンクには ?lang= を付ける。新しいタブで開くとき（右クリックのメニューや中クリック）はクリックの処理を通らず
+  // 言語を保存できないので、移った先で保存した言語やブラウザの言語のページへ戻されないように。クローラーには付けない
   const sync = () =>
-    link.setAttribute("href", withHash(noStore ? withLang(base, link.getAttribute("data-lang")) : base));
+    link.setAttribute("href", withHash(isBot() ? base : withLang(base, link.getAttribute("data-lang"))));
   sync();
   // 新しいタブで開くとき（クリックの処理を通らない）も、今の # を使う
   window.addEventListener("hashchange", sync);
@@ -54,7 +67,6 @@
     sync();
   });
 
-  const isBot = () => navigator.webdriver || /bot|crawl|spider|slurp|preview/i.test(navigator.userAgent);
   let want;
   if (fromUrl) want = fromUrl;
   else {
