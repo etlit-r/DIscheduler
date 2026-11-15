@@ -914,11 +914,10 @@ polls.post("/:id/remind", async (c) => {
     .bind(poll.id)
     .all<{ user_id: string }>();
   if (rows.results.length === 0) return c.json({ ok: true, count: 0 });
-  // メンションの上限（1 つの調整につき 1 時間に MENTION_LIMIT 回）。last_reminded_at は記録として残す
+  // メンションの上限（1 つの調整につき 1 時間に MENTION_LIMIT 回）
   if (!(await hitRateLimit(db, `remind:${poll.id}`, MENTION_LIMIT, 3600, now))) {
     throw new AppError(429, "rate_limited", msg(`リマインドは 1 時間に ${MENTION_LIMIT} 回までです。`, `You can send up to ${MENTION_LIMIT} reminders per hour.`));
   }
-  await db.prepare("UPDATE polls SET last_reminded_at = ? WHERE id = ?").bind(now, poll.id).run();
   const link = poll.message_id ? `\n${messageLink(poll.guild_id, poll.channel_id, poll.message_id)}` : "";
   // チャンネルに投稿するので、調整の言語で書く（§6.12）
   const t = translator(poll.lang);
