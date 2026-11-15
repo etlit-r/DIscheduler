@@ -48,8 +48,8 @@ export const SLOT_LINES_FROM = 5;
 export const SLOT_LINES_SHOWN = 4;
 
 /**
- * 募集メッセージに出す候補を選ぶ。確定した候補 → 成績の良い候補（★と同じ比べ方。§6.9.3）→ 日時が早い、の順に選び、日時順に並べる。
- * ★の候補（3 件まで）は必ず入る
+ * 募集メッセージに出す候補を選ぶ。確定した候補 → ★の候補 → 回答のある候補を成績の良い順（★と同じ比べ方。§6.9.3。同じなら日時が早い順）、
+ * の順に選び、日時順に並べる。確定した候補と★の候補は、合わせて SLOT_LINES_SHOWN 件を超えてもすべて入れる
  */
 export function pickShownSlots<T extends { id: string; start_at: number; fixed_at: number | null }>(slots: T[], tallies: Map<string, SlotTally>, best: ReadonlySet<string>): T[] {
   const must = (s: T) => s.fixed_at !== null || best.has(s.id);
