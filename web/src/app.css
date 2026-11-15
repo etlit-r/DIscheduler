@@ -259,6 +259,7 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .in-label { width: 140px; }
 .in-score { width: 72px; }
 .danger-zone { border-color: var(--c-red-soft); }
+.danger-zone .notice { margin-top: 12px; margin-bottom: 0; }
 
 @media (max-width: 480px) {
   .site-header .container { flex-wrap: wrap; }

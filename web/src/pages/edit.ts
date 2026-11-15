@@ -1,6 +1,6 @@
 // S2: 調整の作成・編集（主催者。docs/design.md §6.3, §6.9）
 import { ApiError, loadPoll, request, type PollData } from "../lib/api";
-import { browserTimeZone, choiceMark, dateTimeText, donationLine, rememberDonation, showError, slotText, statusBanner, syncPanel, timeZoneSelect, errorText, toast } from "../ui/common";
+import { browserTimeZone, choiceMark, dateTimeText, rememberDonation, showError, slotText, statusBanner, syncPanel, timeZoneSelect, errorText, toast } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
 import {
   CHOICE_COLORS,
@@ -15,7 +15,8 @@ import {
   type ChoiceKind,
 } from "../../../src/shared/model";
 import { epochToZoned, formatSlot, zonedToEpoch } from "../lib/time";
-import { staticHref, tr, LANG } from "../lib/i18n";
+import { tr, LANG } from "../lib/i18n";
+import { deletedPage, passDeletedWarnings } from "./deleted";
 
 /** 英語の画面で使う月の名前 */
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -94,6 +95,8 @@ export async function editPage(pollId: string): Promise<void> {
   let searchResults: { userId: string; displayName: string }[] = [];
   let roles: { id: string; name: string }[] | null = null;
   let busy = false;
+  /** 削除に失敗したときのエラー。削除ボタンは画面の一番下にあるので、上の知らせとは別にボタンのすぐ下にも出す */
+  let deleteError: HTMLElement | null = null;
 
   const isDraft = d.poll.status === "draft";
   const choicesLocked = d.poll.status === "closed" || d.poll.status === "fixed";
@@ -207,6 +210,7 @@ export async function editPage(pollId: string): Promise<void> {
   async function run(action: () => Promise<void>) {
     if (busy) return;
     busy = true;
+    deleteError = null;
     try {
       await action();
     } catch (e) {
@@ -819,23 +823,36 @@ export async function editPage(pollId: string): Promise<void> {
           h("button", {
             type: "button",
             class: "btn btn-danger btn-small",
-            onClick: () => run(async () => {
+            onClick: async () => {
+              if (busy) return;
               if (!confirm(tr("この調整を削除します。元に戻せません。よろしいですか？", "Delete this poll? This can't be undone."))) return;
-              const r = await request<{ warnings?: string[] }>("DELETE", `/api/polls/${pollId}`, {});
-              render(
-                document.getElementById("app")!,
-                h(
-                  "section",
-                  { class: "page" },
-                  h("h1", {}, tr("調整を削除しました", "Poll deleted")),
-                  h("p", {}, tr("データはすべて削除されました。", "All data has been deleted.")),
-                  ...(r.warnings ?? []).map((w) => notice("warn", w)),
-                  h("p", {}, h("a", { href: staticHref("/manual/", "/en/manual/") }, tr("DIscheduler のマニュアルへ", "Go to the DIscheduler manual"))),
-                  donationLine(d.donationUrl),
-                ),
-              );
-            }),
+              busy = true;
+              deleteError = null;
+              let r: { warnings?: string[]; listUrl?: string | null };
+              try {
+                r = await request<{ warnings?: string[]; listUrl?: string | null }>("DELETE", `/api/polls/${pollId}`, {});
+              } catch (e) {
+                const text = errorText(e, "edit", tr("削除できませんでした。", "Couldn't delete the poll."));
+                message = notice("error", text);
+                deleteError = notice("error", text);
+                busy = false;
+                draw();
+                deleteError.scrollIntoView({ block: "nearest" });
+                return;
+              }
+              const warnings = r.warnings ?? [];
+              // 一覧のセッションがあれば一覧に戻り、そこで削除できたことを知らせる（§6.11）
+              if (r.listUrl && /^\/g\/\d{17,20}\/polls$/.test(r.listUrl)) {
+                passDeletedWarnings(warnings);
+                location.assign(`${r.listUrl}?deleted=1`);
+                return;
+              }
+              // なければ完了画面。再読み込みしても「見つかりません」にならないよう、アドレスも変える
+              history.replaceState(null, "", `/p/${pollId}/deleted`);
+              deletedPage({ warnings, donationUrl: d.donationUrl });
+            },
           }, tr("この調整を削除", "Delete this poll")),
+          deleteError,
         ),
         d.poll.deadlineAt && !isDraft ? h("p", { class: "muted small" }, tr(`現在の締切: ${dateTimeText(d.poll.deadlineAt, tz)}`, `Current deadline: ${dateTimeText(d.poll.deadlineAt, tz)}`)) : null,
       ),
