@@ -2,7 +2,7 @@
 import { loadPoll, request, type PollData } from "../lib/api";
 import { choiceMark, dateTimeText, donationLine, memberMatrix, mountViewerTzSwitch, rememberDonation, showError, slotText, STATUS_LABEL, statusBanner, syncPanel, viewerTimeZone, errorText } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
-import { bestSlotId, compareSlots, reminderAt, tally, UNANSWERED } from "../../../src/shared/model";
+import { bestSlotIds, compareSlots, reminderAt, tally, UNANSWERED } from "../../../src/shared/model";
 import { tr } from "../lib/i18n";
 
 export async function summaryPage(pollId: string): Promise<void> {
@@ -40,7 +40,7 @@ export async function summaryPage(pollId: string): Promise<void> {
     setTitle(d.poll.title ?? tr("集計", "Results"));
     const slots = d.slots.map((s) => ({ id: s.id, startAt: s.startAt }));
     const t = tally(slots, d.choices, d.answers);
-    const best = bestSlotId(slots, t);
+    const best = bestSlotIds(slots, t);
     const order = [...d.slots];
     if (sortByScore) order.sort((a, b) => compareSlots(a, t.get(a.id)!, b, t.get(b.id)!));
     const answered = new Set(d.answers.map((a) => a.userId));
@@ -62,11 +62,11 @@ export async function summaryPage(pollId: string): Promise<void> {
       body.appendChild(
         h(
           "tr",
-          { class: isFixed ? "is-fixed" : s.id === best ? "is-best" : "" },
+          { class: isFixed ? "is-fixed" : best.has(s.id) ? "is-best" : "" },
           h(
             "th",
             { scope: "row" },
-            isFixed ? h("span", { class: "badge badge-fixed" }, tr("確定", "Confirmed")) : s.id === best ? h("span", { class: "star", aria: { label: tr("最有力候補", "Best option") } }, "★ ") : null,
+            isFixed ? h("span", { class: "badge badge-fixed" }, tr("確定", "Confirmed")) : best.has(s.id) ? h("span", { class: "star", aria: { label: tr("最有力候補", "Best option") } }, "★ ") : null,
             st.main,
             st.sub ? h("span", { class: "slot-sub" }, st.sub) : null,
             isFixed ? h("span", { class: "slot-sub" }, reminderLabel(d, s, tz)) : null,
@@ -130,7 +130,7 @@ export async function summaryPage(pollId: string): Promise<void> {
           h("button", { type: "button", class: `btn btn-small ${sortByScore ? "btn-primary" : "btn-secondary"}`, aria: { pressed: String(sortByScore) }, onClick: () => { sortByScore = true; draw(); } }, tr("点数の高い順", "By score")),
         ),
         table,
-        h("p", { class: "muted small" }, tr("★ は最有力候補です（「参加できない」が最も少なく、点数の合計が最も大きい候補）。", "★ marks the best option (the fewest \"not available\" answers and the highest total score).")),
+        h("p", { class: "muted small" }, tr("★ は最有力候補です（「参加できない」が最も少なく、点数の合計が最も大きい候補）。同じ成績の候補が 4 件以上あって絞れないときは付けません。", "★ marks the best option (the fewest \"not available\" answers and the highest total score). It isn't shown when 4 or more options are tied.")),
         matrix,
         h(
           "section",

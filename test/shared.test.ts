@@ -1,6 +1,6 @@
 import { langFromAcceptLanguage, langFromTag } from "../src/shared/i18n";
 import { describe, expect, it } from "vitest";
-import { bestSlotId, effectiveStatus, tally } from "../src/shared/model";
+import { bestSlotIds, effectiveStatus, tally } from "../src/shared/model";
 import { donationNote, isSafeChoiceText, KOFI_DONATION_NOTE, sanitizeDisplayName, sanitizeLine } from "../src/shared/text";
 import { epochToZoned, formatSlot, formatSlotTime, nextCronAt, zonedToEpoch } from "../src/shared/time";
 import { canViewChannel } from "../src/discord/members";
@@ -23,18 +23,27 @@ describe("集計と最有力候補（§6.9.3）", () => {
       { slotId: "b", userId: "1", choiceId: "maybe" },
       { slotId: "b", userId: "2", choiceId: "maybe" },
     ];
-    expect(bestSlotId(slots, tally(slots, choices, answers))).toBe("b");
+    expect([...bestSlotIds(slots, tally(slots, choices, answers))]).toEqual(["b"]);
   });
-  it("同じなら点数、次に日時が早い候補", () => {
+  it("同じなら点数で比べ、成績が同じ候補にはすべて付ける", () => {
     const answers = [
       { slotId: "a", userId: "1", choiceId: "maybe" },
       { slotId: "b", userId: "1", choiceId: "ok" },
     ];
-    expect(bestSlotId(slots, tally(slots, choices, answers))).toBe("b");
-    expect(bestSlotId(slots, tally(slots, choices, [{ slotId: "a", userId: "1", choiceId: "ok" }, { slotId: "b", userId: "1", choiceId: "ok" }]))).toBe("a");
+    expect([...bestSlotIds(slots, tally(slots, choices, answers))]).toEqual(["b"]);
+    expect([...bestSlotIds(slots, tally(slots, choices, [{ slotId: "a", userId: "1", choiceId: "ok" }, { slotId: "b", userId: "1", choiceId: "ok" }]))]).toEqual(["a", "b"]);
+  });
+  it("いちばん良い候補が 4 件以上並んだら（全部同じなど）★ なし", () => {
+    const four = ["a", "b", "c", "d"].map((id, i) => ({ id, startAt: i }));
+    const ng = (ids: string[]) => ids.map((slotId) => ({ slotId, userId: "1", choiceId: "ng" }));
+    expect(bestSlotIds(four, tally(four, choices, ng(["a", "b", "c", "d"]))).size).toBe(0);
+    expect([...bestSlotIds(four, tally(four, choices, ng(["a", "b", "c", "d"]).map((x) => (x.slotId === "d" ? { ...x, choiceId: "ok" } : x))))]).toEqual(["d"]);
+    expect([...bestSlotIds(four, tally(four, choices, ng(["a", "b", "c"]).concat([{ slotId: "d", userId: "1", choiceId: "ok" }])))]).toEqual(["d"]);
+    // 3 件までの同点なら付ける
+    expect(bestSlotIds(four, tally(four, choices, ng(["d"]).concat(["a", "b", "c"].map((slotId) => ({ slotId, userId: "1", choiceId: "ok" }))))).size).toBe(3);
   });
   it("誰も回答していなければ ★ なし", () => {
-    expect(bestSlotId(slots, tally(slots, choices, []))).toBeNull();
+    expect(bestSlotIds(slots, tally(slots, choices, [])).size).toBe(0);
   });
   it("締切を過ぎたら closed として扱う", () => {
     expect(effectiveStatus("open", 100, 200)).toBe("closed");

@@ -2,7 +2,7 @@
 // 個人ごとの回答は載せず、候補ごとの「参加できる」区分の人数と回答率だけを出す。
 // チャンネルの全員が読むので、言語は見る人ごとではなく、調整の言語（polls.lang。§6.12）で書く。
 import type { ChoiceRow, ParticipantRow, PollRow, SlotRow, AnswerRow } from "../db";
-import { bestSlotId, effectiveStatus, tally } from "../shared/model";
+import { bestSlotIds, effectiveStatus, tally } from "../shared/model";
 import { formatDate } from "../shared/time";
 import { translator, type Lang } from "../shared/i18n";
 
@@ -66,7 +66,7 @@ export function buildPollMessage(d: MessageData) {
     choices,
     answers.map((a) => ({ slotId: a.slot_id, userId: a.user_id, choiceId: a.choice_id })),
   );
-  const best = bestSlotId(slots.map((s) => ({ id: s.id, startAt: s.start_at })), tl);
+  const best = bestSlotIds(slots.map((s) => ({ id: s.id, startAt: s.start_at })), tl);
   const answered = new Set(answers.map((a) => a.user_id)).size;
   const okLabel = choices.filter((c) => c.kind === "ok").map((c) => c.symbol).join("");
   const L = poll.lang;
@@ -96,7 +96,7 @@ export function buildPollMessage(d: MessageData) {
   // 確定した候補と、「参加できる」区分の人数が多い候補を優先し（同じなら日時の早い順）、日時順に並べる
   const shown = slots.length >= SLOT_LINES_FROM ? pickShownSlots(slots, (id) => tl.get(id)?.ok ?? 0) : slots;
   for (const s of shown) {
-    const mark = s.fixed_at !== null ? "✅" : s.id === best ? "★" : "・";
+    const mark = s.fixed_at !== null ? "✅" : best.has(s.id) ? "★" : "・";
     lines.push(`${mark} ${slotLabel(s, L)}　${t(`${tl.get(s.id)?.ok ?? 0} 人`, String(tl.get(s.id)?.ok ?? 0))}`);
   }
   if (shown.length < slots.length) {
