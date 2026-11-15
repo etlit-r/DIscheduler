@@ -207,15 +207,18 @@ export async function editPage(pollId: string): Promise<void> {
     );
   }
 
-  async function run(action: () => Promise<void>) {
+  /** onError: エラーの文言を受け取り、画面の上の知らせのほかに出したいとき（削除ボタンの下など）に使う。描き直したあとに呼ぶ */
+  async function run(action: () => Promise<void>, fallback = tr("エラーが発生しました。", "Something went wrong."), onError?: (text: string) => void) {
     if (busy) return;
     busy = true;
     deleteError = null;
     try {
       await action();
     } catch (e) {
-      message = notice("error", errorText(e, "edit", tr("エラーが発生しました。", "Something went wrong.")));
-      draw();
+      const text = errorText(e, "edit", fallback);
+      message = notice("error", text);
+      if (onError) onError(text);
+      else draw();
     } finally {
       busy = false;
     }
@@ -823,23 +826,9 @@ export async function editPage(pollId: string): Promise<void> {
           h("button", {
             type: "button",
             class: "btn btn-danger btn-small",
-            onClick: async () => {
-              if (busy) return;
+            onClick: () => run(async () => {
               if (!confirm(tr("この調整を削除します。元に戻せません。よろしいですか？", "Delete this poll? This can't be undone."))) return;
-              busy = true;
-              deleteError = null;
-              let r: { warnings?: string[]; listUrl?: string | null };
-              try {
-                r = await request<{ warnings?: string[]; listUrl?: string | null }>("DELETE", `/api/polls/${pollId}`, {});
-              } catch (e) {
-                const text = errorText(e, "edit", tr("削除できませんでした。", "Couldn't delete the poll."));
-                message = notice("error", text);
-                deleteError = notice("error", text);
-                busy = false;
-                draw();
-                deleteError.scrollIntoView({ block: "nearest" });
-                return;
-              }
+              const r = await request<{ warnings?: string[]; listUrl?: string | null }>("DELETE", `/api/polls/${pollId}`, {});
               const warnings = r.warnings ?? [];
               // 一覧のセッションがあれば一覧に戻り、そこで削除できたことを知らせる（§6.11）
               if (r.listUrl && /^\/g\/\d{17,20}\/polls$/.test(r.listUrl)) {
@@ -850,7 +839,12 @@ export async function editPage(pollId: string): Promise<void> {
               // なければ完了画面。再読み込みしても「見つかりません」にならないよう、アドレスも変える
               history.replaceState(null, "", `/p/${pollId}/deleted`);
               deletedPage({ warnings, donationUrl: d.donationUrl });
-            },
+            }, tr("削除できませんでした。", "Couldn't delete the poll."), (text) => {
+              const el = notice("error", text);
+              deleteError = el;
+              draw();
+              el.scrollIntoView({ block: "nearest" });
+            }),
           }, tr("この調整を削除", "Delete this poll")),
           deleteError,
         ),
