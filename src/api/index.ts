@@ -37,7 +37,7 @@ import {
   type SessionRow,
 } from "../db";
 import { fetchMember, searchMembers } from "../discord/members";
-import { buildAnnounceMessage, buildDeletedMessage, buildFixedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink, pollTitle, rawPollTitle, slotWhen } from "../discord/messages";
+import { buildAnnounceMessage, buildDeletedMessage, buildRenotifyMessage, buildFixedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink, pollTitle, rawPollTitle, slotWhen } from "../discord/messages";
 import { discord, DiscordError, type DiscordChannel, type DiscordRole } from "../discord/rest";
 import { AppError, DAY, floorToMinute, nowSec, randomId, timingSafeEqual } from "../core/lib";
 import { DEFAULT_DEADLINE_DAYS, resetParticipants, RETENTION } from "../polls/create";
@@ -872,6 +872,29 @@ async function upsertEvent(
     return msg("Discord イベントを登録できませんでした。", "Couldn't create the Discord event.");
   }
 }
+
+// 調整の再通知（主催者。§5.5）。参加者以外の回答の設定を変えたあとなどに、募集メッセージへの返信で、
+// 参加者のロール（なければ @everyone）にメンションして知らせ直す。通知が続かないよう、1 つの調整につき 1 時間に 1 回まで
+polls.post("/:id/renotify", async (c) => {
+  requireOrganizer(c);
+  const { poll } = c.var;
+  const now = nowSec();
+  if (!canAnswer(effectiveStatus(poll.status, poll.deadline_at, now))) {
+    throw new AppError(409, "not_published", msg("公開中の調整だけ再通知できます。", "You can only re-announce a published poll."));
+  }
+  if (!poll.message_id) {
+    throw new AppError(409, "no_message", msg("募集メッセージがありません。先にチャンネルに投稿し直してください。", "There is no poll message. Repost it to the channel first."));
+  }
+  if (!(await hitRateLimit(c.env.DB, `renotify:${poll.id}`, 1, 3600, now))) {
+    throw new AppError(429, "rate_limited", msg("調整の再通知は 1 時間に 1 回までです。", "You can re-announce a poll once per hour."));
+  }
+  try {
+    await discord(c.env, "POST", `/channels/${poll.channel_id}/messages`, buildRenotifyMessage(poll, poll.message_id));
+  } catch {
+    throw new AppError(502, "discord_failed", msg("再通知を投稿できませんでした。Bot がこのチャンネルに投稿できるか確認してください。", "Couldn't post the re-announcement. Check that the bot can post in this channel."));
+  }
+  return c.json({ ok: true });
+});
 
 polls.post("/:id/remind", async (c) => {
   requireOrganizer(c);
