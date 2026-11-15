@@ -41,7 +41,9 @@ document.documentElement.lang = LANG;
  */
 export function staticHref(ja: string, en: string): string {
   const path = tr(ja, en);
-  return savedOrBrowser() === LANG ? path : `${path}?lang=${LANG}`;
+  // URL に入れる言語は、決まった 2 つの文字のどちらかにする（アドレス欄や保存した値をそのまま入れない）
+  const lang = LANG === "en" ? "en" : "ja";
+  return savedOrBrowser() === lang ? path : `${path}?lang=${lang}`;
 }
 
 /** 日本語と英語のうち、画面の言語のほうを返す */
