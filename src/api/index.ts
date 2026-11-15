@@ -1006,13 +1006,14 @@ async function deletePollEverywhere(env: Env, poll: PollRow): Promise<Msg[]> {
 polls.delete("/:id", async (c) => {
   requireOrganizer(c);
   const { poll } = c.var;
-  const warnings = await deletePollEverywhere(c.env, poll);
-  c.header("Set-Cookie", clearSessionCookie(poll.id));
   // 同じブラウザに、この主催者の一覧のセッション（§6.11）がまだあれば、削除後に一覧へ戻れるよう一覧の場所を返す。
-  // 一覧のセッションはここでは発行しない（調整のセッションで、ほかの調整まで扱えるようにしないため。security-design S-3）
+  // 一覧のセッションはここでは発行しない（調整のセッションで、ほかの調整まで扱えるようにしないため。security-design S-3）。
+  // 削除したあとにここで失敗して、削除できたのにエラーを返すことがないよう、先に調べる
   const listSid = readCookie(c.req.header("Cookie") ?? null, listCookieName(poll.guild_id));
   const list = listSid ? await getListSession(c.env.DB, poll.guild_id, listSid) : null;
   const listUrl = list && list.user_id === poll.organizer_id ? `/g/${poll.guild_id}/polls` : null;
+  const warnings = await deletePollEverywhere(c.env, poll);
+  c.header("Set-Cookie", clearSessionCookie(poll.id));
   return c.json({ ok: true, warnings: localize(c, warnings), listUrl });
 });
 
