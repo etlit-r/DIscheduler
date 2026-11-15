@@ -278,3 +278,10 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .toast-warn { background: #f0c35a; color: #1a1a1a; }
 .toast.is-hiding { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+
+/* ポップアップ（モーダルのダイアログ）。保存したあとに再通知を促すときなど */
+.modal { width: min(480px, calc(100vw - 32px)); padding: 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); box-shadow: 0 16px 48px rgb(0 0 0 / 35%); }
+.modal::backdrop { background: rgb(0 0 0 / 55%); }
+.modal > * + * { margin-top: 12px; }
+.modal-title { margin: 0; font-size: 1.15rem; }
+.dialog-error { color: var(--c-red); }

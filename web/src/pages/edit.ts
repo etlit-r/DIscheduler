@@ -169,6 +169,78 @@ export async function editPage(pollId: string): Promise<void> {
     return warnings;
   }
 
+  /** ［調整の再通知］の説明 */
+  const renotifyHelp = () =>
+    tr(
+      "［調整の再通知］を押すと、募集メッセージへの返信で、参加者のロール（ロールがなければ @everyone）にメンションして知らせ直します（1 時間に 5 回まで）。",
+      "[Re-announce the poll] replies to the poll message and mentions the participants' role (or @everyone without one). Up to 5 times per hour.",
+    );
+
+  /**
+   * 再通知を投稿する。投稿できなければエラーの文言を返す（ボタンの近くに出すため）。
+   * 投稿できたら画面を読み込み直して知らせる（読み込み直しの失敗は、run が画面の上に出す）
+   */
+  async function renotify(onPosted?: () => void): Promise<string | null> {
+    try {
+      await request("POST", `/api/polls/${pollId}/renotify`, {});
+    } catch (e) {
+      return errorText(e, "edit", tr("再通知できませんでした。", "Couldn't re-announce."));
+    }
+    onPosted?.();
+    toast("ok", tr("チャンネルに調整を再通知しました", "Re-announced the poll in the channel"));
+    await reloadAll(notice("ok", tr("チャンネルに調整を再通知しました。", "Re-announced the poll in the channel.")));
+    return null;
+  }
+
+  /**
+   * 参加者以外の回答の設定を変えて保存したら、ポップアップ（モーダルのダイアログ）で再通知を促す（§5.3）。
+   * 画面の上の知らせだけでは、下のほうで保存した人が気づかずに離れてしまうため。閉じても、画面の上の知らせから再通知できる
+   */
+  function openRenotifyDialog(warnings: string[]): void {
+    const status = h("p", { class: "dialog-error", role: "alert" });
+    status.hidden = true;
+    const dialog = h("dialog", { class: "modal", aria: { labelledby: "renotify-title" } });
+    const later = h("button", { type: "button", class: "btn btn-secondary", onClick: () => dialog.close() }, tr("あとで", "Later"));
+    const send: HTMLButtonElement = h(
+      "button",
+      {
+        type: "button",
+        class: "btn btn-primary",
+        onClick: () =>
+          void run(async () => {
+            send.disabled = true;
+            later.disabled = true;
+            // 投稿できたら閉じてから読み込み直す（読み込み直しに失敗しても、閉じたポップアップに出さないように）
+            const error = await renotify(() => dialog.close());
+            if (error) {
+              send.disabled = false;
+              later.disabled = false;
+              status.textContent = error;
+              status.hidden = false;
+            }
+          }),
+      },
+      tr("調整の再通知", "Re-announce the poll"),
+    );
+    dialog.append(
+      h("h2", { id: "renotify-title", class: "modal-title" }, tr("参加者を変更するには再通知が必要です", "Re-announce the poll to apply the change")),
+      h("p", {}, tr("変更は保存しました。", "Your changes were saved."), " ", renotifyHelp()),
+      ...warnings.map((w) => h("p", { class: "small" }, w)),
+      status,
+      h("div", { class: "row row-end" }, later, send),
+    );
+    // 投稿している間は Esc で閉じない（失敗したときのエラーを、ポップアップの中に出すため）
+    dialog.addEventListener("cancel", (e) => {
+      if (send.disabled) e.preventDefault();
+    });
+    // 閉じたら画面から取り除く（Esc で閉じたときも）
+    dialog.addEventListener("close", () => dialog.remove());
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    // 続けて Enter を押しただけでメンション付きの投稿をしないよう、最初は［あとで］を選んでおく
+    later.focus();
+  }
+
   /** 参加者以外の回答の設定を変えて保存したあとの知らせ。［調整の再通知］で、チャンネルにメンション付きで知らせ直す（§5.5） */
   function renotifyNotice(warnings: string[]): HTMLElement {
     const status = h("span", { role: "status" });
@@ -180,12 +252,10 @@ export async function editPage(pollId: string): Promise<void> {
         onClick: () =>
           run(async () => {
             btn.disabled = true;
-            try {
-              await request("POST", `/api/polls/${pollId}/renotify`, {});
-              await reloadAll(notice("ok", tr("チャンネルに調整を再通知しました。", "Re-announced the poll in the channel.")));
-            } catch (e) {
+            const error = await renotify();
+            if (error) {
               btn.disabled = false;
-              status.textContent = ` ${errorText(e, "edit", tr("再通知できませんでした。", "Couldn't re-announce."))}`;
+              status.textContent = ` ${error}`;
             }
           }),
       },
@@ -194,14 +264,7 @@ export async function editPage(pollId: string): Promise<void> {
     return notice(
       "warn",
       h("p", {}, h("strong", {}, tr("保存しました。", "Saved.")), " ", tr("参加者を変更するには再通知が必要です。", "To let the change reach members, the poll needs to be re-announced.")),
-      h(
-        "p",
-        { class: "small" },
-        tr(
-          "［調整の再通知］を押すと、募集メッセージへの返信で、参加者のロール（ロールがなければ @everyone）にメンションして知らせ直します（1 時間に 5 回まで）。",
-          "[Re-announce the poll] replies to the poll message and mentions the participants' role (or @everyone without one). Up to 5 times per hour.",
-        ),
-      ),
+      h("p", { class: "small" }, renotifyHelp()),
       ...warnings.map((w) => h("p", {}, w)),
       h("p", {}, btn, status),
     );
@@ -765,16 +828,10 @@ export async function editPage(pollId: string): Promise<void> {
               ? notice("warn", tr("保存しました。", "Saved."), ...warnings.map((w) => h("p", {}, w)))
               : notice("ok", tr("保存しました。", "Saved.")),
         );
+        // 再通知が必要なときは、離れる前に気づけるようポップアップで促す
+        if (joinPolicyChanged) return openRenotifyDialog(warnings);
         // 画面の下のほうで押したときも保存できたと分かるよう、下にも少しのあいだ知らせる
-        // 再通知の案内（画面の上）も、注意と同じく気づけるようにする
-        toast(
-          warnings.length || joinPolicyChanged ? "warn" : "ok",
-          joinPolicyChanged
-            ? tr("保存しました（画面の上で再通知できます）", "Saved (you can re-announce at the top)")
-            : warnings.length
-              ? tr("保存しました（画面の上に注意があります）", "Saved (see the note at the top)")
-              : tr("保存しました", "Saved"),
-        );
+        toast(warnings.length ? "warn" : "ok", warnings.length ? tr("保存しました（画面の上に注意があります）", "Saved (see the note at the top)") : tr("保存しました", "Saved"));
       }),
     }, isDraft ? tr("下書きを保存", "Save draft") : tr("変更を保存", "Save changes"));
     const publishBtn = isDraft
