@@ -160,6 +160,8 @@ export interface AnswerLike {
 export interface SlotLike {
   id: string;
   startAt: number;
+  /** 確定した候補か（★の判定から外す。§6.9.3） */
+  fixed?: boolean;
 }
 
 export interface SlotTally {
@@ -200,12 +202,14 @@ export const BEST_SLOTS_MAX = 3;
 /**
  * 最有力候補（★）の判定（§6.9.3）
  * 1. ng が少ない 2. 点数の合計が大きい 3. ok が多い、で比べ、いちばん良い候補をすべて返す（同じ成績なら複数）。
- * その数が BEST_SLOTS_MAX を超えたとき（全部同じ成績のときなど）と、誰も回答していないときは空
+ * その数が BEST_SLOTS_MAX を超えたとき（全部同じ成績のときなど）と、誰も回答していないときは空。
+ * 確定した候補（fixed）は「確定」と表示するので、★の判定から外す（同じ成績の件数にも数えない）
  */
 export function bestSlotIds(slots: readonly SlotLike[], tallies: Map<string, SlotTally>): Set<string> {
   let top: SlotTally | null = null;
   let ids: string[] = [];
   for (const slot of slots) {
+    if (slot.fixed) continue;
     const t = tallies.get(slot.id);
     if (!t || t.answered === 0) continue;
     const cmp = top ? compareTally(t, top) : -1;
