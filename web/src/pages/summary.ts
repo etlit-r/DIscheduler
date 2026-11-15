@@ -40,7 +40,7 @@ export async function summaryPage(pollId: string): Promise<void> {
     setTitle(d.poll.title ?? tr("集計", "Results"));
     const slots = d.slots.map((s) => ({ id: s.id, startAt: s.startAt }));
     const t = tally(slots, d.choices, d.answers);
-    const best = bestSlotIds(slots, t);
+    const best = bestSlotIds(d.slots.map((s) => ({ id: s.id, startAt: s.startAt, fixed: s.fixedAt !== null })), t);
     const order = [...d.slots];
     if (sortByScore) order.sort((a, b) => compareSlots(a, t.get(a.id)!, b, t.get(b.id)!));
     const answered = new Set(d.answers.map((a) => a.userId));

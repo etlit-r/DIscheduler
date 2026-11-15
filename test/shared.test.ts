@@ -42,6 +42,14 @@ describe("集計と最有力候補（§6.9.3）", () => {
     // 3 件までの同点なら付ける
     expect(bestSlotIds(four, tally(four, choices, ng(["d"]).concat(["a", "b", "c"].map((slotId) => ({ slotId, userId: "1", choiceId: "ok" }))))).size).toBe(3);
   });
+  it("確定した候補は★の判定から外す（同じ成績の件数にも数えない）", () => {
+    const four = ["a", "b", "c", "d"].map((id, i) => ({ id, startAt: i, fixed: i < 2 }));
+    const ok = four.map((s) => ({ slotId: s.id, userId: "1", choiceId: "ok" }));
+    expect([...bestSlotIds(four, tally(four, choices, ok))]).toEqual(["c", "d"]);
+    // 確定した候補のほうが成績が良くても、確定していない中でいちばん良い候補に付ける
+    const better = [{ slotId: "a", userId: "1", choiceId: "ok" }, { slotId: "c", userId: "1", choiceId: "maybe" }, { slotId: "d", userId: "1", choiceId: "ng" }];
+    expect([...bestSlotIds(four, tally(four, choices, better))]).toEqual(["c"]);
+  });
   it("誰も回答していなければ ★ なし", () => {
     expect(bestSlotIds(slots, tally(slots, choices, [])).size).toBe(0);
   });

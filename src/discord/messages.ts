@@ -75,7 +75,7 @@ export function buildPollMessage(d: MessageData) {
     choices,
     answers.map((a) => ({ slotId: a.slot_id, userId: a.user_id, choiceId: a.choice_id })),
   );
-  const best = bestSlotIds(slots.map((s) => ({ id: s.id, startAt: s.start_at })), tl);
+  const best = bestSlotIds(slots.map((s) => ({ id: s.id, startAt: s.start_at, fixed: s.fixed_at !== null })), tl);
   const answered = new Set(answers.map((a) => a.user_id)).size;
   const okLabel = choices.filter((c) => c.kind === "ok").map((c) => c.symbol).join("");
   const L = poll.lang;
