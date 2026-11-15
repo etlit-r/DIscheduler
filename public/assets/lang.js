@@ -26,7 +26,12 @@
   let noStore = fromUrl !== null && !store(fromUrl);
   // # の後ろ（回答の完了画面の #p=、ページ内の見出し）は、もう一方の言語のページでも保つ。
   // ページ内の見出しへ移ったあとでも保てるよう、今の # を使う
-  const withHash = (path) => path + location.hash;
+  // アドレス欄の # はだれでも書き換えられるので、見出しの名前と #p= に使う文字（英数字と _ - . = &）だけを残してからリンクに入れる
+  const safeHash = () => {
+    const h = location.hash.slice(1).replace(/[^A-Za-z0-9_\-.=&]/g, "");
+    return h ? `#${h}` : "";
+  };
+  const withHash = (path) => path + safeHash();
   const sync = () =>
     link.setAttribute("href", withHash(noStore ? withLang(base, link.getAttribute("data-lang")) : base));
   sync();
