@@ -345,17 +345,17 @@ describe("主催者だけの操作", () => {
     expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false }, alice))).status).toBe(403);
   });
 
-  it("確定のお知らせのメンションは 1 時間に 3 回まで（超えたらメンションなしで投稿する）", async () => {
+  it("確定のお知らせのメンションは 1 時間に 5 回まで（超えたらメンションなしで投稿する）", async () => {
     const calls = mockDiscord();
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
     await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: null }, org));
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       const res = await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: true }, org));
       expect(res.status).toBe(200);
     }
     const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).map((c) => c.body as { content: string });
-    expect(posts.map((p) => p.content.includes("@everyone"))).toEqual([true, true, true, false]);
+    expect(posts.map((p) => p.content.includes("@everyone"))).toEqual([true, true, true, true, true, false]);
   });
 
   it("予定のリマインドの回が過ぎてから確定した日時は、お知らせに開始までの時間を添え、あとで重ねて送らない", async () => {
@@ -411,6 +411,21 @@ describe("主催者だけの操作", () => {
     const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).map((c) => c.body as { content: string });
     // 失敗した 3 回のあとの 4 回目も、メンションつきで送る
     expect(posts.at(-1)!.content).toContain("@everyone");
+  });
+
+  it("未回答者へのリマインドは 1 時間に 5 回まで", async () => {
+    const calls = mockDiscord();
+    const s = await seedPoll({ participants: [ALICE] });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    for (let i = 0; i < 5; i++) {
+      const res = await call(jsonReq("POST", `/api/polls/${s.pollId}/remind`, {}, org));
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as { count: number }).count).toBe(1);
+    }
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/remind`, {}, org))).status).toBe(429);
+    const posts = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).map((c) => c.body as { content: string });
+    expect(posts).toHaveLength(5);
+    expect(posts[0]!.content).toContain(`<@${ALICE}>`);
   });
 
   it("手動更新は 1 分に 1 回まで", async () => {
@@ -791,7 +806,7 @@ describe("8 回目のレビューのあとの確認", () => {
 
 
 describe("調整の再通知（§5.5）", () => {
-  it("主催者は、募集メッセージへの返信でロール（なければ @everyone）にメンションして知らせ直せる。1 時間に 1 回まで", async () => {
+  it("主催者は、募集メッセージへの返信でロール（なければ @everyone）にメンションして知らせ直せる。1 時間に 5 回まで", async () => {
     const s = await seedPoll({ joinPolicy: "open" });
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
     const calls = mockDiscord();
@@ -803,6 +818,7 @@ describe("調整の再通知（§5.5）", () => {
     expect(body.content).toContain("@everyone");
     expect(body.allowed_mentions.parse).toEqual(["everyone"]);
     expect(body.message_reference.message_id).toBe("500000000000000001");
+    for (let i = 0; i < 4; i++) expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/renotify`, {}, org))).status).toBe(200);
     expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/renotify`, {}, org))).status).toBe(429);
   });
 
