@@ -766,7 +766,15 @@ export async function editPage(pollId: string): Promise<void> {
               : notice("ok", tr("保存しました。", "Saved.")),
         );
         // 画面の下のほうで押したときも保存できたと分かるよう、下にも少しのあいだ知らせる
-        toast(warnings.length ? "warn" : "ok", warnings.length ? tr("保存しました（画面の上に注意があります）", "Saved (see the note at the top)") : tr("保存しました", "Saved"));
+        // 再通知の案内（画面の上）も、注意と同じく気づけるようにする
+        toast(
+          warnings.length || joinPolicyChanged ? "warn" : "ok",
+          joinPolicyChanged
+            ? tr("保存しました（画面の上で再通知できます）", "Saved (you can re-announce at the top)")
+            : warnings.length
+              ? tr("保存しました（画面の上に注意があります）", "Saved (see the note at the top)")
+              : tr("保存しました", "Saved"),
+        );
       }),
     }, isDraft ? tr("下書きを保存", "Save draft") : tr("変更を保存", "Save changes"));
     const publishBtn = isDraft

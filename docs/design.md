@@ -856,7 +856,7 @@ CREATE TABLE polls (
   discord_event_id TEXT,                     -- 使わない（同上）
   choices_version INTEGER NOT NULL DEFAULT 1, -- 選択肢を変更するたびに +1（§6.9.4）
   last_synced_at  INTEGER,                   -- 募集メッセージ最終更新（主催者の画面に表示。§6.5）
-  last_reminded_at INTEGER,                  -- リマインドの最終実行（記録のみ。回数制限は rate_limits の remind:{pollId}）
+  last_reminded_at INTEGER,                  -- 使っていない（以前のリマインドの回数制限。いまは rate_limits の remind:{pollId} で数える）
   day_reminded_slot_at INTEGER,              -- 使わない（0009 で slots.day_reminded_at に移した）
   remind_day_offset INTEGER NOT NULL DEFAULT 0, -- 予定のリマインドを当日（0）か前日（1）に送るか（§5.7）
   remind_hour     INTEGER NOT NULL DEFAULT 17, -- 予定のリマインドを送る時（0〜23。調整のタイムゾーン）
