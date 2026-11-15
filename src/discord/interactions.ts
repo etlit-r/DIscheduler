@@ -305,8 +305,8 @@ async function handlePollButton(
       i,
       kind === "answer" && poll.join_policy === "closed"
         ? t(
-            "この調整は、参加者以外は回答できない設定です。あなたは参加者に入っていないため、回答できません。参加したい場合は、主催者に参加者への追加を依頼してください。",
-            "This poll is set so that only participants can answer, and you aren't one of them. If you'd like to join, ask the organizer to add you as a participant.",
+            "この調整は、参加者以外は回答できない設定です。参加したい場合は、主催者に参加者への追加を依頼してください。",
+            "This poll is set so that only participants can answer. If you'd like to join, ask the organizer to add you as a participant.",
           )
         : t(
             "この調整の参加者ではないため、回答・閲覧できません。参加したい場合は、主催者に参加者への追加を依頼してください。",
