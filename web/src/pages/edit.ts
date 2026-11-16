@@ -80,6 +80,14 @@ export async function editPage(pollId: string): Promise<void> {
   const reassign = new Map<string, string>();
   let choiceEditorOpen = false;
   const today = epochToZoned(d.now, tz);
+  // 候補に追加できるのは、今日から半年後の同じ日まで（その月にない日なら月末。§6.3）。この日より後はカレンダーで選べない
+  const last = (() => {
+    const t = today.month - 1 + LIMITS.slotAheadMonths;
+    const year = today.year + Math.floor(t / 12);
+    const month = (t % 12) + 1;
+    return { year, month, day: Math.min(today.day, new Date(Date.UTC(year, month, 0)).getUTCDate()) };
+  })();
+  const lastKey = `${last.year}-${pad(last.month)}-${pad(last.day)}`;
   let month = { y: today.year, m: today.month };
   const selectedDates = new Set<string>();
   // 日付の選び方。range のときは、始まりの日と終わりの日をタップして間の日をまとめて選ぶ
@@ -308,7 +316,7 @@ export async function editPage(pollId: string): Promise<void> {
     for (let t = Date.UTC(fy, fm - 1, fd), i = 0; i < 366; t += 86400000, i++) {
       const d = new Date(t);
       const key = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-      if (key > to) break;
+      if (key > to || key > lastKey) break;
       if (key >= todayKey) selectedDates.add(key);
     }
   }
@@ -372,7 +380,7 @@ export async function editPage(pollId: string): Promise<void> {
             type: "button",
             class: `cal-day${sel ? " is-selected" : ""}${key === todayKey ? " is-today" : ""}${key === rangeStart ? " is-range-start" : ""}`,
             aria: { pressed: String(sel), label: tr(`${month.m}月${day}日`, `${MONTHS[month.m - 1]} ${day}`) },
-            disabled: key < todayKey,
+            disabled: key < todayKey || key > lastKey,
             onClick: (e: MouseEvent) => {
               if (pickMode === "range") {
                 if (rangeStart === null) {
@@ -409,8 +417,9 @@ export async function editPage(pollId: string): Promise<void> {
         { class: "cal-head" },
         h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => move(-1), aria: { label: tr("前の月", "Previous month") } }, "◀"),
         h("strong", {}, tr(`${month.y}年${month.m}月`, `${MONTHS[month.m - 1]} ${month.y}`)),
-        h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => move(1), aria: { label: tr("次の月", "Next month") } }, "▶"),
+        h("button", { type: "button", class: "btn btn-secondary btn-small", disabled: month.y * 12 + month.m >= last.year * 12 + last.month, onClick: () => move(1), aria: { label: tr("次の月", "Next month") } }, "▶"),
       ),
+      h("p", { class: "muted small" }, tr(`選べるのは今日から半年後（${last.month}/${last.day}）までです。`, `You can pick dates up to six months from today (${MONTHS[last.month - 1]} ${last.day}).`)),
       h(
         "div",
         { class: "pick-mode", role: "group", aria: { label: tr("日付の選び方", "How to select dates") } },

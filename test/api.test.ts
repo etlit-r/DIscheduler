@@ -643,6 +643,21 @@ describe("3 回目のレビューの修正", () => {
     expect(res.status).toBe(200);
   });
 
+  it("新しく足す候補は今日から半年後まで。すでにある候補はそのまま残せる", async () => {
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const now = Math.floor(Date.now() / 1000);
+    const put = (slots: object[]) => call(jsonReq("PUT", `/api/polls/${s.pollId}/slots`, { slots }, org));
+    const res = await put([{ id: null, startAt: now + 200 * 86400, endAt: null, allDay: true }]);
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain("半年後まで");
+    expect((await put([{ id: null, startAt: now + 180 * 86400, endAt: null, allDay: true }])).status).toBe(200);
+    // すでにある候補は、半年より先でも保存し直せる（以前に作った調整のため）
+    await db().prepare("UPDATE slots SET start_at = ? WHERE id = ?").bind(now + 300 * 86400, s.slotIds[0]).run();
+    const rows = (await db().prepare("SELECT id, start_at, end_at, all_day FROM slots WHERE poll_id = ?").bind(s.pollId).all<{ id: string; start_at: number; end_at: number | null; all_day: number }>()).results;
+    expect((await put(rows.map((r) => ({ id: r.id, startAt: r.start_at, endAt: r.end_at, allDay: r.all_day === 1 })))).status).toBe(200);
+  });
+
   it("候補・選択肢の ID が重複していたら拒否する", async () => {
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
