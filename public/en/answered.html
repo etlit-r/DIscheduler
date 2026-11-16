@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="/assets/site.css">
   <link rel="stylesheet" href="/assets/lp.css">
   <!-- 回答の完了画面（S3a。docs/design.md §6.4, §6.10.1）
-       回答・名前・調整のタイトルなどは表示しない。調整の ID はアドレスの # の後ろにだけ置き、サーバーにも広告の枠にも送らない -->
+       回答・名前・調整のタイトルなどは表示しない。調整の ID はアドレスの # の後ろにだけ置き、サーバーには送らない -->
 </head>
 <body class="lp">
   <header class="site-header">
@@ -48,18 +48,10 @@
           </div>
         </aside>
         <!-- donation:end -->
-        <!-- ad:start -->
-        <aside class="ad-slot" data-ad-slot aria-label="Advertisement">
-          <p class="ad-label">Advertisement</p>
-          <div class="ad-box"><noscript><p class="ad-off">JavaScript is required to show ads.</p></noscript></div>
-          <p class="ad-choice"></p>
-        </aside>
-        <!-- ad:end -->
       </article>
     </div>
   </main>
   <script src="/assets/lang.js" defer></script>
   <script src="/assets/answered.js" defer></script>
-  <!-- ad:start --><script src="/assets/ad-consent.js" defer></script><!-- ad:end -->
 </body>
 </html>

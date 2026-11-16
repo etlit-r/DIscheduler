@@ -25,16 +25,24 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+          cache: npm
       - name: 依存のインストール（インストールスクリプトは実行しない）
         run: npm ci --ignore-scripts
-      - name: 本番の依存の脆弱性監査
-        run: npm audit --omit=dev --audit-level=high
+      - name: 本番の依存の脆弱性監査（中程度以上で止める。本番の依存は hono と valibot だけ）
+        run: npm audit --omit=dev --audit-level=moderate
+      - name: 2 か所に書く値がそろっているか（静的配信と Functions のセキュリティヘッダー）
+        run: npm run check-sync
       - name: 型検査
         run: npm run typecheck
       - name: テスト
         run: npm test
       - name: Web 画面のビルド
         run: npm run build
+      # デプロイのときと同じ手順で、仮の値を静的ページに埋め込めるかを確かめる（置き場所の書き間違いを PR のうちに見つける）
+      - name: 静的ページへの埋め込みの確認（寄付リンクあり・なし）
+        run: |
+          DISCORD_APPLICATION_ID=100000000000000000 PUBLIC_ORIGIN=https://example.com DONATION_URL=https://ko-fi.com/example bash scripts/prepare-public.sh public "$RUNNER_TEMP/dist-a"
+          DISCORD_APPLICATION_ID=100000000000000000 bash scripts/prepare-public.sh public "$RUNNER_TEMP/dist-b"
 
   # 承認だけを行う。秘密の値は使わない（production-approval Environment には secret を置かない）。
   # 承認待ちの間に新しいマージがあれば、この承認待ちは取り消され、新しいほうだけが承認待ちになる
@@ -68,49 +76,28 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+          cache: npm
       - run: npm ci --ignore-scripts
       - name: Web 画面のビルド
         run: npm run build
 
-      - name: 静的ページに設定値を埋め込む（招待リンク・寄付リンク・広告）
+      # 静的ページは public/ を dist/ にコピーしてから設定値を埋め込む。Pages と Worker の設定ファイルにも埋め込む（--config）。
+      # 値の形式の確認と、置き換え漏れの確認もこの中で行う
+      - name: 静的ページと設定ファイルに設定値を埋め込む
         env:
           DISCORD_APPLICATION_ID: ${{ vars.DISCORD_APPLICATION_ID }}
           DONATION_URL: ${{ vars.DONATION_URL }}
-          ADMAX_ID: ${{ vars.ADMAX_ID }}
           PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN }}
-        run: bash scripts/prepare-public.sh public
-
-      # 設定値の形式を確かめてから、Pages（本体）と Worker（Cron・旧アドレスの転送）の設定ファイルに埋め込む。
-      # DISCORD_APPLICATION_ID と DONATION_URL の形式は、前の手順（prepare-public.sh）で確認済み
-      - name: Pages と Worker の設定値を埋め込む
-        env:
           D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
           DISCORD_PUBLIC_KEY: ${{ vars.DISCORD_PUBLIC_KEY }}
-          DISCORD_APPLICATION_ID: ${{ vars.DISCORD_APPLICATION_ID }}
-          DONATION_URL: ${{ vars.DONATION_URL }}
           PAGES_PROJECT: ${{ vars.PAGES_PROJECT }}
-          PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN }}
-        run: |
-          fail() { echo "::error::$1"; exit 1; }
-          [[ "$D1_DATABASE_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || fail "Environment variable D1_DATABASE_ID が未設定か、形式が正しくありません"
-          [[ "$DISCORD_PUBLIC_KEY" =~ ^[0-9a-f]{64}$ ]] || fail "Environment variable DISCORD_PUBLIC_KEY が未設定か、形式が正しくありません"
-          [[ "$PAGES_PROJECT" =~ ^[a-z0-9][a-z0-9-]{0,57}$ ]] || fail "Environment variable PAGES_PROJECT（Cloudflare Pages のプロジェクト名）が未設定か、形式が正しくありません"
-          [[ "$PUBLIC_ORIGIN" =~ ^https://[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || fail "Environment variable PUBLIC_ORIGIN（例: https://discheduler.etlits.dev。末尾の / なし）が未設定か、形式が正しくありません"
-          sed -i "s/__D1_DATABASE_ID__/${D1_DATABASE_ID}/" wrangler.jsonc
-          sed -i \
-            -e "s|__PAGES_PROJECT__|${PAGES_PROJECT}|" \
-            -e "s|__D1_DATABASE_ID__|${D1_DATABASE_ID}|" \
-            -e "s|__DISCORD_APPLICATION_ID__|${DISCORD_APPLICATION_ID}|" \
-            -e "s|__DISCORD_PUBLIC_KEY__|${DISCORD_PUBLIC_KEY}|" \
-            -e "s|__PUBLIC_ORIGIN__|${PUBLIC_ORIGIN}|" \
-            -e "s|__DONATION_URL__|${DONATION_URL}|" \
-            pages/wrangler.jsonc
-          sed -i "s|__PUBLIC_ORIGIN__|${PUBLIC_ORIGIN}|" ads/public/_headers
-          if grep -q "__[A-Z0-9_]*__" wrangler.jsonc pages/wrangler.jsonc ads/public/_headers; then fail "設定値の置き換えに失敗しました"; fi
+        run: bash scripts/prepare-public.sh --config public dist
 
       # wrangler は npm ci で入れた版（package-lock.json で固定）をそのまま使う。
       # wranglerVersion は指定しない。指定すると、Dependabot が package.json を上げたときに版がずれ、
       # Action がずれた版をインストールスクリプト付きで別に入れてしまう
+      # マイグレーションはデプロイより先に当たる。デプロイが終わるまで（失敗したときはその後も）古いコードが新しいスキーマで動くので、
+      # マイグレーションは必ず、いま動いている版のコードでもそのまま動く形にする（列を消すのは、どの版も使わなくなってから。docs/design.md §14）
       - name: データベースのマイグレーション
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
@@ -118,18 +105,8 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: d1 migrations apply DB --remote
 
-      # 広告の枠を、本体とは別のオリジン（ads.etlits.dev）の Worker として配信する。
-      # 広告の ID（ADMAX_ID）が設定されているときだけデプロイする（docs/design.md §6.10.1）
-      - name: 広告の枠をデプロイ
-        if: ${{ vars.ADMAX_ID != '' }}
-        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --config ads/wrangler.jsonc
-
       # 本体（LP・Web 画面・Web API・Discord からの通信）を Cloudflare Pages へデプロイする。
-      # 設定は pages/wrangler.jsonc（前の手順で値を埋め込み済み）。Bot トークンは Pages のプロジェクトの Secret
+      # 設定は pages/wrangler.jsonc（前の手順で値を埋め込み済み。配信するのは dist/）。Bot トークンは Pages のプロジェクトの Secret
       - name: Cloudflare Pages へデプロイ
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:

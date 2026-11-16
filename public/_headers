@@ -1,23 +1,37 @@
-# Workers Static Assets のレスポンスヘッダー（docs/security-design.md §4.2 と同じ値）
-# アセットは Worker のコードを通らずに配信されるため、ここで付与する
+# 静的配信（Cloudflare Pages）のレスポンスヘッダー（docs/security-design.md §4.2）
+# 静的ファイルは Pages Functions（src/index.ts）を通らずに配信されるため、ここで付ける。
+# /* の値は src/security-headers.json と同じにする（scripts/check-sync.mjs で確かめる。CI でも実行）
 /*
-  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-src https://ads.etlits.dev; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; require-trusted-types-for 'script'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; require-trusted-types-for 'script'; upgrade-insecure-requests
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: no-referrer
-  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=(), join-ad-interest-group=(), run-ad-auction=(), attribution-reporting=()
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Resource-Policy: same-origin
 
+# ファイル名が変わらないので、ブラウザに保存させず、毎回新しいかを確かめさせる（デプロイ直後に古いスクリプトが残らないように）
 /assets/*
-  Cache-Control: public, max-age=3600
+  Cache-Control: no-cache
 
 /app/assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# 画面の HTML は /p/… などで Functions から返す。/app/ を直接開いたときも、保存させず検索にも載せない
+/app/
+  Cache-Control: no-store
+  X-Robots-Tag: noindex, nofollow
+
+/app/index.html
+  Cache-Control: no-store
+  X-Robots-Tag: noindex, nofollow
 
 /answered
   X-Robots-Tag: noindex, nofollow
 
 /en/answered
+  X-Robots-Tag: noindex, nofollow
+
+/404
   X-Robots-Tag: noindex, nofollow

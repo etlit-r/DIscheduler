@@ -347,6 +347,11 @@ polls.put("/:id/slots", async (c) => {
     if (s.id) seenIds.add(s.id);
     if (s.endAt !== null && s.endAt <= s.startAt) throw new AppError(400, "invalid", msg("終了は開始より後にしてください。", "The end must be after the start."));
     if (s.startAt < now - 366 * DAY || s.startAt > now + 2 * 365 * DAY) throw new AppError(400, "invalid", msg("候補の日時が範囲外です。", "A date option is out of range."));
+    // 新しく足す候補は、今日から半年後の同じ日まで（すでにある候補はそのまま残せる。§6.3）。
+    // 画面（調整のタイムゾーンの日付で判定）とずれないよう、サーバーでは 6 か月でいちばん長い 184 日に 1 日の余裕をみる
+    if (!s.id && s.startAt > now + (LIMITS.slotAheadMonths * 31 - 1) * DAY) {
+      throw new AppError(400, "invalid", msg("候補に追加できるのは、今日から半年後までの日付です。", "You can add dates up to six months from today."));
+    }
     const key = `${s.startAt}-${s.endAt}`;
     if (seen.has(key)) throw new AppError(400, "invalid", msg("同じ候補が重複しています。", "The same date option appears twice."));
     seen.add(key);

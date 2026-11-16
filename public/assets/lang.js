@@ -3,7 +3,6 @@
 // - 切り替えで選んだ言語は、このブラウザの localStorage（dis.lang。Web 画面と共通）にだけ保存する
 // - 選んだ言語がまだなければ、ブラウザの言語（日本語なら日本語、それ以外は英語）のページへ移る。
 //   検索エンジンのクローラーは移さない（日本語版と英語版のどちらも、それぞれのアドレスで読まれるように）
-// - 広告の枠（ad-consent.js）より先に読み込む。別の言語のページへ移るときは、広告の枠を読み込ませない（data-lang-redirect）
 (() => {
   const KEY = "dis.lang";
   const page = document.documentElement.lang === "en" ? "en" : "ja";
@@ -104,6 +103,5 @@
   // 検索エンジンのクローラーと自動操作のブラウザは、?lang= があっても移さない
   if (fromUrl && isBot()) return;
   // もう一方の言語のページへ移る（回答の完了画面の #p= だけを保つ）
-  document.documentElement.setAttribute("data-lang-redirect", "");
   location.replace(withHash(fromUrl ? withLang(base, fromUrl) : base));
 })();

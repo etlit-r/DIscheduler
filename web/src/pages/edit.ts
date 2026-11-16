@@ -80,6 +80,14 @@ export async function editPage(pollId: string): Promise<void> {
   const reassign = new Map<string, string>();
   let choiceEditorOpen = false;
   const today = epochToZoned(d.now, tz);
+  // 候補に追加できるのは、今日から半年後の同じ日まで（その月にない日なら月末。§6.3）。この日より後はカレンダーで選べない
+  const last = (() => {
+    const t = today.month - 1 + LIMITS.slotAheadMonths;
+    const year = today.year + Math.floor(t / 12);
+    const month = (t % 12) + 1;
+    return { year, month, day: Math.min(today.day, new Date(Date.UTC(year, month, 0)).getUTCDate()) };
+  })();
+  const lastKey = `${last.year}-${pad(last.month)}-${pad(last.day)}`;
   let month = { y: today.year, m: today.month };
   const selectedDates = new Set<string>();
   // 日付の選び方。range のときは、始まりの日と終わりの日をタップして間の日をまとめて選ぶ
@@ -97,6 +105,8 @@ export async function editPage(pollId: string): Promise<void> {
   let busy = false;
   /** 削除に失敗したときのエラー。削除ボタンは画面の一番下にあるので、上の知らせとは別にボタンのすぐ下にも出す */
   let deleteError: HTMLElement | null = null;
+  /** 操作に失敗したときのエラー。画面の上に出しても気づきにくいので、下の［変更を保存］などのボタンの列のすぐ上に出す */
+  let bottomError: HTMLElement | null = null;
 
   const isDraft = d.poll.status === "draft";
   const choicesLocked = d.poll.status === "closed" || d.poll.status === "fixed";
@@ -270,18 +280,27 @@ export async function editPage(pollId: string): Promise<void> {
     );
   }
 
-  /** onError: エラーの文言を受け取り、画面の上の知らせのほかに出したいとき（削除ボタンの下など）に使う。描き直したあとに呼ぶ */
+  /**
+   * 操作を実行し、失敗したらエラーを画面の下（ボタンの列の上）に出して、そこまでスクロールする。
+   * onError: エラーを別の場所（削除ボタンの下など）に出したいときに使う。エラーの文言を受け取り、自分で描き直す
+   */
   async function run(action: () => Promise<void>, fallback = tr("エラーが発生しました。", "Something went wrong."), onError?: (text: string) => void) {
     if (busy) return;
     busy = true;
     deleteError = null;
+    bottomError = null;
     try {
       await action();
     } catch (e) {
       const text = errorText(e, "edit", fallback);
-      message = notice("error", text);
       if (onError) onError(text);
-      else draw();
+      else {
+        const el = notice("error", text);
+        bottomError = el;
+        draw();
+        // 下に固定したボタンの列に隠れないよう、画面の真ん中あたりに来るようにする
+        el.scrollIntoView({ block: "center" });
+      }
     } finally {
       busy = false;
     }
@@ -297,7 +316,7 @@ export async function editPage(pollId: string): Promise<void> {
     for (let t = Date.UTC(fy, fm - 1, fd), i = 0; i < 366; t += 86400000, i++) {
       const d = new Date(t);
       const key = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-      if (key > to) break;
+      if (key > to || key > lastKey) break;
       if (key >= todayKey) selectedDates.add(key);
     }
   }
@@ -361,7 +380,7 @@ export async function editPage(pollId: string): Promise<void> {
             type: "button",
             class: `cal-day${sel ? " is-selected" : ""}${key === todayKey ? " is-today" : ""}${key === rangeStart ? " is-range-start" : ""}`,
             aria: { pressed: String(sel), label: tr(`${month.m}月${day}日`, `${MONTHS[month.m - 1]} ${day}`) },
-            disabled: key < todayKey,
+            disabled: key < todayKey || key > lastKey,
             onClick: (e: MouseEvent) => {
               if (pickMode === "range") {
                 if (rangeStart === null) {
@@ -398,8 +417,9 @@ export async function editPage(pollId: string): Promise<void> {
         { class: "cal-head" },
         h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => move(-1), aria: { label: tr("前の月", "Previous month") } }, "◀"),
         h("strong", {}, tr(`${month.y}年${month.m}月`, `${MONTHS[month.m - 1]} ${month.y}`)),
-        h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => move(1), aria: { label: tr("次の月", "Next month") } }, "▶"),
+        h("button", { type: "button", class: "btn btn-secondary btn-small", disabled: month.y * 12 + month.m >= last.year * 12 + last.month, onClick: () => move(1), aria: { label: tr("次の月", "Next month") } }, "▶"),
       ),
+      h("p", { class: "muted small" }, tr(`選べるのは今日から半年後（${last.month}/${last.day}）までです。`, `You can pick dates up to six months from today (${MONTHS[last.month - 1]} ${last.day}).`)),
       h(
         "div",
         { class: "pick-mode", role: "group", aria: { label: tr("日付の選び方", "How to select dates") } },
@@ -875,6 +895,7 @@ export async function editPage(pollId: string): Promise<void> {
           h("p", { class: "muted small" }, isDraft ? tr("締切は目安です。未入力なら公開から 7 日後になります。締切を過ぎても回答の入力・変更はできます。", "The deadline is a guide. If left empty, it is 7 days after publishing. Answers can still be entered or changed after the deadline.") : tr("締切は目安です。締切を過ぎても回答の入力・変更はできます。", "The deadline is a guide. Answers can still be entered or changed after the deadline.")),
         ),
         reminderSection(),
+        bottomError,
         h(
           "div",
           { class: "row row-end sticky-actions" },

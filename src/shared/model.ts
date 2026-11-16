@@ -21,6 +21,8 @@ export const LIMITS = {
   choiceScoreMax: 10,
   displayNameMax: 64,
   bodyBytesMax: 32 * 1024,
+  /** 新しく足す候補は、今日から何か月先の同じ日までにするか（§6.3） */
+  slotAheadMonths: 6,
 } as const;
 
 export const CHOICE_COLORS: readonly ChoiceColor[] = ["green", "teal", "yellow", "orange", "red", "gray"];

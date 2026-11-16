@@ -1,0 +1,9 @@
+{
+  "$comment": "寄付リンクの決まり（docs/design.md §6.10）。アプリ（src/shared/text.ts）と、デプロイ時に静的ページへ埋め込むスクリプト（scripts/prepare-public.sh）の両方がこのファイルを読む",
+  "urlPattern": "^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/-]*)?$",
+  "kofiPattern": "^https://(www\\.)?ko-fi\\.com(/|$)",
+  "kofiNote": {
+    "ja": "支援は Ko-fi（海外の支援サービス）で受け付けています。画面は英語ですが、金額を選んで、PayPal で支払えます。",
+    "en": "Support is accepted through Ko-fi. Choose an amount and pay with PayPal."
+  }
+}

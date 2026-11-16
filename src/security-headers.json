@@ -1,0 +1,13 @@
+{
+  "$comment": "すべてのページに付けるセキュリティヘッダー（docs/security-design.md §4.2）。Functions の応答（src/index.ts）と静的配信（public/_headers の /*）の両方で使う。public/_headers は scripts/check-sync.mjs でこのファイルと一致するかを確かめる",
+  "headers": {
+    "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; require-trusted-types-for 'script'; upgrade-insecure-requests",
+    "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=(), join-ad-interest-group=(), run-ad-auction=(), attribution-reporting=()",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin"
+  }
+}
