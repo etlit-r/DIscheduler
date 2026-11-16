@@ -4,7 +4,7 @@ Discord のチャンネル（またはロール）のメンバー間で日程調
 Cloudflare Workers の無料枠のみで完結するサーバーレス構成とする。
 
 - 版: 1.0（初版）
-- 作成日: 2026-11-06
+- 作成日: 2026-11-14
 - 関連文書: [public/security.html](../public/security.html)（利用者向けセキュリティ方針。`/security` で公開）、[docs/security-design.md](./security-design.md)（セキュリティ設計詳細）、[SECURITY.md](../SECURITY.md)（脆弱性の報告窓口）
 
 ---
