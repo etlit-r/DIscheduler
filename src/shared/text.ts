@@ -61,8 +61,9 @@ export function isValidDonationUrl(u: string | null | undefined): u is string {
 export const KOFI_DONATION_NOTE = donation.kofiNote.ja;
 /** 英語の画面での説明（Ko-fi の画面が英語であることは書かない。§6.12） */
 export const KOFI_DONATION_NOTE_EN = donation.kofiNote.en;
+const KOFI_URL_PATTERN = new RegExp(donation.kofiPattern);
 export function donationNote(url: string, lang: Lang = "ja"): string {
-  if (!new RegExp(donation.kofiPattern).test(url)) return "";
+  if (!KOFI_URL_PATTERN.test(url)) return "";
   return lang === "en" ? KOFI_DONATION_NOTE_EN : KOFI_DONATION_NOTE;
 }
 
