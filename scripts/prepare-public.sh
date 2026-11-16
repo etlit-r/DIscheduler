@@ -38,7 +38,15 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 fail() { echo "::error::$1" >&2; exit 1; }
 
 [[ -d "$src" ]] || fail "$src がありません"
-[[ "$(cd "$src" && pwd)" != "$(mkdir -p "$out" && cd "$out" && pwd)" ]] || fail "元のディレクトリと出力先が同じです"
+# 出力先は毎回消して作り直すので、元のディレクトリやリポジトリを含む場所を指していたら止める（"." や ".." の打ち間違いで消さないように）
+src_abs="$(cd "$src" && pwd)"
+out_abs="$(realpath -m "$out")"
+[[ "$out_abs" != "/" ]] || fail "出力先（$out）が正しくありません"
+case "$out_abs/" in
+  "$root/" | "$src_abs/" | "$src_abs"/*) fail "出力先（$out）が正しくありません" ;;
+esac
+case "$src_abs/" in "$out_abs"/*) fail "出力先（$out）が元のディレクトリを含んでいます" ;; esac
+case "$root/" in "$out_abs"/*) fail "出力先（$out）がリポジトリを含んでいます" ;; esac
 
 # --- 値の確認 ---
 app_id="${DISCORD_APPLICATION_ID:-}"
