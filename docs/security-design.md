@@ -150,7 +150,7 @@ Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 X-Content-Type-Options: nosniff
 X-Frame-Options: DENY
 Referrer-Policy: no-referrer
-Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=(), join-ad-interest-group=(), run-ad-auction=(), attribution-reporting=()
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Resource-Policy: same-origin
 Cache-Control: no-store            （API・HTML。ハッシュ付き静的アセットは immutable）
@@ -158,9 +158,10 @@ X-Robots-Tag: noindex, nofollow    （/ と /security を除く）
 ```
 
 - `'unsafe-inline'` / `'unsafe-eval'` は使用しない。インラインスクリプト・インラインスタイル・`eval` を禁止。
-- 静的配信の LP・セキュリティ方針ページ・回答の完了画面は、広告の枠を埋め込むため `frame-src https://ads.etlits.dev` を加える（`public/_headers`）。
+- `Permissions-Policy` では、端末の機能に加えて、広告会社が使う閲覧の傾向の推測と広告の仕組み（Topics API・広告オークション・効果測定）も止める。
+- 値は `src/security-headers.json` にまとめ、Functions の応答（`src/index.ts`）と静的配信（`public/_headers` の `/*`）で同じものを使う。2 つがそろっているかは CI の `npm run check-sync` で確かめる。静的配信では、存在しないパスに `404.html` を 404 で返し、`/app/`（画面の HTML の元）を直接開いたときも `no-store`・`noindex` を付ける。
 - **正式なアドレスへの集約**（設計書 §14）。本体は Cloudflare Pages（`PUBLIC_ORIGIN`）で動かす。旧アドレスの Worker や、Pages がデプロイごとに作る別名のアドレスへのアクセスは、GET を正式なアドレスへ転送し、それ以外は 404 にする（Discord からの署名付きの通信を除く）。入力リンクは常に正式なアドレスで発行する。
-- **広告の枠は別オリジン**（設計書 §6.10.1）。広告会社のスクリプトは本体とは別の Worker（`ads.etlits.dev`）の中だけで動かし、同一オリジンポリシーで本体のページ・Cookie・localStorage から切り離す。本体と広告の枠は同じ `etlits.dev` の下（same-site）なので、本体の Cookie はすべて `__Host-` 付きにして広告の枠から読めず上書きもされないようにし、API は書き込みのたびに `Origin` の完全一致と CSRF トークンを求め、CORS のヘッダーを返さない。iframe の `sandbox` に `allow-top-navigation` を付けず、本体のページの移動を禁止する。広告の枠の CSP は広告会社のスクリプトを許すが、`frame-ancestors` で本体以外への埋め込みを禁止する。閲覧者は枠の下のボタンで広告を拒否でき、拒否すると広告の枠を読み込まない。広告は Worker が返す画面（作成・回答入力・集計など）には置かない。回答を保存したあとの完了画面（`/answered`）は、回答・名前・タイトルを表示しない静的ページで、API も呼ばない。調整の ID はアドレスの `#` の後ろにだけ置くので、サーバーのログにも広告会社にも届かない。
+- **広告は出さない**（設計書 §6.10.1）。以前の広告の枠（別オリジンの `ads.etlits.dev`）はなくした。回答を保存したあとの完了画面（`/answered`）は、回答・名前・タイトルを表示しない静的ページで、API も呼ばない。調整の ID はアドレスの `#` の後ろにだけ置くので、サーバーのログに届かない。広告を入れるときは、この節と CSP・Permissions-Policy を決め直してからにする。
 - 設定値はテストで固定化し、緩める変更は CI で検知する。
 
 ### 4.3 トークンとセッションのライフサイクル
@@ -275,5 +276,4 @@ stateDiagram-v2
 | 入力リンクの転送 | ephemeral メッセージのリンクを本人が外部の人に渡すと、10 分以内・1 回に限り本人として閲覧・回答できる | 参加者本人が意図的に渡した場合のみ起こる。1 回限り・10 分・1 調整限定で影響を限定。回答画面と［使い方］ボタンの説明に「リンクを他人に渡さないでください」と表示する |
 | Cloudflare / Discord への依存 | 両社のインフラ・従業員はデータにアクセスしうる | 各社のセキュリティ・プライバシーポリシーに依拠。保存データを最小化して影響を低減 |
 | 無料プラン | SLA なし、Workers のログ保持が短い | 用途（日程調整）に対して許容 |
-| 広告 | LP・セキュリティ方針ページ・回答の完了画面の広告の枠では、広告会社のスクリプトが動き、広告会社の Cookie・トラッキングが使われる。不適切な広告や、悪質なサイトへ誘導する広告が出る可能性がある。閲覧者の IP アドレス・ブラウザの情報・広告の枠のアドレスが広告会社に届く | 枠は別オリジンで切り離し、本体のデータや他の画面に触れられない。参加者の名前や回答が出る画面には置かない。閲覧者は拒否でき（Global Privacy Control も尊重）、セキュリティ方針ページで開示する |
 | D1 の保存時暗号化 | Cloudflare 側で保存時暗号化されるが、アプリ側での追加暗号化は行わない | 保存データが予定と表示名のみであり、鍵管理の複雑化による事故リスクの方が大きいと判断 |

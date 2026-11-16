@@ -97,6 +97,8 @@ export async function editPage(pollId: string): Promise<void> {
   let busy = false;
   /** 削除に失敗したときのエラー。削除ボタンは画面の一番下にあるので、上の知らせとは別にボタンのすぐ下にも出す */
   let deleteError: HTMLElement | null = null;
+  /** 操作に失敗したときのエラー。画面の上に出しても気づきにくいので、下の［変更を保存］などのボタンの列のすぐ上に出す */
+  let bottomError: HTMLElement | null = null;
 
   const isDraft = d.poll.status === "draft";
   const choicesLocked = d.poll.status === "closed" || d.poll.status === "fixed";
@@ -270,18 +272,27 @@ export async function editPage(pollId: string): Promise<void> {
     );
   }
 
-  /** onError: エラーの文言を受け取り、画面の上の知らせのほかに出したいとき（削除ボタンの下など）に使う。描き直したあとに呼ぶ */
+  /**
+   * 操作を実行し、失敗したらエラーを画面の下（ボタンの列の上）に出して、そこまでスクロールする。
+   * onError: エラーを別の場所（削除ボタンの下など）に出したいときに使う。エラーの文言を受け取り、自分で描き直す
+   */
   async function run(action: () => Promise<void>, fallback = tr("エラーが発生しました。", "Something went wrong."), onError?: (text: string) => void) {
     if (busy) return;
     busy = true;
     deleteError = null;
+    bottomError = null;
     try {
       await action();
     } catch (e) {
       const text = errorText(e, "edit", fallback);
-      message = notice("error", text);
       if (onError) onError(text);
-      else draw();
+      else {
+        const el = notice("error", text);
+        bottomError = el;
+        draw();
+        // 下に固定したボタンの列に隠れないよう、画面の真ん中あたりに来るようにする
+        el.scrollIntoView({ block: "center" });
+      }
     } finally {
       busy = false;
     }
@@ -875,6 +886,7 @@ export async function editPage(pollId: string): Promise<void> {
           h("p", { class: "muted small" }, isDraft ? tr("締切は目安です。未入力なら公開から 7 日後になります。締切を過ぎても回答の入力・変更はできます。", "The deadline is a guide. If left empty, it is 7 days after publishing. Answers can still be entered or changed after the deadline.") : tr("締切は目安です。締切を過ぎても回答の入力・変更はできます。", "The deadline is a guide. Answers can still be entered or changed after the deadline.")),
         ),
         reminderSection(),
+        bottomError,
         h(
           "div",
           { class: "row row-end sticky-actions" },

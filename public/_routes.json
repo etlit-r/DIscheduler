@@ -1,5 +1,5 @@
 {
   "version": 1,
-  "include": ["/discord/*", "/api/*", "/l", "/p/*", "/g/*"],
+  "include": ["/discord/*", "/api/*", "/l", "/l/*", "/p/*", "/g/*"],
   "exclude": []
 }

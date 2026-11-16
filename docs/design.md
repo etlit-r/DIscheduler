@@ -84,7 +84,7 @@ flowchart LR
 | 実行環境 | Cloudflare Pages（Free。Pages Functions の advanced mode で Worker のコードをそのまま動かす）＋ Cloudflare Workers（Free。Cron と旧アドレスの転送） | 常駐プロセス不要。HTTP Interactions 方式なら Gateway 接続が不要。公開アドレスを `<プロジェクト名>.pages.dev` にすることで、`pages.dev` が Public Suffix List に載っているため、アドレスの直下に AdSense の所有確認や `ads.txt` を置ける（§6.10.1） |
 | Discord 連携 | HTTP Interactions Endpoint + REST API | WebSocket 常駐が不要でサーバーレスと相性が良い |
 | DB | Cloudflare D1（Free） | SQL・トランザクション・プリペアドステートメントが使える。書込上限が KV より大きい |
-| 静的配信 | Cloudflare Pages の静的配信（`public/`） | 無料・同一オリジンで配信でき CSP を厳しくできる。`_routes.json` で、Pages Functions を動かすパス（`/discord/*`・`/api/*`・`/l`・`/p/*`）以外は静的ファイルとして配信し、`_headers` のヘッダーを付ける |
+| 静的配信 | Cloudflare Pages の静的配信（`public/` を元に、デプロイ時に作る `dist/`） | 無料・同一オリジンで配信でき CSP を厳しくできる。`_routes.json` で、Pages Functions を動かすパス（`/discord/*`・`/api/*`・`/l`・`/l/*`・`/p/*`・`/g/*`）以外は静的ファイルとして配信し、`_headers` のヘッダーを付ける。存在しないパスには `404.html` を 404 で返す（ないと Pages は LP を 200 で返す）。`/app/`（画面の HTML の元）を直接開いたときも、保存させず検索に載せない |
 | 定期処理 | Cron Triggers（Worker `discheduler`。Pages は Cron に対応していないため） | **1 日 2 回（日本時間 1 時・13 時）だけ** 実行する。回答が入りやすい昼休み（12〜13 時）と終業後の夜の直後に反映するため。未反映の回答の変更がある募集メッセージの更新、締切を過ぎた調整の `closed` への変更。1 時の回は期限切れデータの削除も行う。ほかに、毎時 0〜4 分に 1 分おきに予定のリマインドだけを行う（主催者が決めた日時に送るため。§5.7） |
 | 言語 | TypeScript | 型による入力検証の取りこぼし防止 |
 | ルーティング | Hono | Workers ネイティブで軽量、依存が少ない |
@@ -414,7 +414,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 - スマートフォン（Discord アプリ内ブラウザ）での操作を最優先。最小タップ領域 44px。
 - 日本語 UI。日時の表示・入力は §6.7 のタイムゾーン規則に従う（例: `11/12(水) 20:00–22:00 JST`）。
 - ライト／ダークモード対応（Discord の利用者はダークが多い）。
-- 外部 CDN・外部フォント・解析タグは一切読み込まない（CSP で禁止。寄付はただのリンク。§6.10）。広告は LP・セキュリティ方針ページ・回答の完了画面（S3a）の、サイトから切り離した枠の中だけに出す（§6.10.1）。作成・回答入力・集計・公開完了・確定完了の画面には出さない。
+- 外部 CDN・外部フォント・解析タグは一切読み込まない（CSP で禁止。寄付はただのリンク。§6.10）。広告は今は出していない（§6.10.1）。
 - 色だけに頼らない（選択肢は記号＋色＋読み上げラベルで表示する）。
 - 強調色は赤（ライト `#d32f2f`、ダーク `#ff6b6b`。CSS の `--emphasis`）。必須の印（「（必須）」）、公開に足りない項目の案内、操作を促す文（「選んだ N 日を候補にするには…」）に使う。ボタンなどの基本の色（アクセント色）とは分ける。
 
@@ -426,7 +426,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 | S1 | リンク検証（中継） | `/l#<token>` | 全員 |
 | S2 | 調整の作成・編集（タイトル・候補日時・選択肢・参加者など） | `/p/{pollId}/edit` | 主催者 |
 | S3 | 回答入力（各候補の集計つき） | `/p/{pollId}/answer` | 参加者 |
-| S3a | 回答の完了（回答を保存したあとに移る。広告の枠つき。§6.4, §6.10.1） | `/answered#p={pollId}`（英語版 `/en/answered#p={pollId}`） | 参加者 |
+| S3a | 回答の完了（回答を保存したあとに移る。§6.4） | `/answered#p={pollId}`（英語版 `/en/answered#p={pollId}`） | 参加者 |
 | S4 | 集計・確定 | `/p/{pollId}` | 参加者・主催者（全員が全員の回答を閲覧可。確定操作は主催者のみ） |
 | S5 | エラー（期限切れ・無料枠超過など） | —（各画面の中で表示） | 全員 |
 | S6 | セキュリティ方針 | `/security`（英語版 `/en/security`） | 公開 |
@@ -435,7 +435,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 | S9 | 作成した調整の一覧（このサーバーで自分が主催した調整。§6.11） | `/g/{guildId}/polls` | 主催者 |
 | S8 | マニュアル（項目ごとに 1 ページ） | `/manual/`、`/manual/{項目}`（英語版 `/en/manual/`、`/en/manual/{項目}`） | 公開 |
 
-- S0・S3a・S6・S8 は静的ページ（`public/index.html`、`public/answered.html`、`public/security.html`、`public/manual/*.html`）として Cloudflare Pages から配信する（英語版は `public/en/` の下に同じ構成で置く。§6.12）。JavaScript は言語の切り替え（`public/assets/lang.js`）と広告の同意（`public/assets/ad-consent.js`）など、同じオリジンの小さなスクリプトだけを使い、アプリと同じ CSP を `public/_headers` で付与する。
+- S0・S3a・S6・S8 は静的ページ（`public/index.html`、`public/answered.html`、`public/security.html`、`public/manual/*.html`）として Cloudflare Pages から配信する（英語版は `public/en/` の下に同じ構成で置く。§6.12）。JavaScript は言語の切り替え（`public/assets/lang.js`）など、同じオリジンの小さなスクリプトだけを使い、アプリと同じ CSP を `public/_headers` で付与する。
 - **検索結果での表示（S0）**: LP の `<title>` と `og:title` を「DIscheduler（Discord の日程調整 Bot）」、`og:site_name` と構造化データ（`WebSite` の `name`）を「DIscheduler」にする。正規 URL（`<link rel="canonical">`・`og:url`）と構造化データの `url` は、正式な公開アドレス（`PUBLIC_ORIGIN`）を `scripts/prepare-public.sh` がデプロイ時に埋め込む（Pages のデプロイごとの別名のアドレスが、検索結果に別のページとして出ないようにするため）。構造化データは実行されないデータなので、CSP（`script-src 'self'`）の対象にならない。Google は検索結果のタイトルを書き換えることがあるため、表示は保証されない。
 - S8 のマニュアルは、項目（はじめに、サーバーに追加する、使えるチャンネルを決める、調整を作る、候補日時を入れる、回答の選択肢を変える、参加者を決める、公開する、回答する、集計を見て確定する、募集メッセージの更新、調整を管理・削除する、困ったときは）ごとに 1 ページとし、全ページに同じ目次（広い画面では左のサイドバー、狭い画面では本文の下。本文の上に「目次へ」のリンク）と、前後のページへのリンクを置く。ヘッダー・フッター・LP の「使い方」の下と、Discord の［使い方］からリンクする。項目を足すときは、全ページの目次と前後のリンクを直す。
 - **利用者向けのセキュリティ方針は S6（`public/security.html`）を基準とする。** リポジトリの `SECURITY.md` は S6 へのリンクと脆弱性の報告窓口だけを載せる。
@@ -496,6 +496,8 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 - 公開後はタイトルを空にできない（募集メッセージの見出しになるため）。締切は変えたときだけ送り、過ぎた締切を保存し直しても止まらないようにする。締切は画面で分まで入力するので、保存も分単位にそろえ、比べるときも分単位で比べる。
 - [公開してチャンネルに投稿] はタイトルと候補が 1 件以上あるときだけ押せる。押せないときは、ボタンの下に足りない項目を強調色で「タイトルと候補日時を入力してください。」（足りない項目だけ）と出し、その下に「公開するには、タイトルと候補日時（1 件以上）が必要です。」を出す。成功したら S7（公開完了）に移り、「チャンネルに募集を投稿しました」と、集計画面へのリンク、寄付リンク（§6.10）を表示する。
 
+- 保存・公開などの操作に失敗したときのエラーは、画面の上ではなく、下の［変更を保存］などのボタンの列のすぐ上に出し、そこまでスクロールする（ボタンは画面の下にあり、上に出しても気づきにくいため）。削除に失敗したときだけは、削除ボタンのすぐ下に出す。
+
 #### 6.3.1 最近使った時間帯
 - 開始・終了の入力の上に、**そのサーバーで最近使った時間帯を新しい順に 3 件まで**ボタンで出す（「最近使った:」）。押すと開始・終了の時刻が入る。まだ使ったことがないサーバーでは出さない。
 - 覚えるのは、候補日時の保存（`PUT /api/polls/:id/slots`）で**新しく追加した候補**の開始・終了の時刻（調整のタイムゾーンでの壁時計の時刻、`HH:MM`）だけ。終日の候補と終了のない候補は覚えない。すでにある時間帯を使うと先頭に移る。
@@ -545,7 +547,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
   - 集計には **保存済みの回答** を数える。自分の回答も保存した時点で集計に入る。保存前に選んだ内容は数えず、画面上で選び直しても集計の数字は変わらない（自分の入力で目安が動いて見えないようにするため）。
   - [集計表を見る] で S4 の集計表（メンバー別の表を含む）を開く。入力中の内容は保存するまで S3 に残る。
 - **最初の回答者**：まだ誰も回答を保存していない調整では、画面のいちばん上（タイトルの上）に「あなたが最初の入力者です。」と表示する。回答を受け付けていないとき（公開前の下書きなど）は出さない。
-- **保存したあと**：S3a（回答の完了）に移る。表示するのは「回答を保存しました」「あなたの回答は集計に反映されました。」と［集計画面を見る］（S4 へ）だけで、回答・名前・調整のタイトルは表示しない。S3a は静的ページで、サーバーの API を呼ばない。調整の ID はアドレスの `#` の後ろ（`/answered#p={pollId}`）に置くので、サーバーにも広告会社にも送られない（`public/assets/answered.js` が形式を確かめてから［集計画面を見る］のリンクを作る）。S3a には広告の枠を 1 つ置く（§6.10.1）。
+- **保存したあと**：S3a（回答の完了）に移る。表示するのは「回答を保存しました」「あなたの回答は集計に反映されました。」と［集計画面を見る］（S4 へ）だけで、回答・名前・調整のタイトルは表示しない。S3a は静的ページで、サーバーの API を呼ばない。調整の ID はアドレスの `#` の後ろ（`/answered#p={pollId}`）に置くので、サーバーに送られない（`public/assets/answered.js` が形式を確かめてから［集計画面を見る］のリンクを作る）。
 - **集計の更新**
   - 画面を開いたとき、保存したとき、[↻ 更新] を押したとき、ほかのタブから戻ったとき（`visibilitychange`）に取得し直す。
   - 一定間隔での自動更新はしない（Workers 無料枠のリクエスト数を節約するため）。
@@ -748,31 +750,12 @@ S2 の [変更] を押すと、ひな形から選ぶか、自分で編集でき�
 ---
 
 #### 6.10.1 広告
-**今は広告を出していない。** 忍者AdMax では不適切に見える広告が出たため、使うのをやめた（GitHub の `ADMAX_ID` を消し、広告の枠を出さない）。広告の枠の仕組みは、別の広告ネットワークに替えるときのために残してある。以下は、使っていたときの設計。
+**今は広告を出していない。広告の枠の仕組み（忍者AdMax）はなくした。** 忍者AdMax では不適切に見える広告が出たため使うのをやめ、別オリジンの広告の枠（`ads.etlits.dev` の Worker `discheduler-ads`、`ads/`）、表示と拒否の切り替え（`ad-consent.js`）、静的ページの広告の枠と説明（`<!-- ad:start -->` など）、`ADMAX_ID` の設定をすべて消した（2026-11-16）。
 
-運営費の足しにするため、LP（S0）・セキュリティ方針ページ（S6）・回答の完了画面（S3a）に広告を 1 枠ずつ出す。配信は忍者AdMax（独自ドメインがなくても使え、事前の審査がない）。
-
-- **出す場所**：LP の「使い方」の下、セキュリティ方針ページの末尾、回答の完了画面（S3a）の［集計画面を見る］の下だけ。作成・回答入力・集計・公開完了・確定完了の画面（S1〜S5・S7）と、Discord に投稿するメッセージには出さない。入力の邪魔をしないためと、回答や名前が出る画面に広告を並べないため。S3a は回答や名前を表示しない静的ページなので、広告の枠を置く。
-  - S3a は回答を保存した人だけが通る完了画面で、Google AdSense の規約が広告の掲載を認めない画面（運営者のコンテンツがない完了画面など）に当たる。AdSense を使う場合も、S3a には AdSense の広告を出さない（忍者AdMax の枠だけ）。
-- **別オリジンで切り離す**：広告の枠は本体とは別の Worker `discheduler-ads`（`https://ads.etlits.dev/frame`。`ads/`）で配信し、本体のページに iframe で埋め込む。本体（`discheduler.etlits.dev`）とはオリジンが違うので、同一オリジンポリシーで切り離される。
-  - 本体と広告の枠は、同じ `etlits.dev` の下にあるので同じサイト（same-site）として扱われる（以前の `discheduler-ads.etlits.workers.dev` は `workers.dev` が Public Suffix List に載っているため別のサイトだった）。そのため次の 3 点で切り離しを保つ。
-    - 本体の Cookie はすべて `__Host-` 付き（`Domain` なし・`Path=/`・`Secure`）なので、広告の枠から読めず、`etlits.dev` 全体に向けた同名の Cookie で上書きもされない。
-    - 本体の API は書き込みのたびに `Origin` の完全一致（`ads.etlits.dev` からは通らない）と CSRF トークンを求め、CORS のヘッダーを返さないので、広告の枠のスクリプトから本体のデータは読めず、変更もできない。
-    - 広告会社が `etlits.dev` 全体に向けて Cookie を置くと、本体へのリクエストにも付いて届くが、本体はその Cookie を読まず、ログにも残さない。
-  - 広告会社のスクリプトは自分の Cookie を使える（興味に合った広告を出すため。運営者の判断）。
-  - 本体のページの内容・Cookie・localStorage には、同一オリジンポリシーにより触れられない。
-  - iframe には `sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"` を付ける。`allow-top-navigation` を付けないので、広告が本体のページごと別のサイトへ移動させることはできない。
-- **CSP**：本体の静的ページ（LP・セキュリティ方針・回答の完了画面）は `frame-src https://ads.etlits.dev` だけを足し、ほかは §4.2 のまま。広告の枠（`ads/public/_headers`）は広告会社のスクリプトを読むため `script-src https: 'unsafe-inline' 'unsafe-eval'` などを許し、`frame-ancestors`（デプロイ時に `PUBLIC_ORIGIN` を入れる）で本体以外への埋め込みを禁止する。広告会社には枠のアドレスだけを送り、本体のページの場所は送らない（本体は `Referrer-Policy: no-referrer`）。
-- **拒否できる**：枠の下に「広告と広告会社の Cookie を拒否する」ボタンを置く（`public/assets/ad-consent.js`）。
-  - 拒否すると iframe を作らず、広告会社には何も送らない。「広告を表示する（広告会社の Cookie を許可）」で戻せる。
-  - 選択は閲覧者のブラウザの localStorage（`discheduler.ads`）にだけ保存し、サーバーには送らない。
-  - 選択がまだなく、ブラウザで Global Privacy Control（`navigator.globalPrivacyControl`）が有効なら、拒否として扱う。
-  - スクリプトが動かない環境では広告を出さない。
-- **出し分け**：GitHub の `production` 環境の変数 `ADMAX_ID`（広告コードの `https://adm.shinobi.jp/s/` に続く 32 文字）があるときだけ、`scripts/prepare-public.sh` が `<!-- ad:start -->`〜`<!-- ad:end -->` を残して `ads/public/frame.html` に ID を埋め込み、デプロイで広告の枠の Worker も公開する。ないときは広告の枠・説明・`ad-consent.js` を消し、広告の枠の Worker はデプロイしない。セキュリティ方針の「しないこと」なども、広告の有無で文言を切り替える（`<!-- no-ad:start -->`）。
-- **Google AdSense の審査**：AdSense にはサイトの単位であるドメイン `etlits.dev` を登録し（以前は `<プロジェクト名>.pages.dev`）、所有の確認にはメタタグ `<meta name="google-adsense-account" content="ca-pub-7698368408631991">` を LP とセキュリティ方針ページに置く。メタタグは情報を示すだけで、スクリプトは読み込まない（CSP は変わらない）。承認されたら、忍者AdMax と AdSense のどちらを使うかを決め直す。
-- **ads.txt**：広告枠の販売を許可した事業者の一覧。AdSense の行（`google.com, pub-7698368408631991, DIRECT, f08c47fec0942fa0`）を `public/ads.txt` に置き、`robots.txt` で読み取りを許す。独自ドメインに移したので、サイトの単位は `etlits.dev` になり、`ads.txt` は `https://etlits.dev/ads.txt` で読めなければならない。`etlits.dev` そのものには何も置いていないので、Cloudflare のリダイレクトルールで `etlits.dev` へのアクセスをすべて、同じパスのまま `https://discheduler.etlits.dev` へ転送する（ads.txt の仕様では、同じドメインの中への転送はたどってよい。§14.1.2）。トップページも転送されるので、AdSense の所有確認は LP のメタタグでも ads.txt でもできる。`etlits.dev` をほかの用途に使うときは、転送を `/ads.txt` だけに絞る。
-- **開示**：セキュリティ方針ページに「広告について」（表示する場所、切り離し方、広告会社に届く情報と Cookie、拒否する方法）と、残っているリスク（不適切な広告が出る可能性）を書く。
-
+- **今後**：Google AdSense を、S4（集計画面）の邪魔にならない場所に入れる予定。入れるときは、CSP・Permissions-Policy・プライバシーの扱い（下記）を決め直し、セキュリティ方針ページで開示してから出す。
+- **今の守り**：本体のすべてのページの `Permissions-Policy` で、広告会社が使う閲覧の傾向の推測と広告の仕組み（`browsing-topics`・`join-ad-interest-group`・`run-ad-auction`・`attribution-reporting`）を止めている（§9.1、security-design §4.2）。AdSense を入れるときも、止めたままにできるかを確かめる。
+- **Google AdSense の審査**：AdSense にはサイトの単位であるドメイン `etlits.dev` を登録し（以前は `<プロジェクト名>.pages.dev`）、所有の確認にはメタタグ `<meta name="google-adsense-account" content="ca-pub-7698368408631991">` を LP とセキュリティ方針ページに置く。メタタグは情報を示すだけで、スクリプトは読み込まない（CSP は変わらない）。
+- **ads.txt**：広告枠の販売を許可した事業者の一覧。AdSense の行（`google.com, pub-7698368408631991, DIRECT, f08c47fec0942fa0`）を `public/ads.txt` に置き、`robots.txt` で読み取りを許す。サイトの単位は `etlits.dev` なので、`ads.txt` は `https://etlits.dev/ads.txt` で読めなければならない。`etlits.dev` そのものには何も置いていないので、Cloudflare のリダイレクトルールで `etlits.dev` へのアクセスをすべて、同じパスのまま `https://discheduler.etlits.dev` へ転送する（ads.txt の仕様では、同じドメインの中への転送はたどってよい。§14.1.2）。`etlits.dev` をほかの用途に使うときは、転送を `/ads.txt` だけに絞る。
 
 ### 6.11 S9: 作成した調整の一覧（主催者）
 主催者が、そのサーバーで自分が主催した調整をまとめて見て、編集・集計・削除できるページ。
@@ -801,9 +784,9 @@ S2 の [変更] を押すと、ひな形から選ぶか、自分で編集でき�
 - **Web 画面の言語の決め方**: URL の `?lang=ja|en` ＞ このブラウザで選んだ言語（`localStorage`。サーバーには保存しない）＞ ブラウザの言語（`navigator.languages` の先頭が日本語なら日本語、それ以外は英語）。どの画面でも右上に［English］／［日本語］の切り替えを置き、押すと選んだ言語を保存して画面を読み込み直す。リンク中継の画面（S1）だけは、読み込み直すとリンクの中身が URL から消えているため、読み込み直さずにその場で描き直す（API のエラーは `messages` に日本語と英語の両方を入れて返すので、表示中のエラーもその場で入れ替えられる）。静的ページは次項。
 - **静的ページ（LP・マニュアル・セキュリティ方針・回答の完了画面）の英語版**: `public/en/` の下に同じ構成で置く（`/en/`、`/en/security`、`/en/manual/…`、`/en/answered`）。日本語版を直したら、英語版も同じように直す。
   - どのページも、ヘッダーの右上にもう一方の言語のページへの切り替えのリンク（`a[data-lang]`）を置く。
-  - `public/assets/lang.js`: 切り替えで選んだ言語を `localStorage`（`dis.lang`。Web 画面と共通）にだけ保存する。保存した言語がページの言語と違えば、そのページのもう一方の言語版へ移る。まだ選んでいなければ、ブラウザの言語（日本語なら日本語、それ以外は英語）で同じように移る。`#` の後ろは、回答の完了画面の `#p=`（調整の ID）だけを保ち、ページ内の見出しへの `#`（トップページの `#features` など）は引き継がない（切り替え先は先頭から開く。前に押した見出しのリンクの `#` が残っていると、思わぬ位置へ移るため）。URL に `?lang=ja|en` があれば、それを保存して優先する（Web 画面と同じ。保存できたらアドレス欄から `?lang=` を外す）。切り替えのリンクには `?lang=` を付ける（新しいタブで開くときはクリックの処理を通らず保存できないため。クローラーには付けない）。`localStorage` に保存できないブラウザでは、移った先ではその言語のまま表示する（移った先の同じサイトの中のリンクにも `?lang=` を付け、戻ったときのために元のページのアドレスにも `?lang=` を付ける）。別の言語のページへ移るときは、広告の枠を読み込まない（`lang.js` を `ad-consent.js` より先に読み込む）。検索エンジンのクローラーと自動操作のブラウザ（`navigator.webdriver`）は移さない（日本語版と英語版のどちらも、それぞれのアドレスで読まれるように）。
+  - `public/assets/lang.js`: 切り替えで選んだ言語を `localStorage`（`dis.lang`。Web 画面と共通）にだけ保存する。保存した言語がページの言語と違えば、そのページのもう一方の言語版へ移る。まだ選んでいなければ、ブラウザの言語（日本語なら日本語、それ以外は英語）で同じように移る。`#` の後ろは、回答の完了画面の `#p=`（調整の ID）だけを保ち、ページ内の見出しへの `#`（トップページの `#features` など）は引き継がない（切り替え先は先頭から開く。前に押した見出しのリンクの `#` が残っていると、思わぬ位置へ移るため）。URL に `?lang=ja|en` があれば、それを保存して優先する（Web 画面と同じ。保存できたらアドレス欄から `?lang=` を外す）。切り替えのリンクには `?lang=` を付ける（新しいタブで開くときはクリックの処理を通らず保存できないため。クローラーには付けない）。`localStorage` に保存できないブラウザでは、移った先ではその言語のまま表示する（移った先の同じサイトの中のリンクにも `?lang=` を付け、戻ったときのために元のページのアドレスにも `?lang=` を付ける）。検索エンジンのクローラーと自動操作のブラウザ（`navigator.webdriver`）は移さない（日本語版と英語版のどちらも、それぞれのアドレスで読まれるように）。
   - `<link rel="alternate" hreflang="ja|en|x-default">` で日本語版と英語版の対応を示す（`PUBLIC_ORIGIN` があるときだけ。英語版の LP の canonical は `/en/`）。`robots.txt` で `/en/`・`/en/security`・`/en/manual/` を許可し、`/en/answered` は `noindex`。
-  - 広告の枠の文言（`ad-consent.js`）は `<html lang>` で切り替える。Ko-fi の説明は、英語版では `__DONATION_NOTE_EN__` に英語の文を入れる（`scripts/prepare-public.sh`）。
+  - Ko-fi の説明は、英語版では `__DONATION_NOTE_EN__` に英語の文を入れる（`scripts/prepare-public.sh`）。
   - Web 画面から静的ページへのリンク（マニュアル・セキュリティ方針・回答の完了画面）と、英語の［使い方］のリンクは、英語版のページを指す。Web 画面の言語が、静的ページで決まる言語（保存した言語かブラウザの言語）と違うとき（保存できないブラウザで `?lang=` で選んだときなど）は、リンクに `?lang=` を付ける（`staticHref`）。
 - **文言の持ち方**: キーの一覧は作らず、文言を使う場所に日本語と英語を並べて書く（Web は `tr("日本語", "English")`、サーバーは `msg("日本語", "English")`。`src/shared/i18n.ts`）。日時の書式も言語で分ける（英語は `Wed, Nov 12 20:00–22:00`）。
 - **API のエラーと警告の文言**: 画面がリクエストの見出し `X-DI-Lang`（`ja`／`en`）で言語を知らせ、サーバーはその言語の文言を返す。見出しがなければ `Accept-Language` で決め、それもなければ日本語。入力スキーマ（valibot）の文言は、日本語と英語を区切り文字でつないで持たせ、返すときに分ける。
@@ -1195,24 +1178,22 @@ DIscheduler/
 │   ├── db/                   # D1 クエリ（プリペアドステートメントのみ）・レート制限
 │   └── shared/               # Worker と Web 画面で共有（集計・タイムゾーン・文字列の検証）
 ├── branding/                 # Discord のアプリアイコン・Bot のアバター（app-icon.svg と、そこから作った 1024×1024 の app-icon.png）
-├── ads/                      # 広告の枠だけを配信する別の Worker（discheduler-ads。§6.10.1）
-│   ├── wrangler.jsonc
-│   └── public/               # frame.html（広告の枠）と _headers
-├── pages/wrangler.jsonc      # Cloudflare Pages（本体）の設定。値はデプロイ時に埋め込む
-├── public/                   # Cloudflare Pages の配信元（静的ファイルと Pages Functions の入口）
+├── pages/wrangler.jsonc      # Cloudflare Pages（本体）の設定。値はデプロイ時に埋め込む。配信するのは dist/
+├── dist/                     # デプロイ時に public/ をコピーして設定値を埋め込んだもの（scripts/prepare-public.sh。git に入れない）
+├── public/                   # 静的ファイルと Pages Functions の入口の元（設定値の置き場所 __X__ を含む）
 │   ├── _worker.js            # Pages Functions の入口（src/index.ts をそのまま使う）
 │   ├── _routes.json          # Pages Functions を動かすパス
 │   ├── .assetsignore         # Worker の静的ファイルから除くファイル
 │   ├── index.html            # S0: Bot の案内（LP）
 │   ├── security.html         # S6: セキュリティ方針（利用者向けの基準）
-│   ├── answered.html         # S3a: 回答の完了（広告の枠つき）
+│   ├── answered.html         # S3a: 回答の完了
+│   ├── 404.html              # 存在しないページ（日本語と英語を並べる。これがないと Pages は LP を 200 で返す）
 │   ├── assets/answered.js    # S3a の［集計画面を見る］のリンクを作る
 │   ├── assets/site.css       # 公開ページ共通のスタイル
 │   ├── ads.txt               # 広告枠の販売を許可した事業者の一覧（§6.10.1）
 │   ├── manual/               # S8: マニュアル（項目ごとの静的ページ）
 │   ├── assets/lp.css         # LP とセキュリティ方針ページのデザイン（暗い配色）
 │   ├── assets/lucide-LICENSE.txt # 埋め込んだアイコン（Lucide）のライセンス
-│   ├── assets/ad-consent.js  # 広告の表示と拒否の切り替え（§6.10.1）
 │   ├── favicon.svg           # ファビコン
 │   ├── _headers              # 静的配信時のセキュリティヘッダー
 │   └── robots.txt            # / と /security 以外のクロールを拒否
@@ -1264,8 +1245,8 @@ DIscheduler/
 | 募集メッセージの更新 | 回答の保存時（20 秒間隔でまとめる）、主催者の［今すぐ更新］、1 日 2 回の Cron（日本時間 1 時・13 時） | Discord の API 制限と無料枠を守りつつ、回答が入りやすい昼休みと終業後の後に反映するため | §5.5 |
 | タイムゾーン | 設定変更可能。既定はブラウザのタイムゾーン、不明なら `Asia/Tokyo` | 海外のメンバーにも対応するため | §6.7 |
 | データ保持期間 | 確定していない調整は締切から 3 ヶ月（90 日）後、確定した調整はいちばん遅い確定日時から 10 日後に自動削除 | 確定していない調整は振り返りや再調整に使えるように残し、確定した調整は予定が終われば要らないので早めに消す | §7.4 |
-| 運営費 | 寄付リンクを LP・完了画面・無料枠超過の画面に置く。広告は LP・セキュリティ方針ページ・回答の完了画面（S3a）だけに、別オリジンで切り離した枠で出し、閲覧者が拒否できるようにする（§6.10.1）。無料枠を超えたときはそのまま伝える | 回答や名前が出る画面に広告のスクリプトを入れると読める状態になり、セキュリティ方針に反するため。広告は公開ページだけに、サイトから切り離して出す | §6.10, §6.10.1, §9.1 |
-| ドメイン | 独自ドメイン `etlits.dev` のサブドメイン `discheduler.etlits.dev`（広告の枠は `ads.etlits.dev`）。以前のアドレス（`*.pages.dev`、`discheduler.etlits.workers.dev`）は正式なアドレスへ転送 | サービスのアドレスを Cloudflare のサービス名に左右されない、覚えやすいものにするため。`etlits.dev` 本体は、今は `discheduler.etlits.dev` へ転送し、ほかの用途にも使えるよう空けておく | §9, §14 |
+| 運営費 | 寄付リンクを LP・完了画面・無料枠超過の画面に置く。広告は今は出さない（忍者AdMax の枠はなくした。今後 Google AdSense を集計画面の邪魔にならない場所に入れる予定。§6.10.1）。無料枠を超えたときはそのまま伝える | 不適切に見える広告が出たため。広告を入れるときは、回答や名前が広告のスクリプトに読まれないよう、設計とセキュリティ方針を決め直してから出す | §6.10, §6.10.1, §9.1 |
+| ドメイン | 独自ドメイン `etlits.dev` のサブドメイン `discheduler.etlits.dev`。以前のアドレス（`*.pages.dev`、`discheduler.etlits.workers.dev`）は正式なアドレスへ転送 | サービスのアドレスを Cloudflare のサービス名に左右されない、覚えやすいものにするため。`etlits.dev` 本体は、今は `discheduler.etlits.dev` へ転送し、ほかの用途にも使えるよう空けておく | §9, §14 |
 
 - Server Members Intent は、Bot の導入サーバーが 100 未満なら Discord の審査なしで、Developer Portal の設定だけで有効化できる。100 サーバー以上になる場合は Discord への申請が必要。
 
@@ -1279,12 +1260,12 @@ GitHub Actions から Cloudflare にデプロイする（`.github/workflows/depl
 |---|---|---|---|
 | Cloudflare Pages（本体） | 正式な公開アドレス `PUBLIC_ORIGIN`（`https://discheduler.etlits.dev`。Pages の独自ドメイン。`https://<プロジェクト名>.pages.dev` は正式なアドレスへ転送） | LP・セキュリティ方針・Web 画面・Web API・Discord からの通信 | `pages/wrangler.jsonc`、`public/_worker.js`、`public/_routes.json` |
 | Cloudflare Workers（`discheduler`） | 旧アドレス `https://discheduler.etlits.workers.dev` | 1 日 2 回の自動処理（Cron）と、旧アドレスへのアクセスの転送 | `wrangler.jsonc` |
-| Cloudflare Workers（`discheduler-ads`） | `https://ads.etlits.dev`（Workers の独自ドメイン。`workers.dev` のアドレスは使わない） | 広告の枠（`ADMAX_ID` があるときだけ。§6.10.1） | `ads/wrangler.jsonc` |
 
 - Pages と Worker は同じコード（`src/index.ts`）と同じ D1 データベースを使う。
 - **正式なアドレス以外へのアクセスは転送する**：`PUBLIC_ORIGIN` と違うアドレス（旧アドレスの Worker、Pages がデプロイごとに作る別名のアドレス）への GET は、同じパスのまま正式なアドレスへ 301 で転送し、それ以外の書き込みは 404 にする。入力リンクの `#t=` は転送後も保たれる。
 - Discord からの通信（`POST /discord/interactions`）だけは、Interactions Endpoint URL を切り替えるまでの間も旧アドレスで受けられるよう、転送せずに処理する（Discord は転送に従わない）。どちらで受けても、入力リンクと案内は正式なアドレスで出す。
 - Worker は `run_worker_first` で静的ファイルより先にコードを動かし、旧アドレスのページへのアクセスもすべて転送する。
+- Pages の静的ファイル（LP・セキュリティ方針・マニュアル・回答の完了画面）は Pages Functions を通らないので、上の転送が動かない。`<プロジェクト名>.pages.dev` のアドレスは、Cloudflare の Bulk Redirects で正式なアドレスへ転送する（§14.1.3）。
 
 ```mermaid
 flowchart LR
@@ -1292,8 +1273,7 @@ flowchart LR
   T --> A{approve:<br/>production-approval 環境の承認}
   A -- 承認 --> R[deploy: 設定値を埋め込む<br/>静的ページ・Pages・Worker]
   R --> MG[D1 マイグレーション]
-  MG --> AD[広告の枠の Worker<br/>ADMAX_ID があるとき]
-  AD --> P[(Cloudflare Pages<br/>discheduler.etlits.dev)]
+  MG --> P[(Cloudflare Pages<br/>discheduler.etlits.dev)]
   P --> W[(Cloudflare Workers<br/>Cron・転送)]
 ```
 
@@ -1307,7 +1287,7 @@ flowchart LR
 **Cloudflare**
 1. 無料アカウントを作り、「Workers & Pages」で `workers.dev` のサブドメインを決める（Cron と転送の Worker は `https://discheduler.<サブドメイン>.workers.dev`）。
 2. Account ID を控える。
-3. 「My Profile → API Tokens → Create Token」でテンプレート「Edit Cloudflare Workers」を選び、Account Resources を自分のアカウントだけに限り、有効期限（最長 1 年）を付けてトークンを作る。権限は「Workers Scripts: Edit」「Account Settings: Read」「User Details: Read」「Memberships: Read」に加えて **「D1: Edit」** と **「Cloudflare Pages: Edit」** を付ける。広告の枠を出すとき（`ADMAX_ID` があるとき）は、広告の枠の Worker を独自ドメイン `ads.etlits.dev` に結び付けるため、Zone Resources を `etlits.dev` に限って **「Zone > Workers Routes: Edit」** も付ける。
+3. 「My Profile → API Tokens → Create Token」でテンプレート「Edit Cloudflare Workers」を選び、Account Resources を自分のアカウントだけに限り、有効期限（最長 1 年）を付けてトークンを作る。権限は「Workers Scripts: Edit」「Account Settings: Read」「User Details: Read」「Memberships: Read」に加えて **「D1: Edit」** と **「Cloudflare Pages: Edit」** を付ける。
 4. 「Storage & Databases → D1」で `discheduler` という名前のデータベースを作り、Database ID を控える。
 5. 「Workers & Pages → Create → Pages」で、直接アップロード（Direct Upload）の Pages プロジェクトを作る（名前は例: `discheduler`。作成時に仮のファイルを 1 つアップロードしてよい。本番のブランチは `main`）。表示された `https://<プロジェクト名>.pages.dev` を控える（名前が使われていると、末尾に文字が付いたアドレスになる）。
 6. Pages のプロジェクトの「Settings → Variables and Secrets」で、本番（Production）の **Secret** として `DISCORD_BOT_TOKEN`（Bot トークン）を登録する。初回のデプロイのあと、Worker（`discheduler`）にも同じ Secret を登録する（Cron が Discord の API を呼ぶため）。Bot トークンは GitHub には置かない。
@@ -1346,7 +1326,6 @@ flowchart LR
 | Environment variable | `PAGES_PROJECT` | Cloudflare Pages のプロジェクト名（例: `discheduler`） |
 | Environment variable | `PUBLIC_ORIGIN` | 正式な公開アドレス（`https://discheduler.etlits.dev`。末尾の `/` なし） |
 | Environment variable | `DONATION_URL` | 寄付リンクの URL（任意。未設定なら寄付の欄を出さない） |
-| Environment variable | `ADMAX_ID` | 忍者AdMax の広告枠の ID（任意。英小文字と数字の 32 文字。未設定なら広告の枠を出さない。§6.10.1） |
 
 ### 14.1.1 Workers から Pages への移行（2026 年 11 月）
 本体を `discheduler.etlits.workers.dev`（Workers）から `<プロジェクト名>.pages.dev`（Pages）へ移したときの手順。
@@ -1357,7 +1336,7 @@ flowchart LR
 
 
 ### 14.1.2 独自ドメイン etlits.dev への移行（2026 年 11 月）
-`etlits.dev` を Cloudflare Registrar で取得し（同じアカウントのゾーンになる）、本体を `discheduler.etlits.dev`、広告の枠を `ads.etlits.dev` に移したときの手順。
+`etlits.dev` を Cloudflare Registrar で取得し（同じアカウントのゾーンになる）、本体を `discheduler.etlits.dev` に移したときの手順。
 1. **Pages に独自ドメインを付ける**：「Workers & Pages → Pages のプロジェクト → Custom domains → Set up a custom domain」で `discheduler.etlits.dev` を追加する（DNS のレコードは Cloudflare が作る）。有効になるまで数分かかる。
 2. **GitHub の `PUBLIC_ORIGIN` を変える**：`production` 環境の変数 `PUBLIC_ORIGIN` を `https://discheduler.etlits.dev` にする。
 3. **デプロイする**：`main` にマージして承認する。以後、`<プロジェクト名>.pages.dev` と旧 Worker のアドレスへの GET は `discheduler.etlits.dev` に転送される（Discord に投稿済みのリンクもそのまま使える。入力リンクの `#t=` も保たれる）。ログインのセッション（Cookie）はアドレスごとなので、移ったあとは Discord のボタンからもう一度開いてもらう。
@@ -1368,19 +1347,22 @@ flowchart LR
    - `https://etlits.dev/ads.txt` を開いて、`public/ads.txt` の内容が出ることを確かめる。
    - AdSense の「サイト」には `etlits.dev`（サブドメインではなく、ドメインそのもの）を追加する。
    - あとで `etlits.dev` をほかの用途（ブログなど）に使うときは、このルールを `https://etlits.dev/ads.txt` だけを `https://discheduler.etlits.dev/ads.txt` へ転送する形に変える。
-6. **広告の枠**（広告を再開するとき）：API トークンに `etlits.dev` の「Zone > Workers Routes: Edit」を足す。`ads/wrangler.jsonc` の `routes` で、デプロイ時に `ads.etlits.dev` が広告の枠の Worker に結び付く。忍者AdMax などの広告ネットワークには、新しいサイトのアドレスを登録し直す。
+
+### 14.1.3 pages.dev のアドレスの転送と、広告の枠の片付け（2026 年 11 月）
+1. **pages.dev を正式なアドレスへ転送する**：静的ページは Pages Functions を通らないため、コードの転送が効かない。アカウントの「Bulk Redirects」で、リダイレクトリストに「元の URL `<プロジェクト名>.pages.dev`、ターゲット URL `https://discheduler.etlits.dev`、ステータス `301`、クエリ文字列を保持・サブパスの一致・パスの接尾辞を保持・サブドメインを含める」の 1 行を作り、そのリストを使うルールを有効にする。`https://<プロジェクト名>.pages.dev/security` が転送されることを確かめる。
+2. **広告の枠の Worker を消す**：広告の枠の仕組みをなくしたので、「Workers & Pages」で `discheduler-ads` を削除する（独自ドメイン `ads.etlits.dev` も外れる）。GitHub の `production` 環境の変数 `ADMAX_ID` も消す。API トークンの「Zone > Workers Routes: Edit」も要らなくなる。
 ### 14.2 ワークフローの安全策
-- 静的ページへの設定値（招待リンクの Application ID、寄付リンク）の埋め込みは `scripts/prepare-public.sh` で行う。値の形式を検証し、不正なら止める。
+- 設定値の埋め込みは `scripts/prepare-public.sh --config public dist` にまとめる。`public/` を `dist/` にコピーしてから静的ページに埋め込み（元のファイルは書き換えない）、Pages と Worker の設定ファイルにも埋め込む。値の形式を検証し、不正なら止める。最後に、`dist/`（画面のビルド結果を除く）と設定ファイルに `__大文字__` の置き場所や目印が残っていないかを確かめ、残っていれば止める。
+- 寄付リンクの形式の決まりと Ko-fi の説明文は `src/shared/donation.json` に置き、アプリとスクリプトの両方が読む。すべてのページに付けるセキュリティヘッダーは `src/security-headers.json` に置き、静的配信の `public/_headers` と一致するかを `scripts/check-sync.mjs`（`npm run check-sync`）で確かめる。
 - `permissions: contents: read` のみ。`actions/checkout` は `persist-credentials: false` で GitHub トークンを残さない。
 - サードパーティの Action はコミット SHA で固定し、Dependabot（`.github/dependabot.yml`）で週次に更新 PR を作る。
 - wrangler は `package-lock.json` で固定したバージョン（`npm ci` で入れたもの）を使う。wrangler-action の `wranglerVersion` は指定しない（指定すると Action が別に入れ、package.json とバージョンがずれるため）。
-- `DISCORD_APPLICATION_ID` は数字 17〜20 桁、`DONATION_URL` は `https://` で始まる URL、`ADMAX_ID` は英小文字と数字の 32 文字であることを確かめてから置き換える。置き換え漏れがあればデプロイを止める。
+- `DISCORD_APPLICATION_ID` は数字 17〜20 桁、`DONATION_URL` は `https://` で始まる URL であることを確かめてから置き換える。置き換え漏れがあればデプロイを止める。
 - 同時に 2 つのデプロイが走らないよう `concurrency` で直列化する。
 - Worker のプレビュー URL は無効（`preview_urls: false`）にする。Pages はデプロイごとに別名のアドレス（`<ハッシュ>.<プロジェクト名>.pages.dev`）を作るが、正式なアドレス以外へのアクセスは転送・拒否する（§14）。Cookie はアドレスごとに分かれ、Web API は `Origin` の完全一致を確かめるので、別名のアドレスから正式なアドレスのセッションは使えない。
 - Bot トークンは GitHub に置かず、Cloudflare のダッシュボードで Pages のプロジェクトと Worker の Secret として登録する。コマンドの登録も Pages・Worker 自身が行う（§5.1）。
-- デプロイの前に test ジョブ（`npm ci --ignore-scripts`、本番の依存の `npm audit`、型検査、テスト、ビルド）が成功している必要がある。プルリクエストでは test だけを実行する。
-- デプロイの前に D1 のマイグレーション（`wrangler d1 migrations apply DB --remote`）を適用する。
-- `ADMAX_ID` があるときだけ、本体より先に広告の枠の Worker（`ads/wrangler.jsonc`）をデプロイする（§6.10.1）。
+- デプロイの前に test ジョブ（`npm ci --ignore-scripts`、本番の依存の `npm audit`（中程度以上で止める）、`check-sync`、型検査、テスト、ビルド、仮の値での `prepare-public.sh`）が成功している必要がある。プルリクエストでは test だけを実行する。
+- デプロイの前に D1 のマイグレーション（`wrangler d1 migrations apply DB --remote`）を適用する。デプロイが終わるまで（失敗したときはその後も）古いコードが新しいスキーマで動くので、**マイグレーションは必ず、いま動いている版のコードでもそのまま動く形にする**（列や表を消すのは、どの版のコードも使わなくなってから。名前を変えるときは、足す → コードを移す → 古いほうを消す、の順に分ける）。
 - 環境変数 `DISCORD_APPLICATION_ID`・`DISCORD_PUBLIC_KEY`・`PUBLIC_ORIGIN`・`DONATION_URL` は、Pages には `pages/wrangler.jsonc` に埋め込んで（`wrangler pages deploy` は `--var` に対応していないため）、Worker には `wrangler deploy --var` で渡す。`PAGES_PROJECT`・`PUBLIC_ORIGIN` を含め、値の形式を確かめてから使い、置き換え漏れがあればデプロイを止める。
 - 本体（Pages）を先に、Worker（Cron・転送）をあとにデプロイする。
 - Cron Triggers は `wrangler.jsonc` の `triggers.crons`（`0 4,16 * * *`。UTC 4 時・16 時 = 日本時間 13 時・1 時。予定のリマインドは `0-4 * * * *`。毎時 0〜4 分。`src/jobs/day-reminder.ts` の `REMINDER_CRON` と同じ文字列にする）で設定する。

@@ -50,7 +50,6 @@
           <li><a href="#measures">Main safeguards</a></li>
           <li><a href="#commands">Where commands can be used</a></li>
           <li><a href="#risks">Remaining risks</a></li>
-          <!-- ad:start --><li><a href="#ads">About ads</a></li><!-- ad:end -->
           <li><a href="#report">Reporting a vulnerability</a></li>
           <li><a href="#history">Revision history</a></li>
         </ol>
@@ -58,7 +57,7 @@
 
       <article class="doc-body">
         <h1>Security policy</h1>
-        <p class="doc-meta">Last updated: November 14, 2026</p>
+        <p class="doc-meta">Last updated: November 16, 2026</p>
 
         <p>DIscheduler is a scheduling bot for Discord servers. It handles personal information (participants' schedules), so security and privacy come first in its design.</p>
         <p>It does not rely on hiding how it works: all of its safeguards are public, and only keys and tokens are kept secret. The design details (threat model, safeguards and remaining risks) are published in the <a href="https://github.com/etlit-r/DIscheduler/blob/main/docs/security-design.md" rel="noopener noreferrer">security design document</a> (in Japanese).</p>
@@ -81,8 +80,7 @@
           <li>It doesn't read message history from before it was added either (it doesn't ask for the Read Message History permission and has no code that fetches channel messages)</li>
           <li>It doesn't store email addresses, IP addresses or avatar images</li>
           <li>It doesn't mention roles or <code>@everyone</code> except when a poll is published, when dates are announced, and in event reminders (these mention the role used to choose the participants, or <code>@everyone</code> without one. Mentions in date announcements, re-announcements and reminders are each limited to 5 per poll per hour)</li>
-          <!-- no-ad:start --><li>It doesn't load outside analytics, ads or CDNs</li><!-- no-ad:end -->
-          <!-- ad:start --><li>It doesn't load outside analytics or CDNs. Ads are shown only on the home page, this page and the answer-saved page, inside a frame isolated from the site, and you can decline them (they never appear on the create, answer or results pages or in Discord messages. See <a href="#ads">About ads</a>)</li><!-- ad:end -->
+          <li>It doesn't load outside analytics, ads or CDNs</li>
           <!-- donation:start --><li>The donation link is a plain link to an outside service; no scripts or images from the support service are loaded</li><!-- donation:end -->
         </ul>
 
@@ -155,23 +153,11 @@
               <tr><th scope="row">Commands right after adding the bot</th><td>Right after the bot is added, anyone who can send messages can use the commands in every channel. To limit where they work, an admin should choose the channels in the Integrations settings.</td></tr>
               <tr><th scope="row">Cloudflare and Discord</th><td>Data is stored on Cloudflare and exchanged through Discord. Their infrastructure or staff could access it; this depends on each company's policies. Storing as little data as possible keeps the impact small.</td></tr>
               <tr><th scope="row">Free plan</th><td>There is no uptime guarantee (SLA). On busy days that go over Cloudflare's free tier, the service is unavailable until 00:00 UTC. This costs nothing, and answers already entered are not lost.</td></tr>
-              <!-- ad:start --><tr><th scope="row">Ads</th><td>Inside the ad frame, the ad network's scripts run and its cookies are used. Inappropriate ads, or ads leading to malicious sites, can't be ruled out entirely. The frame is isolated from the site, so ads can't read schedules or answers. You can decline ads with the button below the frame. If you see a problematic ad, please tell us through <a href="#report">Reporting a vulnerability</a>.</td></tr><!-- ad:end -->
               <tr><th scope="row">Encryption at rest</th><td>Stored data is encrypted by Cloudflare. The app adds no extra encryption: it stores only schedules and display names, and complicating key management was judged to be the bigger risk.</td></tr>
             </tbody>
           </table>
         </div>
 
-        <!-- ad:start -->
-        <h2 id="ads">About ads</h2>
-        <p>To cover running costs, ads are shown only on the home page, this page and the answer-saved page. Ads are served by Ninja AdMax.</p>
-        <ul>
-          <li><strong>Where</strong>: only in the frame labeled "Advertisement" on the home page, this page and the page shown after saving an answer. The answer-saved page doesn't show answers, names or the poll title, and no information about which poll was answered is sent to our server or the ad network. Ads never appear on the create, answer, results or confirmation pages, or in messages posted to Discord.</li>
-          <li><strong>Isolation from the site</strong>: the ad frame is loaded from a separate address (<code>ads.etlits.dev</code>). Browser security keeps the ad scripts from touching this site's pages, cookies or stored data, and ads can't navigate this page to another site. Schedules, answers and names are never passed to the ad frame.</li>
-          <li><strong>Ad network cookies and tracking</strong>: when ads are shown, your IP address, browser information and the ad frame's address are sent to the ad network. The ad network may record browsing patterns with cookies and similar means to show relevant ads; this is governed by the ad network's privacy policy.</li>
-          <li><strong>How to decline</strong>: press "Decline ads and the ad network's cookies" below the ad frame. Ads then stop loading and nothing is sent to the ad network. Your choice is stored only in your browser, not on our server. If Global Privacy Control (a "do not track" setting) is on in your browser, ads start out declined. Declining ads doesn't affect the bot's features.</li>
-        </ul>
-
-        <!-- ad:end -->
         <h2 id="report">Reporting a vulnerability</h2>
         <p>If you find a vulnerability, <strong>please don't open a public issue</strong>. Report it through GitHub's <a href="https://github.com/etlit-r/DIscheduler/security/advisories/new" rel="noopener noreferrer">private vulnerability reporting</a> (the repository's Security tab → "Report a vulnerability"). Reports in English or Japanese are welcome.</p>
         <ul>
@@ -186,24 +172,16 @@
           <table class="data">
             <thead><tr><th scope="col">Date</th><th scope="col">Changes</th></tr></thead>
             <tbody>
+              <tr><td>November 16, 2026</td><td>Shortened the retention period (polls with a confirmed date are deleted 10 days after that date, others 3 months after the deadline). Removed the ad frame, and the browser is now told to block interest inference by ad networks (such as the Topics API)</td></tr>
               <tr><td>November 14, 2026</td><td>Published the English version. Corrected the description of mentions to match how the bot works (it mentions the participants' role, or <code>@everyone</code>, only in announcements and reminders)</td></tr>
-              <tr><td>November 14, 2026</td><td>Changed the site address to discheduler.etlits.dev<!-- ad:start -->. Changed the ad frame address to ads.etlits.dev<!-- ad:end --></td></tr>
+              <tr><td>November 14, 2026</td><td>Changed the site address to discheduler.etlits.dev</td></tr>
               <tr><td>November 13, 2026</td><td>Added that the bot doesn't read message history from before it was added</td></tr>
-              <!-- ad:start --><tr><td>November 11, 2026</td><td>Added ads on the answer-saved page</td></tr><!-- ad:end -->
               <tr><td>November 10, 2026</td><td>Added the organizer's "My polls" page and its session</td></tr>
-              <!-- ad:start --><tr><td>November 9, 2026</td><td>Added ads on the home page and this page</td></tr><!-- ad:end -->
               <tr><td>November 8, 2026</td><td>Added "recently used time ranges in the server" to the stored data</td></tr>
               <tr><td>November 5, 2026</td><td>First version published</td></tr>
             </tbody>
           </table>
         </div>
-        <!-- ad:start -->
-        <aside class="ad-slot" data-ad-slot aria-label="Advertisement">
-          <p class="ad-label">Advertisement</p>
-          <div class="ad-box"><noscript><p class="ad-off">JavaScript is required to show ads.</p></noscript></div>
-          <p class="ad-choice"></p>
-        </aside>
-        <!-- ad:end -->
       </article>
     </div>
   </main>
@@ -221,6 +199,5 @@
     </div>
   </footer>
   <script src="/assets/lang.js" defer></script>
-  <!-- ad:start --><script src="/assets/ad-consent.js" defer></script><!-- ad:end -->
 </body>
 </html>

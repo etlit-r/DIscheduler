@@ -4,7 +4,7 @@
 // Bot トークン（DISCORD_BOT_TOKEN）は、Cloudflare のダッシュボードで Pages のプロジェクトに Secret として登録する。
 {
   "name": "__PAGES_PROJECT__",
-  "pages_build_output_dir": "../public",
+  "pages_build_output_dir": "../dist",
   "compatibility_date": "2026-10-20",
   "d1_databases": [
     {

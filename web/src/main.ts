@@ -40,7 +40,7 @@ function setupShell(): void {
     const other = LANG === "en" ? "ja" : "en";
     // リンク中継（/l）では読み込み直さない。トークンは読み取ったときに URL から消すので、読み込み直すとエラーの内容が変わってしまうため。
     // その場で枠と、表示中のエラーを描き直す
-    if (location.pathname === "/l") {
+    if (location.pathname === "/l" || location.pathname === "/l/") {
       setLangInPlace(other, () => {
         applyShell();
         redrawError();
@@ -51,7 +51,7 @@ function setupShell(): void {
 
 async function route(): Promise<void> {
   const path = location.pathname;
-  if (path === "/l") return linkPage();
+  if (path === "/l" || path === "/l/") return linkPage();
   const g = /^\/g\/(\d{17,20})\/polls\/?$/.exec(path);
   if (g) return minePage(g[1]!);
   const m = /^\/p\/([A-Za-z0-9_-]{22})(?:\/(edit|answer|done|deleted))?\/?$/.exec(path);

@@ -6,7 +6,8 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p web/tsconfig.json",
     "test": "vitest run",
-    "dev": "vite build && wrangler dev"
+    "dev": "vite build && wrangler dev",
+    "check-sync": "node scripts/check-sync.mjs"
   },
   "dependencies": {
     "hono": "4.13.16",

@@ -106,6 +106,19 @@ describe("外部の人から見えないこと（§6.6）", () => {
     expect(res.headers.get("Referrer-Policy")).toBe("no-referrer");
     expect(res.headers.get("Cache-Control")).toBe("no-store");
     expect(res.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
+    // 広告会社による閲覧の傾向の推測（Topics API など）も止める
+    const pp = res.headers.get("Permissions-Policy")!;
+    for (const f of ["browsing-topics=()", "join-ad-interest-group=()", "run-ad-auction=()", "attribution-reporting=()"]) expect(pp).toContain(f);
+    expect(pp).not.toContain("interest-cohort");
+    expect(res.headers.get("Content-Security-Policy")).not.toContain("frame-src");
+  });
+
+  it("リンクの中継は、末尾に / が付いたアドレスでも開く", async () => {
+    const a = await call(getReq("/l"));
+    const b = await call(getReq("/l/"));
+    expect(b.status).toBe(a.status);
+    expect(b.status).not.toBe(404);
+    expect(b.headers.get("Content-Type")).toContain("text/html");
   });
 });
 

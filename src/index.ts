@@ -1,4 +1,5 @@
 // Worker のエントリ（fetch / scheduled）
+import securityHeaders from "./security-headers.json";
 import { Hono } from "hono";
 import type { Env } from "./core/env";
 import { api } from "./api";
@@ -9,17 +10,10 @@ import { AppError, isQuotaError, nowSec, QUOTA_MSG, randomToken } from "./core/l
 import { pick, requestLang } from "./shared/i18n";
 
 /** すべての応答に付けるセキュリティヘッダー（docs/security-design.md §4.2） */
+// すべてのページに付けるセキュリティヘッダー（静的ページの public/_headers と同じ値。src/security-headers.json）。
+// 画面と API の応答は保存させず、検索にも載せない
 export const SECURITY_HEADERS: Record<string, string> = {
-  "Content-Security-Policy":
-    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; " +
-    "form-action 'self'; frame-ancestors 'none'; base-uri 'none'; require-trusted-types-for 'script'; upgrade-insecure-requests",
-  "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
-  "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
-  "Referrer-Policy": "no-referrer",
-  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
-  "Cross-Origin-Opener-Policy": "same-origin",
-  "Cross-Origin-Resource-Policy": "same-origin",
+  ...securityHeaders.headers,
   "Cache-Control": "no-store",
   "X-Robots-Tag": "noindex, nofollow",
 };
@@ -80,6 +74,8 @@ async function appShell(c: { env: Env; req: { url: string } }): Promise<Response
   return new Response(res.body, { status: res.ok ? 200 : 500, headers: { "Content-Type": "text/html; charset=utf-8" } });
 }
 app.get("/l", (c) => appShell(c));
+// 末尾に / が付いたアドレス（アプリやプロキシが付け足すことがある）でも、リンクの中継を開く
+app.get("/l/", (c) => appShell(c));
 app.get("/p/:id", (c) => appShell(c));
 app.get("/p/:id/:page{(edit|answer|done|deleted)}", (c) => appShell(c));
 app.get("/g/:guildId/polls", (c) => appShell(c));
