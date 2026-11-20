@@ -1,5 +1,6 @@
 // Discord Interaction の処理（docs/design.md §4, §8.3）
 // ユーザー ID は必ず署名済みの Interaction 本体の値を使い、custom_id の値は信用しない。
+import { logError } from "../core/log";
 import type { Env } from "../core/env";
 import { issueLink, issueListLink } from "../auth";
 import { getParticipant, getPoll, hitRateLimit } from "../db";
@@ -70,7 +71,7 @@ function background(env: Env, ctx: Ctx, i: Interaction, work: () => Promise<void
         : e instanceof AppError
           ? pick(e.text, lang)
           : translator(lang)("エラーが発生しました。時間をおいてもう一度お試しください。", "Something went wrong. Please try again later.");
-      if (!(e instanceof AppError)) console.error(JSON.stringify({ event: "interaction_error", error: e instanceof Error ? e.message : "unknown" }));
+      if (!(e instanceof AppError) && !isQuotaError(e)) await logError(env, "interaction_error", e);
       await editOriginal(env, i, msg).catch(() => undefined);
     }),
   );
@@ -79,7 +80,7 @@ function background(env: Env, ctx: Ctx, i: Interaction, work: () => Promise<void
 export async function handleInteraction(env: Env, ctx: Ctx, i: Interaction, origin: string): Promise<Response> {
   if (i.type === 1) {
     // PING（Interactions Endpoint URL の登録時にも届く）。このときにコマンドを登録・更新する
-    ctx.waitUntil(syncCommands(env, { force: true }).catch((e) => console.error(JSON.stringify({ event: "commands_sync_failed", error: String(e) }))));
+    ctx.waitUntil(syncCommands(env, { force: true }).catch((e) => logError(env, "commands_sync_failed", e)));
     return json({ type: 1 });
   }
   const t = trOf(i);
