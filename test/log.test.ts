@@ -61,6 +61,14 @@ describe("エラーの要約を D1 に残す（§12）", () => {
     expect(r?.message).toContain("Discord API 500");
   });
 
+  it("募集メッセージが消されていた（404）ときは、エラーの記録には残さない", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    mockDiscord(() => new Response("{}", { status: 404 }));
+    const s = await seedPoll();
+    await syncNow(testEnv(), s.pollId);
+    expect((await rows()).length).toBe(0);
+  });
+
   it("API の予期しないエラーは、画面に出す参照番号と一緒に残す", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const s = await seedPoll();

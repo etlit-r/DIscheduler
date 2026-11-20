@@ -71,7 +71,9 @@ function background(env: Env, ctx: Ctx, i: Interaction, work: () => Promise<void
         : e instanceof AppError
           ? pick(e.text, lang)
           : translator(lang)("エラーが発生しました。時間をおいてもう一度お試しください。", "Something went wrong. Please try again later.");
-      if (!(e instanceof AppError) && !isQuotaError(e)) await logError(env, "interaction_error", e);
+      // 無料枠を超えたとき（D1 にも書けない）はログだけにする
+      if (isQuotaError(e)) console.error(JSON.stringify({ event: "interaction_quota_exceeded" }));
+      else if (!(e instanceof AppError)) await logError(env, "interaction_error", e);
       await editOriginal(env, i, msg).catch(() => undefined);
     }),
   );
