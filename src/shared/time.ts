@@ -29,17 +29,37 @@ interface Parts {
   second: number;
 }
 
+/**
+ * タイムゾーンごとの Intl.DateTimeFormat。作るのに時間がかかる（1 回およそ 0.1〜1ms）ので使い回す。
+ * 候補の一覧を描くたびに候補の数×数回作っていて、作成画面の描き直しが遅くなっていたため
+ */
+const partsFormatters = new Map<string, Intl.DateTimeFormat>();
+const abbrFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function cachedFormatter(cache: Map<string, Intl.DateTimeFormat>, tz: string, make: () => Intl.DateTimeFormat): Intl.DateTimeFormat {
+  let f = cache.get(tz);
+  if (!f) {
+    f = make();
+    // 使うタイムゾーンは限られるが、念のため増えすぎないようにする
+    if (cache.size >= 64) cache.clear();
+    cache.set(tz, f);
+  }
+  return f;
+}
+
 function partsInZone(epochMs: number, tz: string): Parts {
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  const fmt = cachedFormatter(partsFormatters, tz, () =>
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }),
+  );
   const p: Record<string, number> = {};
   for (const part of fmt.formatToParts(new Date(epochMs))) {
     if (part.type !== "literal") p[part.type] = Number(part.value);
@@ -93,7 +113,7 @@ export function formatTime(epochSec: number, tz: string): string {
 
 /** タイムゾーンの短い名前（例: JST, GMT+9, CET） */
 export function zoneAbbr(epochSec: number, tz: string): string {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "short" }).formatToParts(new Date(epochSec * 1000));
+  const parts = cachedFormatter(abbrFormatters, tz, () => new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "short" })).formatToParts(new Date(epochSec * 1000));
   const name = parts.find((p) => p.type === "timeZoneName")?.value ?? tz;
   if (tz === "Asia/Tokyo") return "JST";
   return name;
