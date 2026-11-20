@@ -8,7 +8,7 @@ import { runCron } from "./jobs/cron";
 import { handleInteraction } from "./discord/interactions";
 import { verifyDiscordRequest } from "./discord/verify";
 import { AppError, isQuotaError, nowSec, QUOTA_MSG, randomToken } from "./core/lib";
-import { pick, requestLang } from "./shared/i18n";
+import { msg, pick, requestLang } from "./shared/i18n";
 
 /** すべての応答に付けるセキュリティヘッダー（docs/security-design.md §4.2） */
 // すべてのページに付けるセキュリティヘッダー（静的ページの public/_headers と同じ値。src/security-headers.json）。
@@ -42,7 +42,15 @@ app.use("*", async (c, next) => {
   if (!canonical || url.origin === canonical) return next();
   if (c.req.method === "POST" && url.pathname === "/discord/interactions") return next();
   if (c.req.method === "GET" || c.req.method === "HEAD") return c.redirect(canonical + url.pathname + url.search, 301);
-  return c.text("Not Found", 404);
+  // 画面を古いアドレスで開いたまま保存したときに、理由が分かるよう JSON のエラーで返す（素の 404 だと画面に理由が出ない）
+  throw new AppError(
+    404,
+    "wrong_origin",
+    msg(
+      `このページは古いアドレスで開かれているため、保存できません。${canonical} から開き直すか、Discord からもう一度リンクを開いてください。`,
+      `This page was opened at an old address, so changes can't be saved. Reopen it at ${canonical}, or open the link from Discord again.`,
+    ),
+  );
 });
 
 app.onError(async (err, c) => {

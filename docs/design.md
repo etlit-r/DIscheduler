@@ -1271,7 +1271,7 @@ GitHub Actions から Cloudflare にデプロイする（`.github/workflows/depl
 
 - 静的ファイルは `dist/`（`scripts/prepare-public.sh` が `public/` から作る）。画面・API・Discord のパスだけ `run_worker_first` でコードを先に動かし、それ以外はコードを通さずに配信する。
 - `workers_dev: false`・`preview_urls: false` で、正式なアドレスのほかには公開しない（以前の `discheduler.etlits.workers.dev` と `<プロジェクト名>.pages.dev` は使わない）。
-- コードには、`PUBLIC_ORIGIN` と違うアドレスへの GET を正式なアドレスへ 301 で転送し、書き込みを 404 にする処理を残している（開発やテストで別のアドレスから開いたときのため）。Discord からの通信（`POST /discord/interactions`）だけは転送せずに処理する。
+- コードには、`PUBLIC_ORIGIN` と違うアドレスへの GET を正式なアドレスへ 301 で転送し、書き込みを 404 にする処理（理由と正式なアドレスを JSON の `wrong_origin` で返し、画面に出す）を残している（開発やテストで別のアドレスから開いたときのため）。Discord からの通信（`POST /discord/interactions`）だけは転送せずに処理する。
 
 ```mermaid
 flowchart LR

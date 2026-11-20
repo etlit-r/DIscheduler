@@ -395,9 +395,12 @@ describe("正式なアドレス（PUBLIC_ORIGIN）への転送（docs/design.md 
     expect(res.headers.get("Content-Security-Policy")).toContain("default-src 'none'");
   });
 
-  it("正式なアドレス以外への API の書き込みは受け付けない", async () => {
+  it("正式なアドレス以外への API の書き込みは受け付けず、理由を JSON で返す（画面に理由を出せるように）", async () => {
     const res = await call(new Request(`${ORIGIN}/api/session`, { method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json" }, body: "{}" }), env2());
     expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: { code: string; messages: { ja: string } } };
+    expect(body.error.code).toBe("wrong_origin");
+    expect(body.error.messages.ja).toContain(CANONICAL);
   });
 
   it("Discord からの通信は、旧アドレスでも処理し、入力リンクや案内には正式なアドレスを使う", async () => {
