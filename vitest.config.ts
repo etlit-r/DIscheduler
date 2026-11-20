@@ -1,5 +1,10 @@
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
+import { execFileSync } from "node:child_process";
 import { defineConfig } from "vitest/config";
+
+// Worker は dist/（scripts/prepare-public.sh が public/ から作る）を静的ファイルとして配信する（wrangler.jsonc）。
+// テストでも同じ形にするため、仮の値で dist/ を作り直してから始める
+execFileSync("bash", ["scripts/prepare-public.sh", "public", "dist"], { env: { ...process.env, DISCORD_APPLICATION_ID: "100000000000000001" }, stdio: "ignore" });
 
 export default defineConfig({
   plugins: [

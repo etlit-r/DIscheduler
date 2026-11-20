@@ -3,9 +3,9 @@
 #
 # 使い方: scripts/prepare-public.sh [元のディレクトリ（既定: public）] [出力先（既定: dist）]
 #   元のディレクトリはそのまま残し、出力先にコピーしてから書き換える（手元で試しても、リポジトリのファイルは変わらない）。
-#   出力先は毎回作り直す。Cloudflare Pages には出力先を配信する（pages/wrangler.jsonc の pages_build_output_dir）。
+#   出力先は毎回作り直す。Worker は出力先を静的ファイルとして配信する（wrangler.jsonc の assets.directory）。
 #
-#   --config を付けると、Pages と Worker の設定ファイル（pages/wrangler.jsonc・wrangler.jsonc）にも値を埋め込む。
+#   --config を付けると、Worker の設定ファイル（wrangler.jsonc）にも値を埋め込み、デプロイで渡す値の形式も確かめる。
 #   こちらはその場で書き換えるので、デプロイ（GitHub Actions の使い捨ての作業場所）でだけ使う。
 #
 # 環境変数:
@@ -13,7 +13,7 @@
 #   DONATION_URL            任意。寄付リンクの URL（https://...）。Ko-fi のときは、リンクの近くに説明を入れる
 #                           （日本語のページは __DONATION_NOTE__、英語版のページ（en/）は __DONATION_NOTE_EN__）
 #   PUBLIC_ORIGIN           任意（--config のときは必須）。正式な公開アドレス（https://...。末尾の / なし）。LP の正規 URL（canonical）など
-#   --config のときだけ:  D1_DATABASE_ID・DISCORD_PUBLIC_KEY・PAGES_PROJECT（いずれも必須）
+#   --config のときだけ:  D1_DATABASE_ID・DISCORD_PUBLIC_KEY（いずれも必須）
 #
 # 正式な公開アドレスの表示切り替え:
 #   <!-- origin:start --> ... <!-- origin:end -->  PUBLIC_ORIGIN があるときだけ残し、__PUBLIC_ORIGIN__ を置き換える
@@ -109,21 +109,11 @@ config_files=()
 if (( config )); then
   d1="${D1_DATABASE_ID:-}"
   pubkey="${DISCORD_PUBLIC_KEY:-}"
-  project="${PAGES_PROJECT:-}"
   [[ "$d1" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || fail "D1_DATABASE_ID が未設定か、形式が正しくありません"
   [[ "$pubkey" =~ ^[0-9a-f]{64}$ ]] || fail "DISCORD_PUBLIC_KEY が未設定か、形式が正しくありません"
-  [[ "$project" =~ ^[a-z0-9][a-z0-9-]{0,57}$ ]] || fail "PAGES_PROJECT（Cloudflare Pages のプロジェクト名）が未設定か、形式が正しくありません"
   [[ -n "$public_origin" ]] || fail "PUBLIC_ORIGIN（例: https://discheduler.etlits.dev）が未設定です"
-  config_files=("$root/wrangler.jsonc" "$root/pages/wrangler.jsonc")
+  config_files=("$root/wrangler.jsonc")
   sed -i "s/__D1_DATABASE_ID__/${d1}/" "$root/wrangler.jsonc"
-  sed -i \
-    -e "s|__PAGES_PROJECT__|${project}|" \
-    -e "s|__D1_DATABASE_ID__|${d1}|" \
-    -e "s|__DISCORD_APPLICATION_ID__|${app_id}|" \
-    -e "s|__DISCORD_PUBLIC_KEY__|${pubkey}|" \
-    -e "s|__PUBLIC_ORIGIN__|${public_origin}|" \
-    -e "s|__DONATION_URL__|${donation_url}|" \
-    "$root/pages/wrangler.jsonc"
 fi
 
 # --- 置き換え漏れ・目印の残りがあれば止める ---

@@ -33,7 +33,7 @@ export function publicOrigin(env: Env, url: string): string {
   return env.PUBLIC_ORIGIN || new URL(url).origin;
 }
 
-// 正式なアドレス以外（旧アドレスの Worker、Pages のデプロイごとの別名のアドレス）へのアクセスは、正式なアドレスへ転送する。
+// 正式なアドレス以外（開発やテストで別のアドレスから開いたときなど）へのアクセスは、正式なアドレスへ転送する。
 // Discord からの通信だけは、Interactions Endpoint URL を切り替えるまでの間も受けられるよう、そのまま処理する
 // （Discord は転送に従わないため）。入力リンクは正式なアドレスで発行する。
 app.use("*", async (c, next) => {
@@ -52,7 +52,7 @@ app.onError(async (err, c) => {
   if (err instanceof AppError) return c.json({ error: { code: err.code, message: pick(err.text, lang), messages: err.text } }, err.status as 400);
   if (isQuotaError(err)) return c.json({ error: { code: "free_tier_exceeded", message: pick(QUOTA_MSG, lang), messages: QUOTA_MSG } }, 503);
   const ref = randomToken(6);
-  // 本体（Pages）はログを残さないので、参照番号と一緒に D1 にも残す（問い合わせのときに照らし合わせる）
+  // Workers Logs は数日で消えるので、参照番号と一緒に D1 にも残す（問い合わせのときに照らし合わせる）
   await logError(c.env, "unhandled_error", err, { ref });
   const messages = {
     ja: `エラーが発生しました。時間をおいてもう一度お試しください（参照番号: ${ref}）。`,

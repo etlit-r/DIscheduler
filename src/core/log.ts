@@ -1,5 +1,5 @@
 // エラーの記録（docs/design.md §12）。
-// Cloudflare Pages（本体）はログを残さないので、予期しないエラーの要約を D1 の error_logs にも残す（7 日で Cron が消す）。
+// Workers Logs は無料プランでは数日で消えるので、予期しないエラーの要約を D1 の error_logs にも残す（7 日で Cron が消す。参照番号で探せる）。
 // 個人の情報（回答・表示名・ユーザー ID・トークン・IP アドレス）は入れない。エラーが続いても D1 の書き込みが増えすぎないよう、
 // 1 時間に ERROR_LOG_HOURLY_MAX 件までにする。記録に失敗しても、元の処理は止めない
 import type { Env } from "./env";
