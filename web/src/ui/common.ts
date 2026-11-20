@@ -1,5 +1,5 @@
 // 画面共通の部品
-import { ApiError, apiError, request, type PollData } from "../lib/api";
+import { ApiError, apiError, reportScriptError, request, type PollData } from "../lib/api";
 import { h, lineIcon, notice, render } from "../lib/dom";
 import { donationNote } from "../../../src/shared/text";
 import { DEFAULT_TIMEZONE, formatDateTime, formatSlot, isValidTimeZone, zoneAbbr, type SlotTime } from "../lib/time";
@@ -306,7 +306,11 @@ export function reopenHint(kind: PageKind): string {
 
 /** 画面の中に出すエラーの文。リンクの期限切れなら、新しいリンクを受け取る方法を添える */
 export function errorText(e: unknown, kind: PageKind, fallback: string): string {
-  if (!(e instanceof ApiError)) return e instanceof Error ? e.message : fallback;
+  if (!(e instanceof ApiError)) {
+    // サーバーが理由を返したものでないエラーは、画面のプログラムの不具合なので、記録に残す（§12）
+    reportScriptError(e);
+    return e instanceof Error ? e.message : fallback;
+  }
   // 英語は文と文の間に空白を入れる
   if (e.status === 401 && !SELF_EXPLAINING.has(e.code)) return `${e.text()}${LANG === "en" ? " " : ""}${reopenHint(kind)}`;
   return e.text();
@@ -321,6 +325,7 @@ export function redrawError(): void {
 
 export function showError(err: unknown, kind: PageKind = "link"): void {
   shownError = { err, kind };
+  if (!(err instanceof ApiError)) reportScriptError(err);
   const app = document.getElementById("app")!;
   const e = err instanceof ApiError ? err : apiError(0, "unknown", "エラーが発生しました。", "Something went wrong.");
   const freeTier = e.code === "free_tier_exceeded";

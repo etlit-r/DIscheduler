@@ -1,5 +1,5 @@
 import "./app.css";
-import { apiError } from "./lib/api";
+import { apiError, reportScriptError } from "./lib/api";
 import { redrawError, showError } from "./ui/common";
 import { answerPage } from "./pages/answer";
 import { deletedPage } from "./pages/deleted";
@@ -70,6 +70,13 @@ async function route(): Promise<void> {
       return summaryPage(id);
   }
 }
+
+// 画面のプログラムの不具合（どこでも受け止められなかった例外）を記録に残す（§12）。
+// 拡張機能など、ほかのスクリプトのエラーは送らない（画面のプログラム /app/ のものだけ）
+window.addEventListener("error", (ev) => {
+  if (typeof ev.filename === "string" && ev.filename.startsWith(`${location.origin}/app/`)) reportScriptError(ev.error ?? ev.message);
+});
+window.addEventListener("unhandledrejection", (ev) => reportScriptError(ev.reason));
 
 setupShell();
 route().catch(showError);

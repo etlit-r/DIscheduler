@@ -71,7 +71,7 @@ flowchart LR
 |----|------|------|
 | T-1 | SQL インジェクション | D1 の **プリペアドステートメント（`prepare().bind()`）のみ使用**。文字列連結での SQL 組み立てを ESLint ルールで禁止 |
 | T-2 | 他人の回答・他の調整のデータを書き換え（IDOR） | 回答 API はパスに `me` を使い、ユーザー ID は **セッションからのみ** 取得。`poll_id` もセッションのスコープと一致必須。slotId が当該調整に属するか検証 |
-| T-3 | CSRF による意図しない操作 | `SameSite=Strict` Cookie ＋ **CSRF トークン（ヘッダー `X-CSRF-Token`）** ＋ `Origin` ヘッダーの完全一致検証 ＋ `Content-Type: application/json` 必須 |
+| T-3 | CSRF による意図しない操作 | `SameSite=Strict` Cookie ＋ **CSRF トークン（ヘッダー `X-CSRF-Token`）** ＋ `Origin` ヘッダーの完全一致検証 ＋ `Content-Type: application/json` 必須。例外として、画面からのエラーの知らせ（`POST …/client-errors`）は、最初の読み込みに失敗した画面からも送れるよう CSRF トークンを求めない（エラーの記録を残すだけで、調整やセッションは変えない。Cookie・`Origin`・`Content-Type` の確認と回数制限はほかと同じ） |
 | T-4 | `custom_id` 改ざんによる他調整への操作 | `custom_id` の pollId で調整を引き、Interaction の `guild_id`/`channel_id` と調整の値が一致することを検証 |
 | T-5 | 配信する JS/CSS の改ざん | すべて同一オリジンから配信（外部 CDN 不使用）。CSP で外部スクリプトを禁止。ビルドは CI 上でのみ行いデプロイ |
 

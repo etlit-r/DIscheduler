@@ -1,5 +1,5 @@
 // S2: 調整の作成・編集（主催者。docs/design.md §6.3, §6.9）
-import { ApiError, loadPoll, request, type PollData } from "../lib/api";
+import { ApiError, apiError, loadPoll, request, type PollData } from "../lib/api";
 import { browserTimeZone, choiceMark, dateTimeText, rememberDonation, showError, slotText, statusBanner, syncPanel, timeZoneSelect, errorText, toast } from "../ui/common";
 import { h, notice, render, setTitle } from "../lib/dom";
 import {
@@ -150,7 +150,7 @@ export async function editPage(pollId: string): Promise<void> {
 
   async function save(): Promise<string[]> {
     // 公開後はタイトルを空にできない（募集メッセージの見出しになるため）
-    if (!isDraft && !title.trim()) throw new Error(tr("タイトルを入力してください。公開後はタイトルを空にできません。", "Enter a title. The title can't be empty after publishing."));
+    if (!isDraft && !title.trim()) throw apiError(400, "invalid", "タイトルを入力してください。公開後はタイトルを空にできません。", "Enter a title. The title can't be empty after publishing.");
     const patch: Record<string, unknown> = { description: description.trim() ? description : null, joinPolicy, remindDayOffset, remindHour };
     if (title.trim()) patch.title = title.trim();
     if (tzChanged) patch.timezone = tz;

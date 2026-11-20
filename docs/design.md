@@ -1035,12 +1035,13 @@ CREATE TABLE rate_limits (
 | POST | `/api/polls/{id}/renotify` | セッション(主催者) + CSRF | 調整の再通知（募集メッセージへの返信で、ロールか @everyone にメンションして知らせ直す。1 時間に 5 回まで。§5.3） |
 | POST | `/api/polls/{id}/repost` | セッション(主催者) + CSRF | 募集メッセージを投稿し直す（削除されたときなど。1 分に 1 回まで。§5.5） |
 | POST | `/api/polls/{id}/choices-ack` | セッション(参加者) + CSRF | 「選択肢が変更されました」を確認した（§6.9.4） |
-| POST | `/api/polls/{id}/client-errors` | セッション(主催者・参加者) + CSRF | 画面が受け取った、DIscheduler の JSON でない失敗の応答を知らせる（状態コード・伏せたパス・時刻・Ray ID。1 人あたり 1 時間に 10 件まで。§12 の監視） |
+| POST | `/api/polls/{id}/client-errors` | セッション(主催者・参加者)。CSRF のトークンは求めない（Origin と Content-Type は確かめる） | 画面で起きた、利用者には直せないエラーを知らせる（§12 の監視） |
 | POST | `/api/polls/{id}/sync-message` | セッション(主催者) + CSRF | 募集メッセージを今すぐ更新（同じ調整で 1 分に 1 回まで。§6.5） |
 | DELETE | `/api/polls/{id}` | セッション(主催者) + CSRF | 調整削除（本人の一覧のセッションがあれば `listUrl` を返す。§6.11） |
 | GET | `/api/guilds/{guildId}/polls` | 一覧のセッション | このサーバーで自分が主催した調整の一覧（§6.11） |
 | POST | `/api/guilds/{guildId}/polls/{pollId}/open` | 一覧のセッション + CSRF | 主催者本人と確かめて、その調整の主催者のセッションを発行（`to`: `edit` / `summary`） |
 | DELETE | `/api/guilds/{guildId}/polls/{pollId}` | 一覧のセッション + CSRF | 一覧から調整を削除（S2 の削除と同じ処理） |
+| POST | `/api/guilds/{guildId}/client-errors` | 一覧のセッション。CSRF のトークンは求めない（Origin と Content-Type は確かめる） | 画面で起きた、利用者には直せないエラーを知らせる（§12 の監視） |
 | GET | `/`・`/security` | なし | LP・セキュリティ方針（静的。Worker を通らず配信） |
 | GET | `/*` | なし | 静的アセット |
 
@@ -1153,7 +1154,7 @@ D1 の上限を超えたときの文面（Discord・Web 共通）:
 | 同時編集 | 回答は本人の行のみ更新するため競合なし。候補編集は `updated_at` による楽観ロック |
 | アクセシビリティ | WCAG 2.2 AA を目標（コントラスト、キーボード操作、スクリーンリーダーラベル） |
 | 対応ブラウザ | 最新の Chrome / Safari / Firefox / Edge、Discord アプリ内ブラウザ |
-| 監視 | Workers Observability（アプリが書くログだけを残し、リクエストの記録 invocation logs は無効。ログには ID と出来事の種類だけを出し、トークンは伏せる）。Workers Logs は無料プランでは数日で消えるので、予期しないエラー（API の `unhandled_error`、Discord の操作の `interaction_error`、募集メッセージの更新の `sync_failed`、Cron の失敗など）の要約を D1 の `error_logs` にも残す（`src/core/log.ts`）。残すのは種類・時刻・利用者の画面に出した参照番号・調整の ID・エラーの文（300 文字まで。Discord の API のアドレスのトークンは伏せる）だけで、回答・表示名・ユーザー ID・IP アドレスは入れない。エラーが続いても書き込みが増えすぎないよう 1 時間に 200 件まで。7 日で Cron が消す。見るときは `wrangler d1 execute discheduler --remote --command "SELECT * FROM error_logs ORDER BY id DESC LIMIT 50"`。Cloudflare がアプリのコードより前で返した失敗（CPU 時間やメモリの上限での打ち切り、WAF・Bot 対策での停止、一時的な 502・504 など）は、アプリのログにも `error_logs` にも残らない。そこで画面は、DIscheduler の JSON でない失敗の応答を受け取ったら、エラーの文に操作の名前・HTTP の状態コード・時刻・Ray ID（`cf-ray`）を添えて表示し、同じ内容を `POST /api/polls/{id}/client-errors` で知らせて `client_http_error` として残す（パスの ID は伏せる。セッションと CSRF のトークンが必要。1 人あたり 1 時間に 10 件まで。届かなければ、次に成功したリクエストのあとに送り直し、3 回で諦める）。原因を確かめるときは、Cloudflare のダッシュボードで、Worker の Metrics（Exceeded CPU・Exception などの件数）と、`etlits.dev` のゾーンの Security → Events（Ray ID で探せる）を見る |
+| 監視 | Workers Observability（アプリが書くログだけを残し、リクエストの記録 invocation logs は無効。ログには ID と出来事の種類だけを出し、トークンは伏せる）。Workers Logs は無料プランでは数日で消えるので、予期しないエラー（API の `unhandled_error`、Discord の操作の `interaction_error`、募集メッセージの更新の `sync_failed`、Cron の失敗など）の要約を D1 の `error_logs` にも残す（`src/core/log.ts`）。残すのは種類・時刻・利用者の画面に出した参照番号・調整の ID・エラーの文（300 文字まで。Discord の API のアドレスのトークンは伏せる）だけで、回答・表示名・ユーザー ID・IP アドレスは入れない。エラーが続いても書き込みが増えすぎないよう 1 時間に 200 件まで。7 日で Cron が消す。見るときは `wrangler d1 execute discheduler --remote --command "SELECT * FROM error_logs ORDER BY id DESC LIMIT 50"`。画面で起きた、利用者には直せないエラーは、サーバーのコードを通らないので、画面から知らせて残す（`web/src/lib/api.ts`）。対象は次の 2 つ。(1) DIscheduler の JSON でない失敗の応答（`client_http_error`）。Cloudflare がアプリのコードより前で返した失敗（CPU 時間やメモリの上限での打ち切り、WAF・Bot 対策での停止、一時的な 502・504 など）にあたる。画面のエラーの文には、操作の名前・HTTP の状態コード・時刻・Ray ID（`cf-ray`）を添える。残すのは状態コード・メソッド・ID を伏せたパス・時刻・Ray ID。(2) 画面のプログラムの不具合（`client_script_error`）。どこでも受け止められなかった例外（`error`・`unhandledrejection`）と、画面に出したエラーのうちサーバーが理由を返したものでないもの。残すのはエラーの文（200 文字まで）と、画面のプログラム（`/app/assets/`）の中の位置だけ。拡張機能など、ほかのスクリプトのエラーは送らない。利用者が自分で直せるもの（通信の切断、入力の誤り、リンクの期限切れなど、サーバーが理由を返したもの）は知らせない。送り先は、セッションのある画面の `POST /api/polls/{id}/client-errors` と `POST /api/guilds/{guildId}/client-errors`。セッションのない画面（リンクの中継 `/l` など）からは知らせない（ログインしていない人が記録を書けると、記録を埋めて本物のエラーを隠せてしまうため）。最初の読み込みに失敗した画面からも送れるよう、CSRF のトークンは求めない（記録を残すだけで調整は変えない。Origin の完全一致・JSON の Content-Type・セッションの Cookie は確かめる）。同じ内容は 1 つの画面で 1 回、1 つの画面で 10 件まで送る。サーバーはセッションの持ち主 1 人あたり 1 時間に 10 件まで残す。届かなければ、次に成功したリクエストのあとに送り直し、3 回で諦める。原因を確かめるときは、Cloudflare のダッシュボードで、Worker の Metrics（Exceeded CPU・Exception などの件数）と、`etlits.dev` のゾーンの セキュリティ → Analytics → イベント（Ray ID で探せる）を見る |
 
 ---
 

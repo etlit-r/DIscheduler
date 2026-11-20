@@ -100,13 +100,14 @@ describe("エラーの要約を D1 に残す（§12）", () => {
   });
 });
 
-describe("画面で受け取った、DIscheduler の JSON でない失敗の知らせ（§12）", () => {
+describe("画面で起きた、利用者には直せないエラーの知らせ（§12）", () => {
   beforeEach(async () => {
     await db().prepare("DELETE FROM rate_limits WHERE key LIKE 'client-error:%'").run();
   });
-  const report = { status: 503, method: "PUT", path: "/api/polls/:id/slots", at: 1795000000, ray: "8e1f2a3b4c5d6e7f-NRT" };
+  const report = { kind: "http", status: 503, method: "PUT", path: "/api/polls/:id/slots", at: 1795000000, ray: "8e1f2a3b4c5d6e7f-NRT" };
+  const script = { kind: "script", message: "TypeError: Cannot read properties of undefined (reading 'x')", where: "/app/assets/index-CX60HmLx.js:1:2345", at: 1795000000 };
 
-  it("状態コード・操作・時刻・Ray ID を、調整の ID と一緒に残す", async () => {
+  it("JSON でない失敗の応答は、状態コード・操作・時刻・Ray ID を、調整の ID と一緒に残す", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
@@ -117,15 +118,47 @@ describe("画面で受け取った、DIscheduler の JSON でない失敗の知�
     expect(r!.message).toBe("PUT /api/polls/:id/slots HTTP 503 at 2026-11-18T11:06:40.000Z ray 8e1f2a3b4c5d6e7f-NRT");
   });
 
-  it("参加者のセッションでも残せる。セッションと CSRF のトークンがなければ断る", async () => {
+  it("画面のプログラムの不具合は、エラーの文と位置を残す", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, script, org))).status).toBe(200);
+    const [r] = await rows();
+    expect(r).toMatchObject({ event: "client_script_error", poll_id: s.pollId });
+    expect(r!.message).toBe("TypeError: Cannot read properties of undefined (reading 'x') (/app/assets/index-CX60HmLx.js:1:2345) at 2026-11-18T11:06:40.000Z");
+  });
+
+  it("参加者のセッションでも残せる。CSRF のトークンがなくても受け付ける（最初の読み込みに失敗した画面から送れるように）", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const s = await seedPoll({ participants: [ALICE] });
     const alice = await login(s.pollId, ALICE, "participant");
     expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, report, alice))).status).toBe(200);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, script, { cookie: alice.cookie }))).status).toBe(200);
+    expect((await rows()).length).toBe(2);
+  });
+
+  it("セッションがないとき・ほかのサイトからのときは断る。ほかの書き込みは、これまでどおり CSRF のトークンを求める", async () => {
+    const s = await seedPoll({ participants: [ALICE] });
+    const alice = await login(s.pollId, ALICE, "participant");
     expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, report))).status).toBe(401);
-    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, report, { cookie: alice.cookie }))).status).toBe(403);
     expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, report, { ...alice, origin: "https://evil.example" }))).status).toBe(403);
-    expect((await rows()).length).toBe(1);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, report, { ...alice, origin: null }))).status).toBe(403);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, report, { ...alice, contentType: "text/plain" }))).status).toBe(415);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/choices-ack`, {}, { cookie: alice.cookie }))).status).toBe(403);
+    expect((await rows()).length).toBe(0);
+  });
+
+  it("主催者の調整一覧の画面からも残せる（調整の ID はなし）", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { issueListLink } = await import("../src/auth");
+    const url = await issueListLink(db(), "https://discheduler.example.workers.dev", GUILD, ORGANIZER);
+    const res = await call(jsonReq("POST", "/api/session", { token: url.split("#t=")[1] }));
+    const cookie = res.headers.get("Set-Cookie")!.split(";")[0]!;
+    expect((await call(jsonReq("POST", `/api/guilds/${GUILD}/client-errors`, { ...report, path: "/api/guilds/:n/polls" }, { cookie }))).status).toBe(200);
+    expect((await call(jsonReq("POST", `/api/guilds/${GUILD}/client-errors`, report))).status).toBe(401);
+    const [r] = await rows();
+    expect(r).toMatchObject({ event: "client_http_error", poll_id: null });
+    expect(r!.message).toContain("/api/guilds/:n/polls HTTP 503");
   });
 
   it("伏せていない ID や問い合わせの文字列・決まった形でない値は断る", async () => {
@@ -136,9 +169,15 @@ describe("画面で受け取った、DIscheduler の JSON でない失敗の知�
       { ...report, path: "/api/polls/:id/member-search?q=alice" },
       { ...report, path: "https://example.com/x" },
       { ...report, ray: "<script>" },
-      { ...report, status: 1000 },
+      { ...report, status: 0 },
       { ...report, method: "HEAD" },
       { ...report, extra: "x" },
+      { ...report, kind: "other" },
+      { ...script, message: "" },
+      { ...script, message: "x".repeat(201) },
+      { ...script, message: "line\nbreak" },
+      { ...script, where: "https://example.com/evil.js:1:1" },
+      { ...script, where: "chrome-extension://abc/x.js:1:1" },
     ];
     for (const b of bad) expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, b, org))).status).toBe(400);
     expect((await rows()).length).toBe(0);
@@ -148,7 +187,7 @@ describe("画面で受け取った、DIscheduler の JSON でない失敗の知�
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    for (let i = 0; i < 12; i++) expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, report, org))).status).toBe(200);
+    for (let i = 0; i < 12; i++) expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, i % 2 ? script : report, org))).status).toBe(200);
     expect((await rows()).length).toBe(10);
   });
 });
