@@ -1,5 +1,6 @@
 // Cron（1 日 2 回: UTC 4 時・16 時 = 日本時間 13 時・1 時。docs/design.md §3.2, §5.5, §7.4）
 // 毎時 0〜4 分の Cron（REMINDER_CRON）は、予定のリマインド（§5.7）だけを行う
+import { ERROR_LOG_RETENTION, logError } from "../core/log";
 import type { Env } from "../core/env";
 import { deletePolls } from "../db";
 import { syncCommands } from "../discord/commands";
@@ -61,7 +62,7 @@ export async function runCron(env: Env, scheduledTime: number, cron = ""): Promi
 
   if (isCleanupRun) await cleanup(env, now);
 
-  await syncCommands(env, { force: true }).catch((e) => console.error(JSON.stringify({ event: "commands_sync_failed", error: String(e) })));
+  await syncCommands(env, { force: true }).catch((e) => logError(env, "commands_sync_failed", e));
 }
 
 /**
@@ -90,7 +91,7 @@ async function alertGuildCount(env: Env, count: number): Promise<void> {
     }, { auth: "none" });
     await db.prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(KEY, String(count)).run();
   } catch (e) {
-    console.error(JSON.stringify({ event: "guild_alert_failed", error: e instanceof Error ? e.message : "unknown" }));
+    await logError(env, "guild_alert_failed", e);
   }
 }
 
@@ -121,6 +122,8 @@ async function cleanup(env: Env, now: number): Promise<void> {
     // 主催者の調整一覧（§6.11）のリンクとセッションも、期限が切れたら消す
     db.prepare("DELETE FROM list_tokens WHERE expires_at <= ?").bind(now),
     db.prepare("DELETE FROM list_sessions WHERE expires_at <= ?").bind(now),
+    // エラーの要約は 7 日で消す
+    db.prepare("DELETE FROM error_logs WHERE at <= ?").bind(now - ERROR_LOG_RETENTION),
     // 最近使った時間帯は、最後に使ってから保持期間（6 ヶ月）を過ぎたら消す
     db.prepare("DELETE FROM guild_recent_times WHERE updated_at <= ?").bind(now - RECENT_TIMES_RETENTION),
   ]);
@@ -162,7 +165,7 @@ async function cleanup(env: Env, now: number): Promise<void> {
       ]);
     }
   } catch (e) {
-    console.error(JSON.stringify({ event: "guild_check_failed", error: e instanceof Error ? e.message : "unknown" }));
+    await logError(env, "guild_check_failed", e);
   }
   console.log(JSON.stringify({ event: "cleanup_done" }));
 }

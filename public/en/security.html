@@ -57,7 +57,7 @@
 
       <article class="doc-body">
         <h1>Security policy</h1>
-        <p class="doc-meta">Last updated: November 16, 2026</p>
+        <p class="doc-meta">Last updated: November 20, 2026</p>
 
         <p>DIscheduler is a scheduling bot for Discord servers. It handles personal information (participants' schedules), so security and privacy come first in its design.</p>
         <p>It does not rely on hiding how it works: all of its safeguards are public, and only keys and tokens are kept secret. The design details (threat model, safeguards and remaining risks) are published in the <a href="https://github.com/etlit-r/DIscheduler/blob/main/docs/security-design.md" rel="noopener noreferrer">security design document</a> (in Japanese).</p>
@@ -110,6 +110,7 @@
               <tr><td>The poll's time zone (set by the organizer)</td><td>Same as above</td></tr>
               <tr><td>Server defaults (how participants are chosen, role, event location) and the user ID of the admin who last changed them</td><td>The bot is removed from the server</td></tr>
               <tr><td>Recently used time ranges in the server (start and end times only, the latest 3. Who entered them is not stored. Shown only to organizers on the edit page)</td><td>6 months after last use, or until the bot is removed from the server</td></tr>
+              <tr><td>Error records for troubleshooting (time, type, the reference number shown on screen, poll ID and error text. No answers, names, user IDs or IP addresses)</td><td>Deleted after 7 days by the daily cleanup at 16:00 UTC</td></tr>
               <tr><td>Short-lived records for login and abuse prevention (hashes of answer links and sessions with user IDs, and user IDs in rate-limit counters)</td><td>Answer links expire after 10 minutes and sessions after 12 hours, and rate-limit counters after their period (at most 1 day); each is deleted by the daily cleanup at 16:00 UTC</td></tr>
             </tbody>
           </table>
@@ -172,6 +173,7 @@
           <table class="data">
             <thead><tr><th scope="col">Date</th><th scope="col">Changes</th></tr></thead>
             <tbody>
+              <tr><td>November 20, 2026</td><td>Added error records for troubleshooting (deleted after 7 days)</td></tr>
               <tr><td>November 16, 2026</td><td>Shortened the retention period (polls with a confirmed date are deleted 10 days after that date, others 3 months after the deadline). The browser is now told to block interest inference by ad networks (such as the Topics API)</td></tr>
               <tr><td>November 14, 2026</td><td>First version published</td></tr>
             </tbody>

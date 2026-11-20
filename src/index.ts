@@ -1,4 +1,5 @@
 // Worker のエントリ（fetch / scheduled）
+import { logError } from "./core/log";
 import securityHeaders from "./security-headers.json";
 import { Hono } from "hono";
 import type { Env } from "./core/env";
@@ -44,14 +45,15 @@ app.use("*", async (c, next) => {
   return c.text("Not Found", 404);
 });
 
-app.onError((err, c) => {
+app.onError(async (err, c) => {
   // エラーの文言は、画面の言語（X-DI-Lang）か Accept-Language に合わせる（§6.12）
   const lang = requestLang((n) => c.req.header(n));
   // messages には両方の言語を入れる（画面で言語を切り替えたとき、読み込み直さずに文言を入れ替えられるように）
   if (err instanceof AppError) return c.json({ error: { code: err.code, message: pick(err.text, lang), messages: err.text } }, err.status as 400);
   if (isQuotaError(err)) return c.json({ error: { code: "free_tier_exceeded", message: pick(QUOTA_MSG, lang), messages: QUOTA_MSG } }, 503);
   const ref = randomToken(6);
-  console.error(JSON.stringify({ event: "unhandled_error", ref, error: err instanceof Error ? err.message : "unknown" }));
+  // 本体（Pages）はログを残さないので、参照番号と一緒に D1 にも残す（問い合わせのときに照らし合わせる）
+  await logError(c.env, "unhandled_error", err, { ref });
   const messages = {
     ja: `エラーが発生しました。時間をおいてもう一度お試しください（参照番号: ${ref}）。`,
     en: `Something went wrong. Please try again later (reference: ${ref}).`,

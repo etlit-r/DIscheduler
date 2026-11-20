@@ -1,4 +1,5 @@
 // 募集メッセージの更新（docs/design.md §5.5）
+import { logError } from "../core/log";
 import type { Env } from "../core/env";
 import { parsePollWithData, pollWithDataStatement, type PollWithDataRow } from "../db";
 import { buildPollMessage } from "../discord/messages";
@@ -48,7 +49,13 @@ export async function syncNow(env: Env, pollId: string, minInterval = 0): Promis
       // （投稿し直しで新しいメッセージに変わっていたら、その ID は残す）
       await db.prepare("UPDATE polls SET message_id = NULL WHERE id = ? AND message_id = ?").bind(pollId, messageId).run();
     }
-    console.error(JSON.stringify({ event: "sync_failed", pollId, error: e instanceof Error ? e.message : "unknown" }));
+    // メッセージが消された（404）・Bot が投稿できない（403）のは、利用者の操作やサーバーの設定で起きることなので、
+    // エラーの記録（D1）には残さず、ログだけにする（予期しないエラーの記録を埋めないように）
+    if (e instanceof DiscordError && (e.status === 403 || e.status === 404)) {
+      console.log(JSON.stringify({ event: "sync_skipped", pollId, status: e.status }));
+    } else {
+      await logError(env, "sync_failed", e, { pollId });
+    }
     return false;
   }
 }

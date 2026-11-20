@@ -2,6 +2,7 @@
 // 確定した日時ごとに、主催者が決めた日時（予定の当日か前日の何時。調整のタイムゾーン。既定は当日の 17 時）に、調整のチャンネルへ知らせる。
 // Cron は毎時 0〜4 分に 1 分おきに 5 回動き、送る時刻を過ぎていて、まだ送っていない日時に送る。1 回で DAY_REMINDER_MAX_PER_RUN 件まで（残りは次の分の回）。
 // 送る時刻を過ぎてから確定した日時は、次の回で送る。［確定をお知らせする］のお知らせが先なら、お知らせにリマインドの一文を添えて、それで送ったことにする（§4.3）。
+import { logError } from "../core/log";
 import type { Env } from "../core/env";
 import type { PollRow } from "../db";
 import { buildDayReminderMessage } from "../discord/messages";
@@ -77,7 +78,7 @@ export async function runDayReminder(env: Env, scheduledTime: number): Promise<v
       // チャンネルが消えている・Bot が投稿できない（403・404）ときも、ほかの調整の処理は続ける
       failed++;
       if (!(e instanceof DiscordError && (e.status === 403 || e.status === 404))) {
-        console.error(JSON.stringify({ event: "day_reminder_failed", error: e instanceof Error ? e.message : "unknown" }));
+        await logError(env, "day_reminder_failed", e, { pollId: t.id });
       }
     }
   }

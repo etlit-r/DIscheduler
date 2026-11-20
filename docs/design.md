@@ -962,6 +962,16 @@ CREATE TABLE list_sessions (
   created_at  INTEGER NOT NULL
 );
 
+-- エラーの要約（§12 の監視）。個人の情報は入れない。7 日で消す
+CREATE TABLE error_logs (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  at       INTEGER NOT NULL,                 -- 起きた時刻
+  event    TEXT NOT NULL,                    -- 種類（unhandled_error・interaction_error・sync_failed など）
+  ref      TEXT,                             -- 利用者の画面に出した参照番号（あれば）
+  poll_id  TEXT,                             -- 関係する調整（あれば）
+  message  TEXT NOT NULL                     -- エラーの文（300 文字まで）
+);
+
 -- アプリの内部状態（登録済みコマンドの版など。§5.1）
 CREATE TABLE meta (
   key    TEXT PRIMARY KEY,
@@ -990,6 +1000,7 @@ CREATE TABLE rate_limits (
 | `open` / `closed` | 締切から 3 ヶ月（90 日）後（個人の予定が入っているので長く残さない。`RETENTION`） |
 | `fixed` | いちばん遅い確定日時から 10 日後（過去の日時を確定したときは、確定した時点から 10 日後。`FIXED_RETENTION`） |
 | 主催者が削除したとき | 即時（物理削除） |
+| error_logs（エラーの要約） | 7 日後、日本時間 1 時の Cron で削除 |
 | link_tokens / sessions / list_tokens / list_sessions / rate_limits | 期限切れ後、日本時間 1 時の Cron で削除（list_tokens・list_sessions は、Bot がサーバーから外されたときも削除） |
 | guild_settings（サーバーの既定値） | Bot がサーバーから外されたとき（日本時間 1 時の Cron で検知して削除） |
 | guild_recent_times（最近使った時間帯） | 最後に使ってから 6 ヶ月（180 日）後、または Bot がサーバーから外されたとき（日本時間 1 時の Cron で削除） |
@@ -1141,7 +1152,7 @@ D1 の上限を超えたときの文面（Discord・Web 共通）:
 | 同時編集 | 回答は本人の行のみ更新するため競合なし。候補編集は `updated_at` による楽観ロック |
 | アクセシビリティ | WCAG 2.2 AA を目標（コントラスト、キーボード操作、スクリーンリーダーラベル） |
 | 対応ブラウザ | 最新の Chrome / Safari / Firefox / Edge、Discord アプリ内ブラウザ |
-| 監視 | Workers Observability（アプリが書くログだけを残し、リクエストの記録 invocation logs は無効。ログには ID と出来事の種類だけを出し、トークンは伏せる。7 日保持） |
+| 監視 | Worker（Cron・転送）は Workers Observability（アプリが書くログだけを残し、リクエストの記録 invocation logs は無効。ログには ID と出来事の種類だけを出し、トークンは伏せる）。本体の Pages はログを残さないので、予期しないエラー（API の `unhandled_error`、Discord の操作の `interaction_error`、募集メッセージの更新の `sync_failed`、Cron の失敗など）の要約を D1 の `error_logs` にも残す（`src/core/log.ts`）。残すのは種類・時刻・利用者の画面に出した参照番号・調整の ID・エラーの文（300 文字まで。Discord の API のアドレスのトークンは伏せる）だけで、回答・表示名・ユーザー ID・IP アドレスは入れない。エラーが続いても書き込みが増えすぎないよう 1 時間に 200 件まで。7 日で Cron が消す。見るときは `wrangler d1 execute discheduler --remote --command "SELECT * FROM error_logs ORDER BY id DESC LIMIT 50"` |
 
 ---
 
