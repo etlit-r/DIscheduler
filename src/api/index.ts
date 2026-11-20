@@ -39,6 +39,7 @@ import {
 import { fetchMember, searchMembers } from "../discord/members";
 import { buildAnnounceMessage, buildDeletedMessage, buildRenotifyMessage, buildFixedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink, pollTitle, rawPollTitle, slotWhen } from "../discord/messages";
 import { discord, DiscordError, type DiscordChannel, type DiscordRole } from "../discord/rest";
+import { logError } from "../core/log";
 import { AppError, DAY, floorToMinute, nowSec, randomId, timingSafeEqual } from "../core/lib";
 import { DEFAULT_DEADLINE_DAYS, FIXED_RETENTION, resetParticipants, RETENTION } from "../polls/create";
 import { canAnswer, effectiveStatus, LIMITS, reminderAt, UNANSWERED } from "../shared/model";
@@ -48,7 +49,7 @@ import { decodeMsg, msg, pick, requestLang, translator, type Lang, type Msg } fr
 import { getRecentTimes, mergeRanges, rangesFromSlots, saveRecentTimesStatement } from "../guilds/recent-times";
 import { getEventDefaults } from "../guilds/settings";
 import { syncAfterAnswer, syncNow } from "../polls/sync";
-import { AnnounceBody, AnswersBody, ChoicesBody, FixBody, OpenPollBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
+import { AnnounceBody, AnswersBody, ChoicesBody, ClientErrorBody, FixBody, OpenPollBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
 
 type Vars = { session: SessionRow; poll: PollRow };
 type C = Context<{ Bindings: Env; Variables: Vars }>;
@@ -953,6 +954,18 @@ polls.post("/:id/remind", async (c) => {
 polls.post("/:id/choices-ack", async (c) => {
   const { poll, session } = c.var;
   await c.env.DB.prepare("UPDATE participants SET choices_ack_version = ? WHERE poll_id = ? AND user_id = ?").bind(poll.choices_version, poll.id, session.user_id).run();
+  return c.json({ ok: true });
+});
+
+// 画面が受け取った、DIscheduler の JSON でない失敗の応答を、後から error_logs に残す（§12 の監視）。
+// Cloudflare が CPU 時間の上限で打ち切ったり、セキュリティ機能で止めたりした応答は、アプリのコードを通らないので、ここで補う。
+// 残すのは状態コード・操作（メソッドと伏せたパス）・時刻・Ray ID だけ。1 人あたり 1 時間に 10 件まで
+polls.post("/:id/client-errors", async (c) => {
+  const { poll, session } = c.var;
+  const body = await readJson(c, ClientErrorBody);
+  if (!(await hitRateLimit(c.env.DB, `client-error:${session.user_id}`, 10, 3600, nowSec()))) return c.json({ ok: true });
+  const when = new Date(body.at * 1000).toISOString();
+  await logError(c.env, "client_http_error", `${body.method} ${body.path} HTTP ${body.status} at ${when}${body.ray ? ` ray ${body.ray}` : ""}`, { pollId: poll.id });
   return c.json({ ok: true });
 });
 

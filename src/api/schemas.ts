@@ -119,3 +119,17 @@ export const FixBody = v.strictObject({
 export const AnnounceBody = v.strictObject({
   mention: v.boolean(),
 });
+
+/**
+ * 画面が受け取った、DIscheduler の JSON でない失敗の応答（Cloudflare が返したエラーページなど）の知らせ（§12 の監視）。
+ * 調整・候補の ID は画面で「:id」に、数字の ID は「:n」に伏せてから送る。問い合わせの文字列（?q=...）は送らない
+ */
+export const ClientErrorBody = v.strictObject({
+  status: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(599)),
+  method: v.picklist(["GET", "POST", "PUT", "PATCH", "DELETE"]),
+  path: v.pipe(v.string(), v.maxLength(120), v.regex(/^\/api(\/(?:[a-z][a-z0-9-]*|:id|:n)){1,6}$/)),
+  /** 画面で失敗した時刻（秒） */
+  at: epoch,
+  /** Cloudflare の Ray ID（cf-ray ヘッダー）。なければ null */
+  ray: v.nullable(v.pipe(v.string(), v.regex(/^[0-9a-f]{16}(-[A-Z]{3})?$/))),
+});
