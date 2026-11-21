@@ -139,8 +139,9 @@ function focusKeyOf(active: Element | null, root: Element): { id: string } | { t
 
 function findByFocusKey(root: Element, key: { id: string } | { tag: string; label: string }): Element | null {
   if ("id" in key) return document.getElementById(key.id);
-  for (const c of root.querySelectorAll(key.tag)) if (c.getAttribute("aria-label") === key.label) return c;
-  return null;
+  // 同じ名前の部品が複数あるとき（回答の画面の、候補ごとの選択肢のボタンなど）は、どれか決められないので戻さない
+  const matches = [...root.querySelectorAll(key.tag)].filter((c) => c.getAttribute("aria-label") === key.label);
+  return matches.length === 1 ? matches[0]! : null;
 }
 
 /** 画面上部のお知らせ（読み上げにも伝える） */
