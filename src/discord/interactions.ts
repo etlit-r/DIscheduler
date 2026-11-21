@@ -11,7 +11,7 @@ import { buildLocationModal, buildSettingsMessage, canManageGuild, EVENT_LOCATIO
 import { canAnswer, effectiveStatus } from "../shared/model";
 import { charLength, hasControlChars, sanitizeDisplayName, sanitizeLine } from "../shared/text";
 import { syncCommands } from "./commands";
-import { hasPermission, PERM } from "./permissions";
+import { hasPermission, missingPostPermissions, PERM } from "./permissions";
 import { escapeMarkdown, messageLink, NO_MENTIONS, pollTitle } from "./messages";
 import { discord, memberDisplayName, type DiscordMember } from "./rest";
 
@@ -24,8 +24,10 @@ interface Interaction {
   token: string;
   guild_id?: string;
   channel_id?: string;
-  channel?: { id: string };
+  channel?: { id: string; type?: number };
   member?: DiscordMember & { permissions?: string };
+  /** このチャンネルで Bot が持っている権限（Discord が付けて送る） */
+  app_permissions?: string;
   /** 押した人の Discord の言語（例: ja、en-US）。本人にだけ見える応答の言語に使う（§6.12） */
   locale?: string;
   data?: {
@@ -96,6 +98,20 @@ export async function handleInteraction(env: Env, ctx: Ctx, i: Interaction, orig
   ctx.waitUntil(syncCommands(env).catch(() => undefined));
 
   if (i.type === 2 && (i.data?.name === "schedule" || i.data?.name === "di")) {
+    // Bot がこのチャンネルを見られない・投稿できないときは、下書きを作らずに理由を伝える（公開のときまで気づけないため）。
+    // スラッシュコマンドは、Bot の権限がなくても使えてしまう
+    const missing = missingPostPermissions(i.app_permissions, i.channel?.type);
+    if (missing.length) {
+      const names = (lang: "ja" | "en") => missing.map((m) => (lang === "ja" ? `「${m.ja}」` : `"${m.en}"`)).join(lang === "ja" ? "" : ", ");
+      const cannotSee = missing.some((m) => m.en === "View Channel");
+      return ephemeral(
+        t(
+          `${cannotSee ? "DIscheduler の Bot がこのチャンネルを見られないため" : "DIscheduler の Bot にこのチャンネルで投稿する権限がないため"}、ここでは日程調整を作れません。チャンネルの設定の「権限」で、DIscheduler（または Bot のロール）に${names("ja")}を許可してから、もう一度 \`/schedule\` を実行してください。`,
+          `${cannotSee ? "The DIscheduler bot can't see this channel" : "The DIscheduler bot doesn't have permission to post in this channel"}, so a poll can't be created here. In the channel settings under Permissions, allow ${names("en")} for DIscheduler (or the bot's role), then run \`/schedule\` again.`,
+        ),
+        menuRow(i),
+      );
+    }
     background(env, ctx, i, () => handleCreate(env, i, origin, guildId, channelId, userId));
     return deferred();
   }

@@ -252,6 +252,7 @@ sequenceDiagram
 | Create Events | 確定日時の Discord イベント作成 | 任意（R5 を使う場合） |
 | Manage Events | Bot が作成したイベントの編集・削除 | 任意 |
 
+> **`/schedule`・`/di` の実行時に確かめる。** スラッシュコマンドは Bot の権限がなくても使えるので、Bot が見られないチャンネル（非公開のチャンネルなど）でも実行できてしまう。そのまま下書きを作ると、公開するまで投稿できないことに気づけない。そこで、Interaction に付いてくる `app_permissions`（そのチャンネルでの Bot の権限）を見て、View Channels・Send Messages（スレッドでは Send Messages in Threads）・Embed Links のどれかが欠けていれば、下書きを作らずに、足りない権限と許可の手順を本人にだけ見えるメッセージで伝える（Discord への問い合わせは増えない。`app_permissions` が届かないときは確かめない）。
 > **Administrator 権限は要求しない。** メッセージ内容（Message Content Intent）も不要のため要求しない。
 > **「メッセージ履歴を読む」（Read Message History）も要求しない。** Bot を追加する前のメッセージ履歴も、追加したあとのメッセージも読まない（チャンネルのメッセージを取得する API は呼ばない。メッセージに触れるのは、Bot が自分で投稿したものの編集・削除だけで、その ID は投稿したときに控えたものを使う）。サーバーの @everyone にこの権限があれば Bot も受け継ぐが、読む処理がないため影響しない。
 
@@ -265,7 +266,7 @@ sequenceDiagram
 | `manual` | | 主催者が S2 画面でサーバーメンバーを検索・選択（Worker が `GET /guilds/{id}/members/search` を呼ぶ。§8.1 の `GET /api/polls/{id}/member-search`） | 不要 |
 
 どちらのモードでも、自動抽出後に主催者が S2 画面で参加者を追加・削除できる。
-Server Members Intent が無効のまま `auto` が選ばれた場合（API が 403 を返す）は、`manual` に自動で切り替えて主催者にその旨を表示する。
+Server Members Intent が無効のまま `auto` が選ばれた場合（API が 403 を返す）は、`manual` に自動で切り替えて主催者にその旨を表示する。Bot がチャンネルを見られない（チャンネルの取得が 403 を返す）場合も同じく `manual` に切り替え、「Bot がこのチャンネルを見られないため」と理由を表示する。
 
 #### 5.3.1 サーバーの既定値
 

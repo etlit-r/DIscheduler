@@ -23,7 +23,7 @@ export interface Candidate {
 
 export type ExtractResult =
   | { ok: true; members: Candidate[] }
-  | { ok: false; reason: "intent_disabled" | "too_many" | "error"; message: Msg };
+  | { ok: false; reason: "intent_disabled" | "too_many" | "no_channel_access" | "error"; message: Msg };
 
 /** ギルドメンバーを全件取得（Server Members Intent が必要） */
 async function listGuildMembers(env: Env, guildId: string): Promise<DiscordMember[] | "too_many"> {
@@ -126,6 +126,17 @@ export async function extractParticipants(
         message: msg(
           "Bot の Server Members Intent が無効なため、参加者を自動で設定できませんでした。手動で参加者を選んでください。",
           "Participants couldn't be set automatically because the bot's Server Members Intent is off. Please choose participants manually.",
+        ),
+      };
+    }
+    // チャンネルの情報を読めない（403）のは、Bot がこのチャンネルを見られないとき（非公開のチャンネルなど）
+    if (e instanceof DiscordError && e.status === 403 && e.path.startsWith("/channels/")) {
+      return {
+        ok: false,
+        reason: "no_channel_access",
+        message: msg(
+          "DIscheduler の Bot がこのチャンネルを見られないため、参加者を自動で設定できませんでした。チャンネルの設定の「権限」で、DIscheduler に「チャンネルを見る」を許可するか、手動で参加者を選んでください（Bot が見られないチャンネルには、募集メッセージも投稿できません）。",
+          "Participants couldn't be set automatically because the DIscheduler bot can't see this channel. Allow \"View Channel\" for DIscheduler in the channel's Permissions settings, or choose participants manually (the bot also can't post the poll message in a channel it can't see).",
         ),
       };
     }
