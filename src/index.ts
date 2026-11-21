@@ -8,7 +8,7 @@ import { runCron } from "./jobs/cron";
 import { handleInteraction } from "./discord/interactions";
 import { verifyDiscordRequest } from "./discord/verify";
 import { AppError, isQuotaError, nowSec, QUOTA_MSG, randomToken } from "./core/lib";
-import { pick, requestLang } from "./shared/i18n";
+import { msg, pick, requestLang } from "./shared/i18n";
 
 /** すべての応答に付けるセキュリティヘッダー（docs/security-design.md §4.2） */
 // すべてのページに付けるセキュリティヘッダー（静的ページの public/_headers と同じ値。src/security-headers.json）。
@@ -33,7 +33,7 @@ export function publicOrigin(env: Env, url: string): string {
   return env.PUBLIC_ORIGIN || new URL(url).origin;
 }
 
-// 正式なアドレス以外（旧アドレスの Worker、Pages のデプロイごとの別名のアドレス）へのアクセスは、正式なアドレスへ転送する。
+// 正式なアドレス以外（開発やテストで別のアドレスから開いたときなど）へのアクセスは、正式なアドレスへ転送する。
 // Discord からの通信だけは、Interactions Endpoint URL を切り替えるまでの間も受けられるよう、そのまま処理する
 // （Discord は転送に従わないため）。入力リンクは正式なアドレスで発行する。
 app.use("*", async (c, next) => {
@@ -42,7 +42,15 @@ app.use("*", async (c, next) => {
   if (!canonical || url.origin === canonical) return next();
   if (c.req.method === "POST" && url.pathname === "/discord/interactions") return next();
   if (c.req.method === "GET" || c.req.method === "HEAD") return c.redirect(canonical + url.pathname + url.search, 301);
-  return c.text("Not Found", 404);
+  // 画面を古いアドレスで開いたまま保存したときに、理由が分かるよう JSON のエラーで返す（素の 404 だと画面に理由が出ない）
+  throw new AppError(
+    404,
+    "wrong_origin",
+    msg(
+      `このページは古いアドレスで開かれているため、保存できません。${canonical} から開き直すか、Discord からもう一度リンクを開いてください。`,
+      `This page was opened at an old address, so changes can't be saved. Reopen it at ${canonical}, or open the link from Discord again.`,
+    ),
+  );
 });
 
 app.onError(async (err, c) => {
@@ -52,7 +60,7 @@ app.onError(async (err, c) => {
   if (err instanceof AppError) return c.json({ error: { code: err.code, message: pick(err.text, lang), messages: err.text } }, err.status as 400);
   if (isQuotaError(err)) return c.json({ error: { code: "free_tier_exceeded", message: pick(QUOTA_MSG, lang), messages: QUOTA_MSG } }, 503);
   const ref = randomToken(6);
-  // 本体（Pages）はログを残さないので、参照番号と一緒に D1 にも残す（問い合わせのときに照らし合わせる）
+  // Workers Logs は数日で消えるので、参照番号と一緒に D1 にも残す（問い合わせのときに照らし合わせる）
   await logError(c.env, "unhandled_error", err, { ref });
   const messages = {
     ja: `エラーが発生しました。時間をおいてもう一度お試しください（参照番号: ${ref}）。`,

@@ -146,6 +146,68 @@ describe("/schedule と /di", () => {
   });
 });
 
+describe("Bot がチャンネルを見られない・投稿できないとき（§5.2）", () => {
+  const USER = "400000000000000055";
+  const VIEW = 1n << 10n, SEND = 1n << 11n, EMBED = 1n << 14n, THREAD_SEND = 1n << 38n;
+  const perms = (...bits: bigint[]) => bits.reduce((a, b) => a | b, 0n).toString();
+  const drafts = async () => (await (env as unknown as Env).DB.prepare("SELECT COUNT(*) AS n FROM polls WHERE organizer_id = ?").bind(USER).first<{ n: number }>())!.n;
+  const schedule = async (appPermissions: string | undefined, channelType = 0, locale = "ja") =>
+    call(
+      await signed({
+        type: 2, id: "9", application_id: "100000000000000001", token: "tok", locale, guild_id: GUILD, channel_id: CHANNEL,
+        channel: { id: CHANNEL, type: channelType }, member: member(USER), data: { name: "schedule" },
+        ...(appPermissions === undefined ? {} : { app_permissions: appPermissions }),
+      }),
+      e(),
+    );
+  const body = async (res: Response) => (await res.json()) as { type: number; data: { content: string; flags: number } };
+
+  it("Bot がチャンネルを見られなければ、下書きを作らずに、足りない権限を本人にだけ伝える", async () => {
+    mockDiscord();
+    const b = await body(await schedule(perms(SEND, EMBED)));
+    expect(b.type).toBe(4);
+    expect(b.data.flags & 64).toBe(64);
+    expect(b.data.content).toContain("見られないため");
+    expect(b.data.content).toContain("「チャンネルを見る」");
+    expect(b.data.content).not.toContain("「メッセージを送信」");
+    expect(await drafts()).toBe(0);
+  });
+
+  it("見られても投稿できなければ、足りない権限を全部挙げる（英語でも）", async () => {
+    mockDiscord();
+    const b = await body(await schedule(perms(VIEW), 0, "en-US"));
+    expect(b.data.content).toContain("doesn't have permission to post");
+    expect(b.data.content).toContain('"Send Messages", "Embed Links"');
+    expect(await drafts()).toBe(0);
+  });
+
+  it("スレッドでは「スレッドでメッセージを送信」を確かめる", async () => {
+    mockDiscord();
+    const b = await body(await schedule(perms(VIEW, SEND, EMBED), 11));
+    expect(b.data.content).toContain("「スレッドでメッセージを送信」");
+    const ok = await schedule(perms(VIEW, THREAD_SEND, EMBED), 11);
+    expect((await body(ok)).type).toBe(5);
+  });
+
+  it("権限が揃っていれば（管理者権限も含む）、これまでどおり下書きを作る。権限が届かないときは確かめない", async () => {
+    mockDiscord();
+    expect((await body(await schedule(perms(VIEW, SEND, EMBED)))).type).toBe(5);
+    expect((await body(await schedule(perms(1n << 3n)))).type).toBe(5);
+    expect((await body(await schedule(undefined))).type).toBe(5);
+  });
+
+  it("参加者の自動設定でチャンネルを読めなかったときは、その理由を伝えて手動にする", async () => {
+    const { extractParticipants } = await import("../src/discord/members");
+    mockDiscord((c) => (c.path === `/channels/${CHANNEL}` ? new Response(JSON.stringify({ code: 50001, message: "Missing Access" }), { status: 403 }) : {}));
+    const r = await extractParticipants(e(), GUILD, CHANNEL, null);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.reason).toBe("no_channel_access");
+      expect(r.message.ja).toContain("見られないため");
+    }
+  });
+});
+
 describe("募集メッセージのボタン", () => {
   it("参加者でない人にはリンクを発行しない", async () => {
     const s = await seedPoll();
@@ -395,9 +457,12 @@ describe("正式なアドレス（PUBLIC_ORIGIN）への転送（docs/design.md 
     expect(res.headers.get("Content-Security-Policy")).toContain("default-src 'none'");
   });
 
-  it("正式なアドレス以外への API の書き込みは受け付けない", async () => {
+  it("正式なアドレス以外への API の書き込みは受け付けず、理由を JSON で返す（画面に理由を出せるように）", async () => {
     const res = await call(new Request(`${ORIGIN}/api/session`, { method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json" }, body: "{}" }), env2());
     expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: { code: string; messages: { ja: string } } };
+    expect(body.error.code).toBe("wrong_origin");
+    expect(body.error.messages.ja).toContain(CANONICAL);
   });
 
   it("Discord からの通信は、旧アドレスでも処理し、入力リンクや案内には正式なアドレスを使う", async () => {

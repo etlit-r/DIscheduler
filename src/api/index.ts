@@ -39,6 +39,7 @@ import {
 import { fetchMember, searchMembers } from "../discord/members";
 import { buildAnnounceMessage, buildDeletedMessage, buildRenotifyMessage, buildFixedMessage, buildMentionMessage, buildPollMessage, escapeMarkdown, messageLink, pollTitle, rawPollTitle, slotWhen } from "../discord/messages";
 import { discord, DiscordError, type DiscordChannel, type DiscordRole } from "../discord/rest";
+import { logError } from "../core/log";
 import { AppError, DAY, floorToMinute, nowSec, randomId, timingSafeEqual } from "../core/lib";
 import { DEFAULT_DEADLINE_DAYS, FIXED_RETENTION, resetParticipants, RETENTION } from "../polls/create";
 import { canAnswer, effectiveStatus, LIMITS, reminderAt, UNANSWERED } from "../shared/model";
@@ -48,7 +49,7 @@ import { decodeMsg, msg, pick, requestLang, translator, type Lang, type Msg } fr
 import { getRecentTimes, mergeRanges, rangesFromSlots, saveRecentTimesStatement } from "../guilds/recent-times";
 import { getEventDefaults } from "../guilds/settings";
 import { syncAfterAnswer, syncNow } from "../polls/sync";
-import { AnnounceBody, AnswersBody, ChoicesBody, FixBody, OpenPollBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
+import { AnnounceBody, AnswersBody, ChoicesBody, ClientErrorBody, FixBody, OpenPollBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
 
 type Vars = { session: SessionRow; poll: PollRow };
 type C = Context<{ Bindings: Env; Variables: Vars }>;
@@ -159,6 +160,9 @@ const polls = new Hono<{ Bindings: Env; Variables: Vars }>();
 // Hono の "/:id/*" は "/:id" にも一致するので、1 つだけ登録する（2 回実行しない）
 polls.use("/:id/*", loadSession);
 
+/** 画面からのエラーの知らせ（POST …/client-errors）か。CSRF のトークンを求めない（loadSession の説明を参照） */
+const isClientErrorReport = (path: string): boolean => /^\/api\/(polls\/[A-Za-z0-9_-]{22}|guilds\/\d{17,20})\/client-errors$/.test(path);
+
 async function loadSession(c: C, next: () => Promise<void>) {
   const id = c.req.param("id") ?? "";
   if (!/^[A-Za-z0-9_-]{22}$/.test(id)) throw new AppError(404, "not_found", msg("調整が見つかりません。", "Poll not found."));
@@ -169,7 +173,9 @@ async function loadSession(c: C, next: () => Promise<void>) {
   const isDetail = c.req.method === "GET" && /^\/api\/polls\/[A-Za-z0-9_-]{22}\/?$/.test(c.req.path);
   const poll = isDetail ? null : await getPoll(c.env.DB, id);
   if (!isDetail && !poll) throw new AppError(404, "not_found", msg("この調整は削除されました。", "This poll has been deleted."));
-  if (c.req.method !== "GET") {
+  // エラーの知らせ（client-errors）は、最初の読み込みに失敗してトークンを受け取れなかった画面からも送れるよう、トークンを求めない
+  // （エラーの記録を残すだけで、調整は変えない。Origin の完全一致と JSON の Content-Type は、すべての書き込みと同じく確かめる）
+  if (c.req.method !== "GET" && !isClientErrorReport(c.req.path)) {
     const token = c.req.header("X-CSRF-Token") ?? "";
     if (!timingSafeEqual(token, session.csrf_token)) throw new AppError(403, "bad_csrf", msg("不正なリクエストです。画面を再読み込みしてください。", "Invalid request. Please reload the page."));
   }
@@ -956,6 +962,24 @@ polls.post("/:id/choices-ack", async (c) => {
   return c.json({ ok: true });
 });
 
+// 画面で起きた、利用者には直せないエラー（Cloudflare が返したエラーページ、画面のプログラムの不具合）を error_logs に残す（§12 の監視）。
+// Cloudflare が CPU 時間の上限で打ち切ったり、セキュリティ機能で止めたりした応答や、ブラウザの中の例外は、サーバーのコードを通らないので、画面から知らせる。
+// 残すのは、状態コード・操作（メソッドと伏せたパス）・時刻・Ray ID、または例外の文と画面のプログラムの中の位置だけ。
+// セッションの持ち主 1 人あたり 1 時間に 10 件まで（超えた分は黙って捨てる。画面が送り直さないように、成功として返す）
+async function recordClientError(c: Context<{ Bindings: Env }>, userId: string, pollId: string | undefined): Promise<Response> {
+  const body = await readJson(c, ClientErrorBody);
+  if (!(await hitRateLimit(c.env.DB, `client-error:${userId}`, 10, 3600, nowSec()))) return c.json({ ok: true });
+  const when = new Date(body.at * 1000).toISOString();
+  if (body.kind === "http") {
+    await logError(c.env, "client_http_error", `${body.method} ${body.path} HTTP ${body.status} at ${when}${body.ray ? ` ray ${body.ray}` : ""}`, { pollId });
+  } else {
+    await logError(c.env, "client_script_error", `${body.message}${body.where ? ` (${body.where})` : ""} at ${when}`, { pollId });
+  }
+  return c.json({ ok: true });
+}
+
+polls.post("/:id/client-errors", (c) => recordClientError(c as unknown as Context<{ Bindings: Env }>, c.var.session.user_id, c.var.poll.id));
+
 polls.post("/:id/sync-message", async (c) => {
   requireOrganizer(c);
   const { poll } = c.var;
@@ -1051,13 +1075,15 @@ guilds.use("/:guildId/*", async (c: LC, next) => {
       msg("一覧ページの有効期限が切れています。Discord で前に受け取ったリンクは、無効になっています。Discord でもう一度 /schedule を実行し、［作成した調整を管理］を押して、新しいリンクを受け取ってください。", "This list page has expired. Links you received earlier in Discord no longer work. Run /schedule in Discord again and press [Manage my polls] to get a new link."),
     );
   }
-  if (c.req.method !== "GET") {
+  if (c.req.method !== "GET" && !isClientErrorReport(c.req.path)) {
     const token = c.req.header("X-CSRF-Token") ?? "";
     if (!timingSafeEqual(token, list.csrf_token)) throw new AppError(403, "bad_csrf", msg("不正なリクエストです。画面を再読み込みしてください。", "Invalid request. Please reload the page."));
   }
   c.set("list", list);
   await next();
 });
+
+guilds.post("/:guildId/client-errors", (c) => recordClientError(c as unknown as Context<{ Bindings: Env }>, c.var.list.user_id, undefined));
 
 /** 一覧のセッションの持ち主が、このサーバーで主催している調整だけを返す。それ以外は見つからない扱い */
 async function ownPoll(c: LC): Promise<PollRow> {

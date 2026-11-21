@@ -6,8 +6,9 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p web/tsconfig.json",
     "test": "vitest run",
-    "dev": "vite build && wrangler dev",
-    "check-sync": "node scripts/check-sync.mjs"
+    "dev": "vite build && npm run prepare:local && wrangler dev",
+    "check-sync": "node scripts/check-sync.mjs",
+    "prepare:local": "DISCORD_APPLICATION_ID=100000000000000001 bash scripts/prepare-public.sh public dist"
   },
   "dependencies": {
     "hono": "4.13.18",

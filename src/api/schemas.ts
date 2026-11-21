@@ -119,3 +119,29 @@ export const FixBody = v.strictObject({
 export const AnnounceBody = v.strictObject({
   mention: v.boolean(),
 });
+
+/**
+ * 画面で起きた、利用者には直せないエラーの知らせ（§12 の監視）。
+ * - http: DIscheduler の JSON でない失敗の応答（Cloudflare が返したエラーページなど）。調整・候補の ID は画面で「:id」に、
+ *   数字の ID は「:n」に伏せてから送る。問い合わせの文字列（?q=...）は送らない
+ * - script: 画面のプログラムの不具合（予期しない例外）。エラーの文と、画面のプログラムの中の位置だけ
+ */
+export const ClientErrorBody = v.variant("kind", [
+  v.strictObject({
+    kind: v.literal("http"),
+    status: v.pipe(v.number(), v.integer(), v.minValue(100), v.maxValue(599)),
+    method: v.picklist(["GET", "POST", "PUT", "PATCH", "DELETE"]),
+    path: v.pipe(v.string(), v.maxLength(120), v.regex(/^\/api(\/(?:[a-z][a-z0-9-]*|:id|:n)){1,6}$/)),
+    /** 画面で失敗した時刻（秒） */
+    at: epoch,
+    /** Cloudflare の Ray ID（cf-ray ヘッダー）。なければ null */
+    ray: v.nullable(v.pipe(v.string(), v.regex(/^[0-9a-f]{16}(-[A-Z]{3})?$/))),
+  }),
+  v.strictObject({
+    kind: v.literal("script"),
+    message: v.pipe(v.string(), v.minLength(1), v.maxLength(200), v.check((t) => !hasControlChars(t))),
+    /** 画面のプログラムの中の位置（/app/assets/….js:行:列）。分からなければ null */
+    where: v.nullable(v.pipe(v.string(), v.maxLength(120), v.regex(/^\/app\/assets\/[A-Za-z0-9._-]+\.js:\d{1,7}:\d{1,7}$/))),
+    at: epoch,
+  }),
+]);

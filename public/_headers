@@ -1,5 +1,5 @@
-# 静的配信（Cloudflare Pages）のレスポンスヘッダー（docs/security-design.md §4.2）
-# 静的ファイルは Pages Functions（src/index.ts）を通らずに配信されるため、ここで付ける。
+# 静的ファイルのレスポンスヘッダー（Workers Static Assets。docs/security-design.md §4.2）
+# 静的ファイルは Worker のコード（src/index.ts）を通らずに配信されるため、ここで付ける。
 # /* の値は src/security-headers.json と同じにする（scripts/check-sync.mjs で確かめる。CI でも実行）
 /*
   Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; require-trusted-types-for 'script'; upgrade-insecure-requests

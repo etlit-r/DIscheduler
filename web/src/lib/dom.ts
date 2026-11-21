@@ -110,9 +110,38 @@ export function clear(el: Element): void {
   while (el.firstChild) el.removeChild(el.firstChild);
 }
 
+/**
+ * 中身を描き直す。画面全体を描き直しても、スクロールの位置とフォーカスが動かないようにする
+ * （日付を押すたびに画面が上下に動いたり、キーボードで操作している場所が失われたりしないように）
+ */
 export function render(el: Element, ...children: Child[]): void {
+  const x = window.scrollX;
+  const y = window.scrollY;
+  const focusKey = focusKeyOf(document.activeElement, el);
   clear(el);
   append(el, ...children);
+  if (focusKey) {
+    const next = findByFocusKey(el, focusKey);
+    if (next instanceof HTMLElement) next.focus({ preventScroll: true });
+  }
+  if (window.scrollX !== x || window.scrollY !== y) window.scrollTo(x, y);
+}
+
+/** 描き直したあとに同じ部品を探すための目印（id か、要素の種類と読み上げ用の名前）。el の中の部品でなければ null */
+function focusKeyOf(active: Element | null, root: Element): { id: string } | { tag: string; label: string } | null {
+  if (!active || active === root || !root.contains(active)) return null;
+  // タイムゾーンの選択欄（combobox）は、フォーカスで候補の一覧を開くので、戻さない（選んだ直後に一覧が開き直さないように）
+  if (active.getAttribute("role") === "combobox") return null;
+  if (active.id) return { id: active.id };
+  const label = active.getAttribute("aria-label");
+  return label ? { tag: active.tagName, label } : null;
+}
+
+function findByFocusKey(root: Element, key: { id: string } | { tag: string; label: string }): Element | null {
+  if ("id" in key) return document.getElementById(key.id);
+  // 同じ名前の部品が複数あるとき（回答の画面の、候補ごとの選択肢のボタンなど）は、どれか決められないので戻さない
+  const matches = [...root.querySelectorAll(key.tag)].filter((c) => c.getAttribute("aria-label") === key.label);
+  return matches.length === 1 ? matches[0]! : null;
 }
 
 /** 画面上部のお知らせ（読み上げにも伝える） */

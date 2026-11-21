@@ -5,7 +5,7 @@ import { ERROR_LOG_HOURLY_MAX, errorSummary, logError } from "../src/core/log";
 import { DiscordError } from "../src/discord/rest";
 import { runCron } from "../src/jobs/cron";
 import { syncNow } from "../src/polls/sync";
-import { call, GUILD, getReq, login, mockDiscord, ORGANIZER, seedPoll, testEnv } from "./helpers";
+import { ALICE, call, GUILD, getReq, jsonReq, login, mockDiscord, ORGANIZER, seedPoll, testEnv } from "./helpers";
 
 const db = () => (env as unknown as Env).DB;
 type Row = { event: string; ref: string | null; poll_id: string | null; message: string; at: number };
@@ -97,5 +97,97 @@ describe("エラーの要約を D1 に残す（§12）", () => {
     ]);
     await runCron(testEnv(), Date.parse("2026-11-06T16:00:00Z"));
     expect((await rows()).map((r) => r.event)).toEqual(["new"]);
+  });
+});
+
+describe("画面で起きた、利用者には直せないエラーの知らせ（§12）", () => {
+  beforeEach(async () => {
+    await db().prepare("DELETE FROM rate_limits WHERE key LIKE 'client-error:%'").run();
+  });
+  const report = { kind: "http", status: 503, method: "PUT", path: "/api/polls/:id/slots", at: 1795000000, ray: "8e1f2a3b4c5d6e7f-NRT" };
+  const script = { kind: "script", message: "TypeError: Cannot read properties of undefined (reading 'x')", where: "/app/assets/index-CX60HmLx.js:1:2345", at: 1795000000 };
+
+  it("JSON でない失敗の応答は、状態コード・操作・時刻・Ray ID を、調整の ID と一緒に残す", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const res = await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, report, org));
+    expect(res.status).toBe(200);
+    const [r] = await rows();
+    expect(r).toMatchObject({ event: "client_http_error", poll_id: s.pollId });
+    expect(r!.message).toBe("PUT /api/polls/:id/slots HTTP 503 at 2026-11-18T11:06:40.000Z ray 8e1f2a3b4c5d6e7f-NRT");
+  });
+
+  it("画面のプログラムの不具合は、エラーの文と位置を残す", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, script, org))).status).toBe(200);
+    const [r] = await rows();
+    expect(r).toMatchObject({ event: "client_script_error", poll_id: s.pollId });
+    expect(r!.message).toBe("TypeError: Cannot read properties of undefined (reading 'x') (/app/assets/index-CX60HmLx.js:1:2345) at 2026-11-18T11:06:40.000Z");
+  });
+
+  it("参加者のセッションでも残せる。CSRF のトークンがなくても受け付ける（最初の読み込みに失敗した画面から送れるように）", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const s = await seedPoll({ participants: [ALICE] });
+    const alice = await login(s.pollId, ALICE, "participant");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, report, alice))).status).toBe(200);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, script, { cookie: alice.cookie }))).status).toBe(200);
+    expect((await rows()).length).toBe(2);
+  });
+
+  it("セッションがないとき・ほかのサイトからのときは断る。ほかの書き込みは、これまでどおり CSRF のトークンを求める", async () => {
+    const s = await seedPoll({ participants: [ALICE] });
+    const alice = await login(s.pollId, ALICE, "participant");
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, report))).status).toBe(401);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, report, { ...alice, origin: "https://evil.example" }))).status).toBe(403);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, report, { ...alice, origin: null }))).status).toBe(403);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, report, { ...alice, contentType: "text/plain" }))).status).toBe(415);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/choices-ack`, {}, { cookie: alice.cookie }))).status).toBe(403);
+    expect((await rows()).length).toBe(0);
+  });
+
+  it("主催者の調整一覧の画面からも残せる（調整の ID はなし）", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { issueListLink } = await import("../src/auth");
+    const url = await issueListLink(db(), "https://discheduler.example.workers.dev", GUILD, ORGANIZER);
+    const res = await call(jsonReq("POST", "/api/session", { token: url.split("#t=")[1] }));
+    const cookie = res.headers.get("Set-Cookie")!.split(";")[0]!;
+    expect((await call(jsonReq("POST", `/api/guilds/${GUILD}/client-errors`, { ...report, path: "/api/guilds/:n/polls" }, { cookie }))).status).toBe(200);
+    expect((await call(jsonReq("POST", `/api/guilds/${GUILD}/client-errors`, report))).status).toBe(401);
+    const [r] = await rows();
+    expect(r).toMatchObject({ event: "client_http_error", poll_id: null });
+    expect(r!.message).toContain("/api/guilds/:n/polls HTTP 503");
+  });
+
+  it("伏せていない ID や問い合わせの文字列・決まった形でない値は断る", async () => {
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const bad = [
+      { ...report, path: `/api/polls/${s.pollId}/slots` },
+      { ...report, path: "/api/polls/:id/member-search?q=alice" },
+      { ...report, path: "https://example.com/x" },
+      { ...report, ray: "<script>" },
+      { ...report, status: 0 },
+      { ...report, method: "HEAD" },
+      { ...report, extra: "x" },
+      { ...report, kind: "other" },
+      { ...script, message: "" },
+      { ...script, message: "x".repeat(201) },
+      { ...script, message: "line\nbreak" },
+      { ...script, where: "https://example.com/evil.js:1:1" },
+      { ...script, where: "chrome-extension://abc/x.js:1:1" },
+    ];
+    for (const b of bad) expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, b, org))).status).toBe(400);
+    expect((await rows()).length).toBe(0);
+  });
+
+  it("1 人あたり 1 時間に 10 件までしか残さない", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    for (let i = 0; i < 12; i++) expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/client-errors`, i % 2 ? script : report, org))).status).toBe(200);
+    expect((await rows()).length).toBe(10);
   });
 });

@@ -285,3 +285,7 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .modal > * + * { margin-top: 12px; }
 .modal-title { margin: 0; font-size: 1.15rem; }
 .dialog-error { color: var(--c-red); }
+
+/* 画面は操作のたびに描き直すので、ブラウザの自動のスクロール調整（scroll anchoring）を止める。
+   位置は描き直しの前後で保つ（lib/dom.ts の render） */
+#app { overflow-anchor: none; }

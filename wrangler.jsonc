@@ -1,22 +1,27 @@
 // Cloudflare Workers の設定（docs/design.md §14）
-// 本体は Cloudflare Pages（pages/wrangler.jsonc）で動かす。この Worker（旧アドレス discheduler.etlits.workers.dev）は、
-// 1 日 2 回の自動処理（Cron。Pages では動かない）と、旧アドレスへのアクセスを正式なアドレス（PUBLIC_ORIGIN）へ転送する役を担う。
-// Interactions Endpoint URL を切り替えるまでの間は、Discord からの通信もここで処理する。
+// この Worker（discheduler）が本体。正式なアドレス discheduler.etlits.dev で、LP・Web 画面・Web API・Discord からの通信と、
+// 1 日 2 回の自動処理（Cron）・予定のリマインドを担当する。静的ファイルは dist/（scripts/prepare-public.sh が public/ から作る）を配信する。
 // database_id はデプロイ時に GitHub の Environment variable D1_DATABASE_ID で置き換える。
+// 公開値（DISCORD_APPLICATION_ID・DISCORD_PUBLIC_KEY・PUBLIC_ORIGIN・DONATION_URL）は、デプロイ時に --var で渡す。
 // Bot トークン（DISCORD_BOT_TOKEN）は Cloudflare のダッシュボードで Secret として登録する。
 {
   "name": "discheduler",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-20",
-  "workers_dev": true,
+  // 正式なアドレスだけで配信する（workers.dev のアドレスとプレビューのアドレスは使わない）。
+  // デプロイには、API トークンに etlits.dev の「Zone > Workers Routes: Edit」が要る（docs/design.md §14.1）
+  "workers_dev": false,
   "preview_urls": false,
+  "routes": [{ "pattern": "discheduler.etlits.dev", "custom_domain": true }],
   "assets": {
-    "directory": "./public",
+    "directory": "./dist",
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash",
-    "not_found_handling": "none",
-    // 静的ファイルより先にコードを動かし、旧アドレスへのアクセスをすべて正式なアドレスへ転送する
-    "run_worker_first": true
+    // 存在しないパスには dist/404.html を 404 で返す
+    "not_found_handling": "404-page",
+    // 画面・API・Discord からの通信のパスだけ、静的ファイルより先にコードを動かす。
+    // それ以外（LP・セキュリティ方針・マニュアルなど）はコードを通らずに配信し、dist/_headers のヘッダーを付ける
+    "run_worker_first": ["/api/*", "/discord/*", "/l", "/l/*", "/p/*", "/g/*"]
   },
   "d1_databases": [
     {

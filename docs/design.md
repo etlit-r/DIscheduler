@@ -23,7 +23,7 @@ Discord 上の集まり（ゲーム会・勉強会・オフ会など）の日程
 | R3 | メンバーが簡単に予定を入力できる | Discord のボタン → 本人専用リンク（ログイン不要）→ 選択肢（既定は ○△×）をタップするだけの Web 画面。選択肢の組み合わせと数は主催者が変更できる（§6.9） | ◎ |
 | R4 | 入力方法がわかりやすく、候補日時が見やすい | 表形式（候補×メンバー）＋集計＋最有力候補のハイライト。回答画面でも各候補の集計を見ながら入力できる。スマホ優先レイアウト | ◎ |
 | R5 | 確定日時を Discord イベントとして登録 | Guild Scheduled Event API で作成（Bot に「イベントの作成」権限が必要） | ◯（任意機能。権限がなければスキップ） |
-| R6 | Cloudflare Workers でサーバーレス完結・維持費ゼロ | Pages Free（Pages Functions）+ Workers Free（Cron Triggers）+ D1 Free のみ使用 | ◎（§9 で無料枠試算） |
+| R6 | Cloudflare Workers でサーバーレス完結・維持費ゼロ | Workers Free（Static Assets・Cron Triggers）+ D1 Free のみ使用 | ◎（§9 で無料枠試算） |
 | R7 | セキュリティ対策を徹底し、対策内容を公開 | 署名検証・最小権限・データ最小化・CSP 等を実装し、`/security` ページ（S6）とセキュリティ設計書で公開 | ◎ |
 
 ### 1.3 スコープ外（初版）
@@ -81,11 +81,11 @@ flowchart LR
 
 | 区分 | 技術 | 理由 |
 |------|------|------|
-| 実行環境 | Cloudflare Pages（Free。Pages Functions の advanced mode で Worker のコードをそのまま動かす）＋ Cloudflare Workers（Free。Cron と旧アドレスの転送） | 常駐プロセス不要。HTTP Interactions 方式なら Gateway 接続が不要。公開アドレスを `<プロジェクト名>.pages.dev` にすることで、`pages.dev` が Public Suffix List に載っているため、アドレスの直下に AdSense の所有確認や `ads.txt` を置ける（§6.10.1） |
+| 実行環境 | Cloudflare Workers（Free。Worker `discheduler` 1 つで、静的ファイル・Web API・Discord の Interactions・Cron を担当） | 常駐プロセス不要。HTTP Interactions 方式なら Gateway 接続が不要。Workers Logs でエラーのログも残る（Pages Functions は残らないため、2026-11 に Pages から戻した） |
 | Discord 連携 | HTTP Interactions Endpoint + REST API | WebSocket 常駐が不要でサーバーレスと相性が良い |
 | DB | Cloudflare D1（Free） | SQL・トランザクション・プリペアドステートメントが使える。書込上限が KV より大きい |
-| 静的配信 | Cloudflare Pages の静的配信（`public/` を元に、デプロイ時に作る `dist/`） | 無料・同一オリジンで配信でき CSP を厳しくできる。`_routes.json` で、Pages Functions を動かすパス（`/discord/*`・`/api/*`・`/l`・`/l/*`・`/p/*`・`/g/*`）以外は静的ファイルとして配信し、`_headers` のヘッダーを付ける。存在しないパスには `404.html` を 404 で返す（ないと Pages は LP を 200 で返す）。`/app/`（画面の HTML の元）を直接開いたときも、保存させず検索に載せない |
-| 定期処理 | Cron Triggers（Worker `discheduler`。Pages は Cron に対応していないため） | **1 日 2 回（日本時間 1 時・13 時）だけ** 実行する。回答が入りやすい昼休み（12〜13 時）と終業後の夜の直後に反映するため。未反映の回答の変更がある募集メッセージの更新、締切を過ぎた調整の `closed` への変更。1 時の回は期限切れデータの削除も行う。ほかに、毎時 0〜4 分に 1 分おきに予定のリマインドだけを行う（主催者が決めた日時に送るため。§5.7） |
+| 静的配信 | Workers Static Assets（`public/` を元に、デプロイ時に作る `dist/`） | 無料・同一オリジンで配信でき CSP を厳しくできる。`wrangler.jsonc` の `assets.run_worker_first` で、コードを先に動かすパス（`/discord/*`・`/api/*`・`/l`・`/l/*`・`/p/*`・`/g/*`）以外は静的ファイルとしてコードを通らずに配信し、`_headers` のヘッダーを付ける。存在しないパスには `404.html` を 404 で返す（`not_found_handling: "404-page"`）。`/app/`（画面の HTML の元）を直接開いたときも、保存させず検索に載せない |
+| 定期処理 | Cron Triggers（Worker `discheduler`） | **1 日 2 回（日本時間 1 時・13 時）だけ** 実行する。回答が入りやすい昼休み（12〜13 時）と終業後の夜の直後に反映するため。未反映の回答の変更がある募集メッセージの更新、締切を過ぎた調整の `closed` への変更。1 時の回は期限切れデータの削除も行う。ほかに、毎時 0〜4 分に 1 分おきに予定のリマインドだけを行う（主催者が決めた日時に送るため。§5.7） |
 | 言語 | TypeScript | 型による入力検証の取りこぼし防止 |
 | ルーティング | Hono | Workers ネイティブで軽量、依存が少ない |
 | 入力検証 | Valibot | 軽量なスキーマ検証 |
@@ -252,6 +252,7 @@ sequenceDiagram
 | Create Events | 確定日時の Discord イベント作成 | 任意（R5 を使う場合） |
 | Manage Events | Bot が作成したイベントの編集・削除 | 任意 |
 
+> **`/schedule`・`/di` の実行時に確かめる。** スラッシュコマンドは Bot の権限がなくても使えるので、Bot が見られないチャンネル（非公開のチャンネルなど）でも実行できてしまう。そのまま下書きを作ると、公開するまで投稿できないことに気づけない。そこで、Interaction に付いてくる `app_permissions`（そのチャンネルでの Bot の権限）を見て、View Channels・Send Messages（スレッドでは Send Messages in Threads）・Embed Links のどれかが欠けていれば、下書きを作らずに、足りない権限と許可の手順を本人にだけ見えるメッセージで伝える（Discord への問い合わせは増えない。`app_permissions` が届かないときは確かめない）。
 > **Administrator 権限は要求しない。** メッセージ内容（Message Content Intent）も不要のため要求しない。
 > **「メッセージ履歴を読む」（Read Message History）も要求しない。** Bot を追加する前のメッセージ履歴も、追加したあとのメッセージも読まない（チャンネルのメッセージを取得する API は呼ばない。メッセージに触れるのは、Bot が自分で投稿したものの編集・削除だけで、その ID は投稿したときに控えたものを使う）。サーバーの @everyone にこの権限があれば Bot も受け継ぐが、読む処理がないため影響しない。
 
@@ -265,7 +266,7 @@ sequenceDiagram
 | `manual` | | 主催者が S2 画面でサーバーメンバーを検索・選択（Worker が `GET /guilds/{id}/members/search` を呼ぶ。§8.1 の `GET /api/polls/{id}/member-search`） | 不要 |
 
 どちらのモードでも、自動抽出後に主催者が S2 画面で参加者を追加・削除できる。
-Server Members Intent が無効のまま `auto` が選ばれた場合（API が 403 を返す）は、`manual` に自動で切り替えて主催者にその旨を表示する。
+Server Members Intent が無効のまま `auto` が選ばれた場合（API が 403 を返す）は、`manual` に自動で切り替えて主催者にその旨を表示する。Bot がチャンネルを見られない（チャンネルの取得が 403 を返す）場合も同じく `manual` に切り替え、「Bot がこのチャンネルを見られないため」と理由を表示する。
 
 #### 5.3.1 サーバーの既定値
 
@@ -435,7 +436,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
 | S9 | 作成した調整の一覧（このサーバーで自分が主催した調整。§6.11） | `/g/{guildId}/polls` | 主催者 |
 | S8 | マニュアル（項目ごとに 1 ページ） | `/manual/`、`/manual/{項目}`（英語版 `/en/manual/`、`/en/manual/{項目}`） | 公開 |
 
-- S0・S3a・S6・S8 は静的ページ（`public/index.html`、`public/answered.html`、`public/security.html`、`public/manual/*.html`）として Cloudflare Pages から配信する（英語版は `public/en/` の下に同じ構成で置く。§6.12）。JavaScript は言語の切り替え（`public/assets/lang.js`）など、同じオリジンの小さなスクリプトだけを使い、アプリと同じ CSP を `public/_headers` で付与する。
+- S0・S3a・S6・S8 は静的ページ（`public/index.html`、`public/answered.html`、`public/security.html`、`public/manual/*.html`）として Worker の静的ファイル（Workers Static Assets）で配信する（英語版は `public/en/` の下に同じ構成で置く。§6.12）。JavaScript は言語の切り替え（`public/assets/lang.js`）など、同じオリジンの小さなスクリプトだけを使い、アプリと同じ CSP を `public/_headers` で付与する。
 - **検索結果での表示（S0）**: LP の `<title>` と `og:title` を「DIscheduler（Discord の日程調整 Bot）」、`og:site_name` と構造化データ（`WebSite` の `name`）を「DIscheduler」にする。正規 URL（`<link rel="canonical">`・`og:url`）と構造化データの `url` は、正式な公開アドレス（`PUBLIC_ORIGIN`）を `scripts/prepare-public.sh` がデプロイ時に埋め込む（Pages のデプロイごとの別名のアドレスが、検索結果に別のページとして出ないようにするため）。構造化データは実行されないデータなので、CSP（`script-src 'self'`）の対象にならない。Google は検索結果のタイトルを書き換えることがあるため、表示は保証されない。
 - S8 のマニュアルは、項目（はじめに、サーバーに追加する、使えるチャンネルを決める、調整を作る、候補日時を入れる、回答の選択肢を変える、参加者を決める、公開する、回答する、集計を見て確定する、募集メッセージの更新、調整を管理・削除する、困ったときは）ごとに 1 ページとし、全ページに同じ目次（広い画面では左のサイドバー、狭い画面では本文の下。本文の上に「目次へ」のリンク）と、前後のページへのリンクを置く。ヘッダー・フッター・LP の「使い方」の下と、Discord の［使い方］からリンクする。項目を足すときは、全ページの目次と前後のリンクを直す。
 - **利用者向けのセキュリティ方針は S6（`public/security.html`）を基準とする。** リポジトリの `SECURITY.md` は S6 へのリンクと脆弱性の報告窓口だけを載せる。
@@ -1035,11 +1036,13 @@ CREATE TABLE rate_limits (
 | POST | `/api/polls/{id}/renotify` | セッション(主催者) + CSRF | 調整の再通知（募集メッセージへの返信で、ロールか @everyone にメンションして知らせ直す。1 時間に 5 回まで。§5.3） |
 | POST | `/api/polls/{id}/repost` | セッション(主催者) + CSRF | 募集メッセージを投稿し直す（削除されたときなど。1 分に 1 回まで。§5.5） |
 | POST | `/api/polls/{id}/choices-ack` | セッション(参加者) + CSRF | 「選択肢が変更されました」を確認した（§6.9.4） |
+| POST | `/api/polls/{id}/client-errors` | セッション(主催者・参加者)。CSRF のトークンは求めない（Origin と Content-Type は確かめる） | 画面で起きた、利用者には直せないエラーを知らせる（§12 の監視） |
 | POST | `/api/polls/{id}/sync-message` | セッション(主催者) + CSRF | 募集メッセージを今すぐ更新（同じ調整で 1 分に 1 回まで。§6.5） |
 | DELETE | `/api/polls/{id}` | セッション(主催者) + CSRF | 調整削除（本人の一覧のセッションがあれば `listUrl` を返す。§6.11） |
 | GET | `/api/guilds/{guildId}/polls` | 一覧のセッション | このサーバーで自分が主催した調整の一覧（§6.11） |
 | POST | `/api/guilds/{guildId}/polls/{pollId}/open` | 一覧のセッション + CSRF | 主催者本人と確かめて、その調整の主催者のセッションを発行（`to`: `edit` / `summary`） |
 | DELETE | `/api/guilds/{guildId}/polls/{pollId}` | 一覧のセッション + CSRF | 一覧から調整を削除（S2 の削除と同じ処理） |
+| POST | `/api/guilds/{guildId}/client-errors` | 一覧のセッション。CSRF のトークンは求めない（Origin と Content-Type は確かめる） | 画面で起きた、利用者には直せないエラーを知らせる（§12 の監視） |
 | GET | `/`・`/security` | なし | LP・セキュリティ方針（静的。Worker を通らず配信） |
 | GET | `/*` | なし | 静的アセット |
 
@@ -1117,7 +1120,7 @@ CREATE TABLE rate_limits (
 | Cron Triggers | 無料プランで利用可 | 2 本（1 日 2 回: 日本時間 1 時・13 時。1 時の回で削除も実行。予定のリマインド: 毎時 0〜4 分に 1 分おきに 5 回。§5.7） |
 | D1 の問い合わせ回数 | 1 回の実行（リクエスト・Cron）あたり 50 回まで（batch の中の文も 1 文ずつ数える前提で見積もる） | 募集メッセージの更新 1 件で 3 文（最終更新時刻の読み込みと更新権利の取得を 1 回の batch で行い、権利を取れたときだけ調整と関連データを読む。データは権利を取ったあとの内容を読む）。参加者の追加は人数によらず 1 文（JSON で渡す）。Cron は 13 時の回で最大 8 件・約 44 文、1 時の回で最大 4 件と削除で約 43 文まで。予定のリマインドの回は、対象を読む 1 文（上限より 1 件多く読み、残りがあるかを知る）と、1 件ごとに権利を取る 1 文で、20 件・21 文（Discord への送信も 20 件）まで。削除は調整やサーバーの数によらず決まった文の数で行う。残りは次の機会に反映 |
 
-- 独自ドメイン `etlits.dev` を Cloudflare Registrar で取得（ドメイン費用は年 1 回。Cloudflare の DNS とリダイレクトルールは無料プランで使える）。Pages Functions へのリクエストは Workers の無料枠（1 日 10 万リクエスト）と共通で数え、静的ファイルの配信は無料・無制限。
+- 独自ドメイン `etlits.dev` を Cloudflare Registrar で取得（ドメイン費用は年 1 回。Cloudflare の DNS とリダイレクトルールは無料プランで使える）。Worker のコードを通るリクエスト（画面・API・Discord）は Workers の無料枠（1 日 10 万リクエスト）で数え、コードを通らない静的ファイルの配信は無料・無制限。
 - 無料枠を超えた場合、Workers はエラー応答になる（課金は発生しない）。表示は §9.1 のとおり、「混雑」などとぼかさず **無料枠を超えたことをそのまま伝える**。
 - **有料プランへの自動アップグレードは行わない**（Cloudflare アカウントに支払い情報を登録しない運用も可能）。
 
@@ -1152,7 +1155,7 @@ D1 の上限を超えたときの文面（Discord・Web 共通）:
 | 同時編集 | 回答は本人の行のみ更新するため競合なし。候補編集は `updated_at` による楽観ロック |
 | アクセシビリティ | WCAG 2.2 AA を目標（コントラスト、キーボード操作、スクリーンリーダーラベル） |
 | 対応ブラウザ | 最新の Chrome / Safari / Firefox / Edge、Discord アプリ内ブラウザ |
-| 監視 | Worker（Cron・転送）は Workers Observability（アプリが書くログだけを残し、リクエストの記録 invocation logs は無効。ログには ID と出来事の種類だけを出し、トークンは伏せる）。本体の Pages はログを残さないので、予期しないエラー（API の `unhandled_error`、Discord の操作の `interaction_error`、募集メッセージの更新の `sync_failed`、Cron の失敗など）の要約を D1 の `error_logs` にも残す（`src/core/log.ts`）。残すのは種類・時刻・利用者の画面に出した参照番号・調整の ID・エラーの文（300 文字まで。Discord の API のアドレスのトークンは伏せる）だけで、回答・表示名・ユーザー ID・IP アドレスは入れない。エラーが続いても書き込みが増えすぎないよう 1 時間に 200 件まで。7 日で Cron が消す。見るときは `wrangler d1 execute discheduler --remote --command "SELECT * FROM error_logs ORDER BY id DESC LIMIT 50"` |
+| 監視 | Workers Observability（アプリが書くログだけを残し、リクエストの記録 invocation logs は無効。ログには ID と出来事の種類だけを出し、トークンは伏せる）。Workers Logs は無料プランでは数日で消えるので、予期しないエラー（API の `unhandled_error`、Discord の操作の `interaction_error`、募集メッセージの更新の `sync_failed`、Cron の失敗など）の要約を D1 の `error_logs` にも残す（`src/core/log.ts`）。残すのは種類・時刻・利用者の画面に出した参照番号・調整の ID・エラーの文（300 文字まで。Discord の API のアドレスのトークンは伏せる）だけで、回答・表示名・ユーザー ID・IP アドレスは入れない。エラーが続いても書き込みが増えすぎないよう 1 時間に 200 件まで。7 日で Cron が消す。見るときは `wrangler d1 execute discheduler --remote --command "SELECT * FROM error_logs ORDER BY id DESC LIMIT 50"`。画面で起きた、利用者には直せないエラーは、サーバーのコードを通らないので、画面から知らせて残す（`web/src/lib/api.ts`）。対象は次の 2 つ。(1) DIscheduler の JSON でない失敗の応答（`client_http_error`）。Cloudflare がアプリのコードより前で返した失敗（CPU 時間やメモリの上限での打ち切り、WAF・Bot 対策での停止、一時的な 502・504 など）にあたる。画面のエラーの文には、操作の名前・HTTP の状態コード・時刻・Ray ID（`cf-ray`）を添える。残すのは状態コード・メソッド・ID を伏せたパス・時刻・Ray ID。(2) 画面のプログラムの不具合（`client_script_error`）。どこでも受け止められなかった例外（`error`・`unhandledrejection`）と、画面に出したエラーのうちサーバーが理由を返したものでないもの。残すのはエラーの文（200 文字まで）と、画面のプログラム（`/app/assets/`）の中の位置だけ。拡張機能など、ほかのスクリプトのエラーは送らない。利用者が自分で直せるもの（通信の切断、入力の誤り、リンクの期限切れなど、サーバーが理由を返したもの）は知らせない。送り先は、セッションのある画面の `POST /api/polls/{id}/client-errors` と `POST /api/guilds/{guildId}/client-errors`。セッションのない画面（リンクの中継 `/l` など）からは知らせない（ログインしていない人が記録を書けると、記録を埋めて本物のエラーを隠せてしまうため）。最初の読み込みに失敗した画面からも送れるよう、CSRF のトークンは求めない（記録を残すだけで調整は変えない。Origin の完全一致・JSON の Content-Type・セッションの Cookie は確かめる）。同じ内容は 1 つの画面で 1 回、1 つの画面で 10 件まで送る。サーバーはセッションの持ち主 1 人あたり 1 時間に 10 件まで残す。届かなければ、次に成功したリクエストのあとに送り直し、3 回で諦める。原因を確かめるときは、Cloudflare のダッシュボードで、Worker の Metrics（Exceeded CPU・Exception などの件数）と、`etlits.dev` のゾーンの セキュリティ → Analytics → イベント（Ray ID で探せる）を見る |
 
 ---
 
@@ -1190,16 +1193,12 @@ DIscheduler/
 │   ├── db/                   # D1 クエリ（プリペアドステートメントのみ）・レート制限
 │   └── shared/               # Worker と Web 画面で共有（集計・タイムゾーン・文字列の検証）
 ├── branding/                 # Discord のアプリアイコン・Bot のアバター（app-icon.svg と、そこから作った 1024×1024 の app-icon.png）
-├── pages/wrangler.jsonc      # Cloudflare Pages（本体）の設定。値はデプロイ時に埋め込む。配信するのは dist/
-├── dist/                     # デプロイ時に public/ をコピーして設定値を埋め込んだもの（scripts/prepare-public.sh。git に入れない）
-├── public/                   # 静的ファイルと Pages Functions の入口の元（設定値の置き場所 __X__ を含む）
-│   ├── _worker.js            # Pages Functions の入口（src/index.ts をそのまま使う）
-│   ├── _routes.json          # Pages Functions を動かすパス
-│   ├── .assetsignore         # Worker の静的ファイルから除くファイル
+├── dist/                     # public/ をコピーして設定値を埋め込んだもの。Worker が静的ファイルとして配信する（scripts/prepare-public.sh。git に入れない）
+├── public/                   # 静的ファイルの元（設定値の置き場所 __X__ を含む）
 │   ├── index.html            # S0: Bot の案内（LP）
 │   ├── security.html         # S6: セキュリティ方針（利用者向けの基準）
 │   ├── answered.html         # S3a: 回答の完了
-│   ├── 404.html              # 存在しないページ（日本語と英語を並べる。これがないと Pages は LP を 200 で返す）
+│   ├── 404.html              # 存在しないページ（日本語と英語を並べる。存在しないパスに 404 で返す）
 │   ├── assets/answered.js    # S3a の［集計画面を見る］のリンクを作る
 │   ├── assets/site.css       # 公開ページ共通のスタイル
 │   ├── ads.txt               # 広告枠の販売を許可した事業者の一覧（§6.10.1）
@@ -1258,7 +1257,7 @@ DIscheduler/
 | タイムゾーン | 設定変更可能。既定はブラウザのタイムゾーン、不明なら `Asia/Tokyo` | 海外のメンバーにも対応するため | §6.7 |
 | データ保持期間 | 確定していない調整は締切から 3 ヶ月（90 日）後、確定した調整はいちばん遅い確定日時から 10 日後に自動削除 | 確定していない調整は振り返りや再調整に使えるように残し、確定した調整は予定が終われば要らないので早めに消す | §7.4 |
 | 運営費 | 寄付リンクを LP・完了画面・無料枠超過の画面に置く。広告は今は出さない（忍者AdMax の枠はなくした。今後 Google AdSense を集計画面の邪魔にならない場所に入れる予定。§6.10.1）。無料枠を超えたときはそのまま伝える | 不適切に見える広告が出たため。広告を入れるときは、回答や名前が広告のスクリプトに読まれないよう、設計とセキュリティ方針を決め直してから出す | §6.10, §6.10.1, §9.1 |
-| ドメイン | 独自ドメイン `etlits.dev` のサブドメイン `discheduler.etlits.dev`。以前のアドレス（`*.pages.dev`、`discheduler.etlits.workers.dev`）は正式なアドレスへ転送 | サービスのアドレスを Cloudflare のサービス名に左右されない、覚えやすいものにするため。`etlits.dev` 本体は、今は `discheduler.etlits.dev` へ転送し、ほかの用途にも使えるよう空けておく | §9, §14 |
+| ドメイン | 独自ドメイン `etlits.dev` のサブドメイン `discheduler.etlits.dev`。以前のアドレス（`*.pages.dev`、`discheduler.etlits.workers.dev`）は使わない（Pages のプロジェクトは削除、Worker は `workers_dev: false`） | サービスのアドレスを Cloudflare のサービス名に左右されない、覚えやすいものにするため。`etlits.dev` 本体は、今は `discheduler.etlits.dev` へ転送し、ほかの用途にも使えるよう空けておく | §9, §14 |
 
 - Server Members Intent は、Bot の導入サーバーが 100 未満なら Discord の審査なしで、Developer Portal の設定だけで有効化できる。100 サーバー以上になる場合は Discord への申請が必要。
 
@@ -1270,39 +1269,35 @@ GitHub Actions から Cloudflare にデプロイする（`.github/workflows/depl
 
 | 置き場所 | アドレス | 担当 | 設定 |
 |---|---|---|---|
-| Cloudflare Pages（本体） | 正式な公開アドレス `PUBLIC_ORIGIN`（`https://discheduler.etlits.dev`。Pages の独自ドメイン。`https://<プロジェクト名>.pages.dev` は正式なアドレスへ転送） | LP・セキュリティ方針・Web 画面・Web API・Discord からの通信 | `pages/wrangler.jsonc`、`public/_worker.js`、`public/_routes.json` |
-| Cloudflare Workers（`discheduler`） | 旧アドレス `https://discheduler.etlits.workers.dev` | 1 日 2 回の自動処理（Cron）と、旧アドレスへのアクセスの転送 | `wrangler.jsonc` |
+| Cloudflare Workers（`discheduler`） | 正式な公開アドレス `PUBLIC_ORIGIN`（`https://discheduler.etlits.dev`。Workers の独自ドメイン） | LP・セキュリティ方針・マニュアル（静的ファイル）、Web 画面・Web API・Discord からの通信、Cron | `wrangler.jsonc` |
 
-- Pages と Worker は同じコード（`src/index.ts`）と同じ D1 データベースを使う。
-- **正式なアドレス以外へのアクセスは転送する**：`PUBLIC_ORIGIN` と違うアドレス（旧アドレスの Worker、Pages がデプロイごとに作る別名のアドレス）への GET は、同じパスのまま正式なアドレスへ 301 で転送し、それ以外の書き込みは 404 にする。入力リンクの `#t=` は転送後も保たれる。
-- Discord からの通信（`POST /discord/interactions`）だけは、Interactions Endpoint URL を切り替えるまでの間も旧アドレスで受けられるよう、転送せずに処理する（Discord は転送に従わない）。どちらで受けても、入力リンクと案内は正式なアドレスで出す。
-- Worker は `run_worker_first` で静的ファイルより先にコードを動かし、旧アドレスのページへのアクセスもすべて転送する。
-- Pages の静的ファイル（LP・セキュリティ方針・マニュアル・回答の完了画面）は Pages Functions を通らないので、上の転送が動かない。`<プロジェクト名>.pages.dev` のアドレスは、Cloudflare の Bulk Redirects で正式なアドレスへ転送する（§14.1.3）。
+- 静的ファイルは `dist/`（`scripts/prepare-public.sh` が `public/` から作る）。画面・API・Discord のパスだけ `run_worker_first` でコードを先に動かし、それ以外はコードを通さずに配信する。
+- `workers_dev: false`・`preview_urls: false` で、正式なアドレスのほかには公開しない（以前の `discheduler.etlits.workers.dev` と `<プロジェクト名>.pages.dev` は使わない）。
+- コードには、`PUBLIC_ORIGIN` と違うアドレスへの GET を正式なアドレスへ 301 で転送し、書き込みを 404 にする処理（理由と正式なアドレスを JSON の `wrong_origin` で返し、画面に出す）を残している（開発やテストで別のアドレスから開いたときのため）。Discord からの通信（`POST /discord/interactions`）だけは転送せずに処理する。
 
 ```mermaid
 flowchart LR
   M[main にマージ] --> T[test: 監査・型検査・テスト・ビルド]
   T --> A{approve:<br/>production-approval 環境の承認}
-  A -- 承認 --> R[deploy: 設定値を埋め込む<br/>静的ページ・Pages・Worker]
+  A -- 承認 --> R[deploy: 設定値を埋め込む<br/>dist/・wrangler.jsonc]
   R --> MG[D1 マイグレーション]
-  MG --> P[(Cloudflare Pages<br/>discheduler.etlits.dev)]
-  P --> W[(Cloudflare Workers<br/>Cron・転送)]
+  MG --> W[(Cloudflare Workers<br/>discheduler.etlits.dev)]
 ```
 
 - **承認はいちばん新しいマージだけでよい**：承認だけを行う `approve` ジョブ（`production-approval` 環境。secret を置かない）を、実際のデプロイの `deploy` ジョブ（`production` 環境）の前に置く。
   - `approve` は `concurrency`（`approve-production`）で `cancel-in-progress: true` にする。承認待ちの間に次のマージがあると、古い承認待ちは取り消され、新しいほうだけが承認待ちになる。デプロイはその実行のコミット（その時点の `main`。それまでのマージをすべて含む）で行うので、いちばん新しいものを承認すれば全部デプロイされる。
-  - `deploy` は `concurrency`（`deploy-production`）で `cancel-in-progress: false` のまま。途中で止めると Pages と Worker の版やマイグレーションがずれるため、実行中のデプロイは取り消さず、順に流す（待っている間に来た新しいものは、古い待ちを置き換える）。
+  - `deploy` は `concurrency`（`deploy-production`）で `cancel-in-progress: false` のまま。途中で止めるとマイグレーションとコードの版がずれるため、実行中のデプロイは取り消さず、順に流す（待っている間に来た新しいものは、古い待ちを置き換える）。
   - 承認者を求めるのは `production-approval` だけにし、`production` には求めない（2 回承認しなくて済むように）。秘密の値は `production` にだけ置き、どちらの環境も `main` からしか使えないようにする。
 
 ### 14.1 初回の準備
 
 **Cloudflare**
-1. 無料アカウントを作り、「Workers & Pages」で `workers.dev` のサブドメインを決める（Cron と転送の Worker は `https://discheduler.<サブドメイン>.workers.dev`）。
+1. 無料アカウントを作る。独自ドメイン（`etlits.dev`）を同じアカウントのゾーンにしておく（Cloudflare Registrar で取得すれば自動でそうなる）。
 2. Account ID を控える。
-3. 「My Profile → API Tokens → Create Token」でテンプレート「Edit Cloudflare Workers」を選び、Account Resources を自分のアカウントだけに限り、有効期限（最長 1 年）を付けてトークンを作る。権限は「Workers Scripts: Edit」「Account Settings: Read」「User Details: Read」「Memberships: Read」に加えて **「D1: Edit」** と **「Cloudflare Pages: Edit」** を付ける。
+3. 「My Profile → API Tokens → Create Token」でテンプレート「Edit Cloudflare Workers」を選び、Account Resources を自分のアカウントだけに限り、有効期限（最長 1 年）を付けてトークンを作る。権限は「Workers Scripts: Edit」「Account Settings: Read」「User Details: Read」「Memberships: Read」に加えて **「D1: Edit」** を付け、Zone Resources を `etlits.dev` に限って **「Zone > Workers Routes: Edit」** も付ける（Worker に独自ドメインを付けるため）。
 4. 「Storage & Databases → D1」で `discheduler` という名前のデータベースを作り、Database ID を控える。
-5. 「Workers & Pages → Create → Pages」で、直接アップロード（Direct Upload）の Pages プロジェクトを作る（名前は例: `discheduler`。作成時に仮のファイルを 1 つアップロードしてよい。本番のブランチは `main`）。表示された `https://<プロジェクト名>.pages.dev` を控える（名前が使われていると、末尾に文字が付いたアドレスになる）。
-6. Pages のプロジェクトの「Settings → Variables and Secrets」で、本番（Production）の **Secret** として `DISCORD_BOT_TOKEN`（Bot トークン）を登録する。初回のデプロイのあと、Worker（`discheduler`）にも同じ Secret を登録する（Cron が Discord の API を呼ぶため）。Bot トークンは GitHub には置かない。
+5. 初回のデプロイのあと、Worker（`discheduler`）の「Settings → Variables and Secrets」で、**Secret** として `DISCORD_BOT_TOKEN`（Bot トークン）を登録する。Bot トークンは GitHub には置かない。
+6. （欠番）
 7. （任意）運営者向けの通知を受け取る Discord のチャンネルで Webhook を作り、その URL を Worker（`discheduler`）の **Secret** `ALERT_WEBHOOK_URL` として登録する。Bot が入っているサーバーの数が 75 を超えたときに通知が届く（下の「サーバーの数の確認」）。
 
 **サーバーの数の確認**
@@ -1335,11 +1330,10 @@ flowchart LR
 | Environment variable | `DISCORD_APPLICATION_ID` | Discord Developer Portal の Application ID（公開値） |
 | Environment variable | `DISCORD_PUBLIC_KEY` | Discord Developer Portal の Public Key（公開値。署名検証に使う） |
 | Environment variable | `D1_DATABASE_ID` | D1 の Database ID（公開しても問題ない値） |
-| Environment variable | `PAGES_PROJECT` | Cloudflare Pages のプロジェクト名（例: `discheduler`） |
 | Environment variable | `PUBLIC_ORIGIN` | 正式な公開アドレス（`https://discheduler.etlits.dev`。末尾の `/` なし） |
 | Environment variable | `DONATION_URL` | 寄付リンクの URL（任意。未設定なら寄付の欄を出さない） |
 
-### 14.1.1 Workers から Pages への移行（2026 年 11 月）
+### 14.1.1 Workers から Pages への移行（2026 年 11 月。§14.1.4 で Worker に戻した）
 本体を `discheduler.etlits.workers.dev`（Workers）から `<プロジェクト名>.pages.dev`（Pages）へ移したときの手順。
 1. 上の Cloudflare 5・6（Pages のプロジェクトと Secret）、API トークンへの「Cloudflare Pages: Edit」の追加、GitHub の `PAGES_PROJECT`・`PUBLIC_ORIGIN` の登録を済ませる。
 2. `main` にマージしてデプロイする。Pages に本体が公開され、Worker は Cron と転送の役に変わる。旧アドレスの募集メッセージのリンクは、正式なアドレスへ転送される。
@@ -1347,7 +1341,7 @@ flowchart LR
 4. AdSense のサイトを正式なアドレスで登録し直す（§6.10.1）。
 
 
-### 14.1.2 独自ドメイン etlits.dev への移行（2026 年 11 月）
+### 14.1.2 独自ドメイン etlits.dev への移行（2026 年 11 月。手順 1 の独自ドメインは §14.1.4 で Worker に付け替えた）
 `etlits.dev` を Cloudflare Registrar で取得し（同じアカウントのゾーンになる）、本体を `discheduler.etlits.dev` に移したときの手順。
 1. **Pages に独自ドメインを付ける**：「Workers & Pages → Pages のプロジェクト → Custom domains → Set up a custom domain」で `discheduler.etlits.dev` を追加する（DNS のレコードは Cloudflare が作る）。有効になるまで数分かかる。
 2. **GitHub の `PUBLIC_ORIGIN` を変える**：`production` 環境の変数 `PUBLIC_ORIGIN` を `https://discheduler.etlits.dev` にする。
@@ -1361,20 +1355,27 @@ flowchart LR
    - あとで `etlits.dev` をほかの用途（ブログなど）に使うときは、このルールを `https://etlits.dev/ads.txt` だけを `https://discheduler.etlits.dev/ads.txt` へ転送する形に変える。
 
 ### 14.1.3 pages.dev のアドレスの転送と、広告の枠の片付け（2026 年 11 月）
-1. **pages.dev を正式なアドレスへ転送する**：静的ページは Pages Functions を通らないため、コードの転送が効かない。アカウントの「Bulk Redirects」で、リダイレクトリストに「元の URL `<プロジェクト名>.pages.dev`、ターゲット URL `https://discheduler.etlits.dev`、ステータス `301`、クエリ文字列を保持・サブパスの一致・パスの接尾辞を保持・サブドメインを含める」の 1 行を作り、そのリストを使うルールを有効にする。`https://<プロジェクト名>.pages.dev/security` が転送されることを確かめる。
-2. **広告の枠の Worker を消す**：広告の枠の仕組みをなくしたので、「Workers & Pages」で `discheduler-ads` を削除する（独自ドメイン `ads.etlits.dev` も外れる）。GitHub の `production` 環境の変数 `ADMAX_ID` も消す。API トークンの「Zone > Workers Routes: Edit」も要らなくなる。
+1. （§14.1.4 で Pages をやめたので不要になった）
+2. **広告の枠の Worker を消す**：広告の枠の仕組みをなくしたので、「Workers & Pages」で `discheduler-ads` を削除する（独自ドメイン `ads.etlits.dev` も外れる）。GitHub の `production` 環境の変数 `ADMAX_ID` も消す。
+
+### 14.1.4 Pages から Worker への移行（2026 年 11 月）
+本体を Cloudflare Pages から Worker `discheduler` に戻したときの手順（Pages Functions はログを残さず、Worker なら Workers Logs が使えるため）。マージのあとに行う。
+1. **API トークン**：`etlits.dev` の「Zone > Workers Routes: Edit」が付いているかを確かめる（なければ足す。独自ドメインの付け替えに必要）。
+2. **Pages の独自ドメインを外す**：「Workers & Pages → Pages のプロジェクト → Custom domains」で `discheduler.etlits.dev` を外す。ここから次のデプロイが終わるまでの数分は、サイトと Bot が止まる。
+3. **デプロイを承認する**：Worker に `discheduler.etlits.dev` が付く（`wrangler.jsonc` の `routes`）。以前の `discheduler.etlits.workers.dev` は無効になる。
+4. **確かめる**：LP・`/security`・マニュアル・存在しないページ（404）、Discord の `/schedule` とボタン、回答と集計の画面。Discord の Interactions Endpoint URL は同じアドレスなので変えない。Bot トークンなどの Secret は Worker にすでにある。
+5. **Pages を片付ける**：問題がなければ Pages のプロジェクトを削除し、GitHub の `production` 環境の変数 `PAGES_PROJECT` を消す。API トークンの「Cloudflare Pages: Edit」も要らなくなる。
 ### 14.2 ワークフローの安全策
-- 設定値の埋め込みは `scripts/prepare-public.sh --config public dist` にまとめる。`public/` を `dist/` にコピーしてから静的ページに埋め込み（元のファイルは書き換えない）、Pages と Worker の設定ファイルにも埋め込む。値の形式を検証し、不正なら止める。最後に、`dist/`（画面のビルド結果を除く）と設定ファイルに `__大文字__` の置き場所や目印が残っていないかを確かめ、残っていれば止める。
+- 設定値の埋め込みは `scripts/prepare-public.sh --config public dist` にまとめる。`public/` を `dist/` にコピーしてから静的ページに埋め込み（元のファイルは書き換えない）、Worker の設定ファイル（`wrangler.jsonc`）にも埋め込む。値の形式を検証し、不正なら止める。最後に、`dist/`（画面のビルド結果を除く）と設定ファイルに `__大文字__` の置き場所や目印が残っていないかを確かめ、残っていれば止める。
 - 寄付リンクの形式の決まりと Ko-fi の説明文は `src/shared/donation.json` に置き、アプリとスクリプトの両方が読む。すべてのページに付けるセキュリティヘッダーは `src/security-headers.json` に置き、静的配信の `public/_headers` と一致するかを `scripts/check-sync.mjs`（`npm run check-sync`）で確かめる。
 - `permissions: contents: read` のみ。`actions/checkout` は `persist-credentials: false` で GitHub トークンを残さない。
 - サードパーティの Action はコミット SHA で固定し、Dependabot（`.github/dependabot.yml`）で週次に更新 PR を作る。
 - wrangler は `package-lock.json` で固定したバージョン（`npm ci` で入れたもの）を使う。wrangler-action の `wranglerVersion` は指定しない（指定すると Action が別に入れ、package.json とバージョンがずれるため）。
 - `DISCORD_APPLICATION_ID` は数字 17〜20 桁、`DONATION_URL` は `https://` で始まる URL であることを確かめてから置き換える。置き換え漏れがあればデプロイを止める。
 - 同時に 2 つのデプロイが走らないよう `concurrency` で直列化する。
-- Worker のプレビュー URL は無効（`preview_urls: false`）にする。Pages はデプロイごとに別名のアドレス（`<ハッシュ>.<プロジェクト名>.pages.dev`）を作るが、正式なアドレス以外へのアクセスは転送・拒否する（§14）。Cookie はアドレスごとに分かれ、Web API は `Origin` の完全一致を確かめるので、別名のアドレスから正式なアドレスのセッションは使えない。
-- Bot トークンは GitHub に置かず、Cloudflare のダッシュボードで Pages のプロジェクトと Worker の Secret として登録する。コマンドの登録も Pages・Worker 自身が行う（§5.1）。
+- Worker の `workers.dev` のアドレスとプレビュー URL は無効（`workers_dev: false`・`preview_urls: false`）にし、正式なアドレスだけで公開する。Web API は `Origin` の完全一致を確かめる。
+- Bot トークンは GitHub に置かず、Cloudflare のダッシュボードで Worker の Secret として登録する。コマンドの登録も Worker 自身が行う（§5.1）。
 - デプロイの前に test ジョブ（`npm ci --ignore-scripts`、本番の依存の `npm audit`（中程度以上で止める）、`check-sync`、型検査、テスト、ビルド、仮の値での `prepare-public.sh`）が成功している必要がある。プルリクエストでは test だけを実行する。
 - デプロイの前に D1 のマイグレーション（`wrangler d1 migrations apply DB --remote`）を適用する。デプロイが終わるまで（失敗したときはその後も）古いコードが新しいスキーマで動くので、**マイグレーションは必ず、いま動いている版のコードでもそのまま動く形にする**（列や表を消すのは、どの版のコードも使わなくなってから。名前を変えるときは、足す → コードを移す → 古いほうを消す、の順に分ける）。
-- 環境変数 `DISCORD_APPLICATION_ID`・`DISCORD_PUBLIC_KEY`・`PUBLIC_ORIGIN`・`DONATION_URL` は、Pages には `pages/wrangler.jsonc` に埋め込んで（`wrangler pages deploy` は `--var` に対応していないため）、Worker には `wrangler deploy --var` で渡す。`PAGES_PROJECT`・`PUBLIC_ORIGIN` を含め、値の形式を確かめてから使い、置き換え漏れがあればデプロイを止める。
-- 本体（Pages）を先に、Worker（Cron・転送）をあとにデプロイする。
+- 環境変数 `DISCORD_APPLICATION_ID`・`DISCORD_PUBLIC_KEY`・`PUBLIC_ORIGIN`・`DONATION_URL` は、`wrangler deploy --var` で渡す。値の形式を `prepare-public.sh --config` で確かめてから使う。
 - Cron Triggers は `wrangler.jsonc` の `triggers.crons`（`0 4,16 * * *`。UTC 4 時・16 時 = 日本時間 13 時・1 時。予定のリマインドは `0-4 * * * *`。毎時 0〜4 分。`src/jobs/day-reminder.ts` の `REMINDER_CRON` と同じ文字列にする）で設定する。

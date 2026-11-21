@@ -79,11 +79,14 @@
           <li>Right after the bot is added, restarting the Discord app can make the command appear.</li>
         </ul>
 
+        <h2 id="no-access">"The DIscheduler bot can't see this channel, so a poll can't be created here" appears</h2>
+        <p>The DIscheduler bot can't see or post in that channel. This often happens in private channels. <code>/schedule</code> works even without the bot's permissions, but the bot can't post the poll message in a channel it can't see, so it stops before creating the poll. In the channel settings under Permissions, allow "View Channel", "Send Messages" ("Send Messages in Threads" in threads) and "Embed Links" for DIscheduler (or the bot's role), then run <code>/schedule</code> again.</p>
+
         <h2 id="not-participant">"You're not a participant in this poll" is shown</h2>
         <p>You aren't one of the poll's participants. Ask the organizer to add you (<a href="/en/manual/participants#edit">Add and remove participants</a>).</p>
 
         <h2 id="no-members">Participants aren't added automatically</h2>
-        <p>When participants can't be collected automatically, the poll switches to "Choose manually". Search for people by name on the edit page and add them. If there would be more than 100 participants, narrow it down with a role.</p>
+        <p>When participants can't be collected automatically, the poll switches to "Choose manually". Search for people by name on the edit page and add them. If there would be more than 100 participants, narrow it down with a role. Participants also can't be collected when the bot can't see the channel (see <a href="#no-access">the item above</a>).</p>
 
         <h2 id="no-event">The Discord event isn't created</h2>
         <p>The bot may not have the Create Events and Manage Events permissions. Ask a server admin to add them to the bot's role. Even without them, the date itself has been confirmed.</p>
