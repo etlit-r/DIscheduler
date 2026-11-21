@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Choose where it works | Manual | DIscheduler</title>
-  <meta name="description" content="For server admins: the channels and people that can use the commands, and the defaults for choosing participants and the Discord event location.">
+  <meta name="description" content="For server admins: the channels and people that can use the commands, permissions for channels with restricted access, and the defaults for choosing participants and the Discord event location.">
   <!-- origin:start --><!-- 日本語版と英語版の対応（docs/design.md §6.12） -->
   <link rel="alternate" hreflang="ja" href="__PUBLIC_ORIGIN__/manual/channels">
   <link rel="alternate" hreflang="en" href="__PUBLIC_ORIGIN__/en/manual/channels">
@@ -77,6 +77,19 @@
         <p>Who can use the commands in a chosen channel follows that channel's permissions. Under Edit Channel → Permissions, set the roles that are allowed Send Messages and Use Application Commands.</p>
         <p class="note">Because of how Discord works, members with the Manage Server permission can use the commands regardless of this setting.</p>
         <p>The [Answer] button on poll messages isn't affected by this setting. Whether someone can answer depends on whether they are a participant in that poll.</p>
+
+        <h2 id="private">Use it in a channel with restricted access</h2>
+        <p>If you schedule in a channel that only some members can see (such as a private channel), <strong>also allow DIscheduler to view that channel</strong>. If the DIscheduler bot can't see the channel, it can't post the poll message, and participants can't be set automatically from "members of this channel".</p>
+        <ol>
+          <li>Open Edit Channel → Permissions for that channel.</li>
+          <li>Under "Add members or roles", choose DIscheduler (or DIscheduler's role).</li>
+          <li>Allow (✓) View Channel, Send Messages and Embed Links, then save the changes.</li>
+        </ol>
+        <ul>
+          <li>To use it in a thread, allow View Channel, Send Messages in Threads and Embed Links in the parent channel. For a private thread, also add DIscheduler to the thread.</li>
+          <li>If you run <code>/schedule</code> in a channel without enough permissions, no poll is created, and only you see a message such as "The DIscheduler bot can't see this channel, so a poll can't be created here" with the missing permissions. Allow them, then run the command again.</li>
+          <li>Even when participants are "members of this channel", the bot itself isn't added as a participant.</li>
+        </ul>
 
         <h2 id="default">Set the default way to choose participants</h2>
         <p>You can set, per server, who becomes a participant when the organizer doesn't specify otherwise.</p>
