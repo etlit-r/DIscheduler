@@ -1207,7 +1207,7 @@ DIscheduler/
 │   ├── assets/lucide-LICENSE.txt # 埋め込んだアイコン（Lucide）のライセンス
 │   ├── favicon.svg           # ファビコン
 │   ├── _headers              # 静的配信時のセキュリティヘッダー
-│   └── robots.txt            # / と /security 以外のクロールを拒否
+│   └── robots.txt            # LP・セキュリティ方針・マニュアル・ads.txt・アイコン・/assets/ 以外のクロールを拒否
 ├── web/                      # Web 画面（S1〜S5・S7）。Vite で public/app/ にビルド
 │   ├── index.html            #   すべての画面で共通の HTML
 │   └── src/

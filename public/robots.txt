@@ -6,4 +6,6 @@ Allow: /en/$
 Allow: /en/security
 Allow: /en/manual/
 Allow: /ads.txt
+Allow: /favicon.svg
+Allow: /assets/
 Disallow: /
