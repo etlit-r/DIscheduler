@@ -317,3 +317,6 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
   .gcal-notes { padding-left: 1.2em; margin: 8px 0 0; display: grid; gap: 4px; }
 }
 @media (max-width: 1279px) { .side-panel, .gcal-toggle { display: none !important; } }
+
+/* 確定のお知らせの欄の中の小見出し（［Discord イベントに登録する］の入力欄） */
+.card-subtitle { margin: 12px 0 4px; font-size: 1rem; }

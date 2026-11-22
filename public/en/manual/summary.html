@@ -85,13 +85,12 @@
         <h2 id="fix">Confirm the date</h2>
         <ol>
           <li>In the results, press [Confirm] for the option you want to confirm. You can also choose it with [Confirm] under each date in the [Show by member] table. The option is highlighted, its button changes to [Unselect], and the confirmation panel opens near the top of the page. To choose another option, press [Unselect].</li>
-          <li>If you like, check "Create a Discord event" and choose the location (a voice channel or any text). The voice channel or location set as the server default is filled in; if none is set, "Discord" is used (<a href="/en/manual/channels#event-location">setting the default</a>).</li>
           <li>Press [Confirm this date]. The date is confirmed and the poll message changes to show it as confirmed.</li>
         </ol>
-        <p class="note">Confirming alone doesn't post an announcement to the channel. Post it with [Announce the dates] below. If a Discord event can't be created (for example, because the bot lacks the Create Events permission), the date is still confirmed and the page shows why.</p>
+        <p class="note">Confirming alone doesn't post an announcement to the channel. Post the announcement and create Discord events with [Announce the dates] or [Create Discord events] below.</p>
 
         <h2 id="multi">Confirm more than one date</h2>
-        <p>A poll can have several confirmed dates (for example, an event held over two days). Pressing [Confirm] on another option keeps the dates already confirmed and adds the new one. A Discord event can be created for each confirmed date.</p>
+        <p>A poll can have several confirmed dates (for example, an event held over two days). Pressing [Confirm] on another option keeps the dates already confirmed and adds the new one. Discord events are created for each confirmed date with the same details (<a href="#event">Create Discord events</a>).</p>
 
         <h2 id="unfix">Cancel a confirmation</h2>
         <ul>
@@ -103,10 +102,18 @@
 
         <h2 id="announce">Announce the dates</h2>
         <ul>
-          <li>When you've finished confirming or cancelling, press [Announce the dates] under "Announcement" on the results page. It posts one message to the channel listing the dates confirmed now and any dates cancelled since the last announcement.</li>
+          <li>When you've finished confirming or cancelling, press [Announce the dates] under "Announcement" on the results page. Choose the mention and Discord event options that appear, then press [Post the announcement]. It posts one message to the channel listing the dates confirmed now and any dates cancelled since the last announcement.</li>
           <li>"Changes not yet announced" shows how many confirmations and cancellations there have been since the last announcement.</li>
           <li>You can choose "Mention the participants' role in the announcement" (or "Mention @everyone in the announcement" if participants weren't chosen by role). Mentions are limited to 5 per poll per hour; beyond that, the message is posted without a mention.</li>
           <li>Announcements for the same poll can be posted up to 10 times per hour.</li>
+        </ul>
+
+        <h2 id="event">Create Discord events</h2>
+        <ul>
+          <li>Check "Create Discord events" in the [Announce the dates] options to create them together with the announcement. To create them without announcing, press [Create Discord events] under "Announcement".</li>
+          <li>Choose the location: a voice channel or any text. The voice channel or location set as the server default is filled in; if none is set, "Discord" is used (<a href="/en/manual/channels#event-location">setting the default</a>).</li>
+          <li>When several dates are confirmed, an event with the same details (poll title, description and location) is created for each date. Events already created are updated to the details you choose. Dates that have already started are skipped.</li>
+          <li>If a Discord event can't be created (for example, because the bot lacks the Create Events permission), the announcement still goes through and the page shows why.</li>
         </ul>
 
         <h2 id="day-reminder">Event reminders</h2>

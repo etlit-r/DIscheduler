@@ -505,31 +505,86 @@ describe("主催者だけの操作", () => {
 });
 
 describe("複数の候補の確定と取り消し", () => {
-  it("複数の候補を確定でき、それぞれに Discord イベントを登録する", async () => {
+  it("複数の候補を確定でき、確定のお知らせのときに、確定したすべての日時へ同じ内容の Discord イベントを登録する", async () => {
     let n = 0;
-    mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: `70000000000000001${n++}` } : {}));
+    const calls = mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: `70000000000000001${n++}` } : {}));
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    const ev = { type: "external", channelId: null, location: "Discord" };
+    const ev = { type: "external", channelId: null, location: "第2会議室" };
+    // 確定ではイベントを登録しない（デプロイ前の画面が event を送ってきても使わない）
     expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: ev }, org))).status).toBe(200);
-    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1], event: ev }, org))).status).toBe(200);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1] }, org))).status).toBe(200);
+    expect(calls.some((c) => c.path.includes("scheduled-events"))).toBe(false);
     const data = (await (await call(jsonReq("GET", `/api/polls/${s.pollId}`, undefined, org))).json()) as { poll: { status: string }; slots: { id: string; fixedAt: number | null; hasEvent: boolean }[] };
     expect(data.poll.status).toBe("fixed");
     const fixed = data.slots.filter((x) => x.fixedAt !== null);
     expect(fixed.map((x) => x.id).sort()).toEqual([s.slotIds[0], s.slotIds[1]].sort());
-    expect(fixed.every((x) => x.hasEvent)).toBe(true);
+    expect(fixed.some((x) => x.hasEvent)).toBe(false);
+
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false, event: ev }, org))).status).toBe(200);
+    const created = calls.filter((c) => c.method === "POST" && c.path.endsWith("/scheduled-events"));
+    expect(created.length).toBe(2);
+    // 名前・説明・場所は同じで、日時だけが違う
+    const bodies = created.map((c) => c.body as { name: string; entity_metadata: { location: string }; scheduled_start_time: string });
+    expect(new Set(bodies.map((b) => b.name)).size).toBe(1);
+    expect(bodies.every((b) => b.entity_metadata.location === "第2会議室")).toBe(true);
+    expect(new Set(bodies.map((b) => b.scheduled_start_time)).size).toBe(2);
+    const after = (await (await call(jsonReq("GET", `/api/polls/${s.pollId}`, undefined, org))).json()) as { slots: { fixedAt: number | null; hasEvent: boolean }[] };
+    expect(after.slots.filter((x) => x.fixedAt !== null).every((x) => x.hasEvent)).toBe(true);
+  });
+
+  it("お知らせで Discord イベントを登録しないときは作らない。登録済みのイベントは、もう一度お知らせしたときの内容に更新する", async () => {
+    let n = 0;
+    const calls = mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: `70000000000000004${n++}` } : {}));
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0] }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false, event: null }, org));
+    expect(calls.some((c) => c.path.includes("scheduled-events"))).toBe(false);
+
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false, event: { type: "external", channelId: null, location: "A" } }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1] }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false, event: { type: "external", channelId: null, location: "B" } }, org));
+    const ev = calls.filter((c) => c.path.includes("scheduled-events"));
+    // 1 回目: 1 件目を作る。2 回目: 1 件目を B に更新し、2 件目を B で作る
+    expect(ev.map((c) => c.method)).toEqual(["POST", "PATCH", "POST"]);
+    expect(ev.slice(1).every((c) => (c.body as { entity_metadata: { location: string } }).entity_metadata.location === "B")).toBe(true);
+  });
+
+  it("お知らせをせずに、確定したすべての日時へ Discord イベントだけを登録できる（主催者だけ・確定した日時がなければ断る）", async () => {
+    let n = 0;
+    const calls = mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: `70000000000000005${n++}` } : {}));
+    const s = await seedPoll({ participants: [ALICE] });
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const alice = await login(s.pollId, ALICE, "participant");
+    const ev = { event: { type: "external", channelId: null, location: "Discord" } };
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/events`, ev, org))).status).toBe(409);
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0] }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1] }, org));
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/events`, ev, alice))).status).toBe(403);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/events`, { event: null }, org))).status).toBe(400);
+    expect((await call(jsonReq("POST", `/api/polls/${s.pollId}/events`, ev, org))).status).toBe(200);
+    expect(calls.filter((c) => c.method === "POST" && c.path.endsWith("/scheduled-events")).length).toBe(2);
+    // チャンネルにはお知らせしない
+    expect(calls.some((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)).toBe(false);
+    const row = await db().prepare("SELECT COUNT(*) AS n FROM slots WHERE poll_id = ? AND announced_fixed = 1").bind(s.pollId).first<{ n: number }>();
+    expect(row!.n).toBe(0);
   });
 
   it("主催者は確定を取り消せる。イベントを消し（お知らせはしない）、確定した候補がなくなれば募集中に戻る", async () => {
     const calls = mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: "700000000000000020" } : {}));
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: { type: "external", channelId: null, location: "Discord" } }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0] }, org));
+    // イベントは確定のお知らせで登録する（この時点で確定しているのは 1 件目だけ）
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false, event: { type: "external", channelId: null, location: "Discord" } }, org));
     await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1], event: null }, org));
+    const posted = calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).length;
 
     expect((await call(jsonReq("DELETE", `/api/polls/${s.pollId}/fix/${s.slotIds[0]}`, undefined, org))).status).toBe(200);
     expect(calls.some((c) => c.method === "DELETE" && c.path.endsWith("/scheduled-events/700000000000000020"))).toBe(true);
-    expect(calls.some((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`)).toBe(false);
+    expect(calls.filter((c) => c.method === "POST" && c.path === `/channels/${CHANNEL}/messages`).length).toBe(posted);
     let poll = await db().prepare("SELECT status FROM polls WHERE id = ?").bind(s.pollId).first<{ status: string }>();
     expect(poll!.status).toBe("fixed");
 
@@ -575,8 +630,9 @@ describe("複数の候補の確定と取り消し", () => {
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
     const ev = { type: "external", channelId: null, location: "Discord" };
-    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: ev }, org));
-    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1], event: ev }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0] }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[1] }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false, event: ev }, org));
     expect((await call(jsonReq("DELETE", `/api/polls/${s.pollId}`, undefined, org))).status).toBe(200);
     const deleted = calls.filter((c) => c.method === "DELETE" && c.path.includes("/scheduled-events/")).map((c) => c.path.split("/").pop());
     expect(deleted.sort()).toEqual(["700000000000000030", "700000000000000031"]);
@@ -626,7 +682,8 @@ describe("2 回目のレビューの修正", () => {
     const calls = mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: "700000000000000010" } : {}));
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: { type: "external", channelId: null, location: "Discord" } }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0] }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false, event: { type: "external", channelId: null, location: "Discord" } }, org));
     const slots = await db().prepare("SELECT id, start_at, end_at FROM slots WHERE poll_id = ? ORDER BY position").bind(s.pollId).all<{ id: string; start_at: number; end_at: number }>();
     const body = { slots: slots.results.map((x, i) => ({ id: x.id, startAt: i === 0 ? x.start_at + 3600 : x.start_at, endAt: i === 0 ? x.end_at + 3600 : x.end_at, allDay: false })) };
     const res = await call(jsonReq("PUT", `/api/polls/${s.pollId}/slots`, body, org));
@@ -707,7 +764,8 @@ describe("3 回目のレビューの修正", () => {
     const calls = mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: "700000000000000011" } : {}));
     const s = await seedPoll();
     const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
-    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0], event: { type: "external", channelId: null, location: "Discord" } }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0] }, org));
+    await call(jsonReq("POST", `/api/polls/${s.pollId}/announce`, { mention: false, event: { type: "external", channelId: null, location: "Discord" } }, org));
     expect((await call(jsonReq("DELETE", `/api/polls/${s.pollId}`, {}, org))).status).toBe(200);
     expect(calls.some((c) => c.method === "DELETE" && c.path.endsWith("/scheduled-events/700000000000000011"))).toBe(true);
   });
