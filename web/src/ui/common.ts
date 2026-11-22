@@ -238,11 +238,37 @@ export function slotText(slot: SlotTime, pollTz: string, viewerTz: string): { ma
  * 集計画面（［メンバー別に表示］）と回答画面（［みんなの回答］）で使う。
  * open・onToggle で、画面を描き直しても開いた状態を保てる
  */
-export function memberMatrix(d: PollData, tz: string, label: string, open = false, onToggle?: (open: boolean) => void): HTMLElement {
+/**
+ * メンバー別の表（候補 × メンバー）。
+ * slotAction を渡すと、各候補の見出し（日時）の下に部品を足す（集計画面の主催者向けの［確定］など）
+ */
+export function memberMatrix(
+  d: PollData,
+  tz: string,
+  label: string,
+  open = false,
+  onToggle?: (open: boolean) => void,
+  slotAction?: (slot: PollData["slots"][number], label: string) => HTMLElement | null,
+): HTMLElement {
   const choiceById = new Map(d.choices.map((c) => [c.id, c]));
   // 「候補:メンバー」→ 回答。表の各マスで毎回探さないよう、先に索引を作る
   const answerAt = new Map(d.answers.map((a) => [`${a.slotId}:${a.userId}`, a]));
-  const head = h("tr", {}, h("th", { scope: "col" }, tr("メンバー", "Member")), ...d.slots.map((s) => h("th", { scope: "col" }, slotText(s, d.poll.timezone, tz).main)));
+  const head = h(
+    "tr",
+    {},
+    h("th", { scope: "col" }, tr("メンバー", "Member")),
+    ...d.slots.map((s) => {
+      const main = slotText(s, d.poll.timezone, tz).main;
+      const action = slotAction?.(s, main) ?? null;
+      return h(
+        "th",
+        { scope: "col", class: s.fixedAt !== null ? "is-fixed" : "" },
+        s.fixedAt !== null && slotAction ? h("span", { class: "badge badge-fixed" }, tr("確定", "Confirmed")) : null,
+        main,
+        action ? h("div", { class: "fix-actions" }, action) : null,
+      );
+    }),
+  );
   const body = h("tbody");
   for (const p of d.participants) {
     body.appendChild(

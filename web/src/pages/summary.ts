@@ -17,6 +17,8 @@ export async function summaryPage(pollId: string): Promise<void> {
   // 描き直しても［メンバー別に表示］の開いた状態を保つ
   let matrixOpen = false;
   let fixTarget: string | null = null;
+  /** メンバー別の表から［確定］を押したとき、画面の上のほうに出る確定の欄まで動かす */
+  let scrollToFix = false;
   let message: HTMLElement | null = null;
 
   const reload = async (msg?: HTMLElement) => {
@@ -99,7 +101,20 @@ export async function summaryPage(pollId: string): Promise<void> {
     const table = h("div", { class: "table-wrap" }, h("table", { class: "data tally-table" }, h("thead", {}, head), body));
 
     // メンバー別の表
-    const matrix = memberMatrix(d, tz, tr("メンバー別に表示", "Show by member"), matrixOpen, (o) => (matrixOpen = o));
+    // 主催者は、日時の見出しからも確定・確定の取り消しができる（候補ごとの表と同じ操作）
+    const matrix = memberMatrix(
+      d,
+      tz,
+      tr("メンバー別に表示", "Show by member"),
+      matrixOpen,
+      (o) => (matrixOpen = o),
+      canFix
+        ? (s, label) =>
+            s.fixedAt !== null
+              ? unfixButton(d, s, label, (m) => void reload(m))
+              : h("button", { type: "button", class: "btn btn-secondary btn-small", aria: { label: tr(`${label} で確定`, `Confirm ${label}`) }, onClick: () => { fixTarget = s.id; scrollToFix = true; draw(); } }, tr("確定", "Confirm"))
+        : undefined,
+    );
 
     const unanswered = d.participants.filter((p) => !answered.has(p.userId));
 
@@ -142,6 +157,12 @@ export async function summaryPage(pollId: string): Promise<void> {
         syncPanel(d, () => void reload(notice("ok", tr("募集メッセージを更新しました。", "The poll message was updated.")))),
       ),
     );
+    if (scrollToFix) {
+      scrollToFix = false;
+      const panel = document.querySelector<HTMLElement>(".fix-panel");
+      panel?.scrollIntoView({ block: "start" });
+      panel?.querySelector<HTMLElement>("input, select, button")?.focus({ preventScroll: true });
+    }
   }
 
   function remindButton(d: PollData, done: (m: HTMLElement) => void): HTMLElement {
