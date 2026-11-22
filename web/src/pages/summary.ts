@@ -176,20 +176,80 @@ export async function summaryPage(pollId: string): Promise<void> {
    * 確定・確定の取り消しを続けて押せないようにする（押したら終わるまで、終わってからも少しのあいだ、両方の表のボタンを押せなくする）。
    * サーバーでも 1 つの調整につき 10 秒に 5 回までに制限している（POST /fix・DELETE /fix）
    */
-  async function runFixOp(op: () => Promise<HTMLElement>): Promise<void> {
+  async function runFixOp(op: () => Promise<{ message: HTMLElement; ok: boolean }>, onOk?: () => void): Promise<void> {
     if (fixBusy) return;
     fixBusy = true;
     draw();
-    let m: HTMLElement;
+    let r: { message: HTMLElement; ok: boolean };
     try {
-      m = await op();
+      r = await op();
     } finally {
       setTimeout(() => {
         fixBusy = false;
         draw();
       }, FIX_COOLDOWN_MS);
     }
-    await reload(m);
+    await reload(r.message);
+    if (r.ok) onOk?.();
+  }
+
+  /**
+   * 確定したあと、ポップアップ（モーダルのダイアログ）で「確定をお知らせしますか？」と聞く（§4.3）。
+   * ［はい］でチャンネルに確定のお知らせを投稿し（Discord イベントは登録しない）、
+   * 続けて登録できるよう「確定のお知らせ」の欄の［Discord イベントに登録する］までスクロールする。［いいえ］なら何もしない
+   */
+  function openAnnounceDialog(): void {
+    const d = data;
+    const status = h("p", { class: "dialog-error", role: "alert" });
+    status.hidden = true;
+    const mention = h("input", { type: "checkbox", id: "dialog-mention", checked: true });
+    const dialog = h("dialog", { class: "modal", aria: { labelledby: "announce-dialog-title" } });
+    const no = h("button", { type: "button", class: "btn btn-secondary", onClick: () => dialog.close() }, tr("いいえ", "No"));
+    const yes: HTMLButtonElement = h(
+      "button",
+      {
+        type: "button",
+        class: "btn btn-primary",
+        onClick: async () => {
+          yes.disabled = true;
+          no.disabled = true;
+          status.hidden = true;
+          try {
+            const r = await request<{ warnings: string[] }>("POST", `/api/polls/${d.poll.id}/announce`, { mention: mention.checked, event: null });
+            dialog.close();
+            showSupport = true;
+            await reload(notice(r.warnings.length ? "warn" : "ok", tr("確定のお知らせをチャンネルに投稿しました。", "Posted the announcement to the channel."), ...r.warnings.map((w) => ` ${w}`)));
+            // 続けて Discord イベントを登録できるよう、ボタンまで動かす
+            const ev = document.getElementById("events-open");
+            ev?.scrollIntoView({ block: "center" });
+            ev?.focus({ preventScroll: true });
+          } catch (e) {
+            status.textContent = errorText(e, "summary", tr("お知らせを投稿できませんでした。", "Couldn't post the announcement."));
+            status.hidden = false;
+            yes.disabled = false;
+            no.disabled = false;
+          }
+        },
+      },
+      tr("はい", "Yes"),
+    );
+    dialog.append(
+      h("h2", { id: "announce-dialog-title", class: "modal-title" }, tr("確定をお知らせしますか？", "Announce the confirmed dates?")),
+      h("p", {}, tr("確定した日時を、チャンネルにお知らせします。あとから「確定のお知らせ」の欄の［確定をお知らせする］で投稿することもできます。", "The confirmed dates are announced to the channel. You can also post it later with [Announce the dates] under \"Announcement\".")),
+      h("div", { class: "field-inline field-check" }, mention, h("label", { for: "dialog-mention" }, d.poll.targetType === "role" ? tr("参加者のロールにメンションしてお知らせする", "Mention the participants' role in the announcement") : tr("@everyone にメンションしてお知らせする", "Mention @everyone in the announcement"))),
+      status,
+      h("div", { class: "row row-end" }, no, yes),
+    );
+    // 投稿している間は Esc で閉じない（失敗したときのエラーを、ポップアップの中に出すため）
+    dialog.addEventListener("cancel", (e) => {
+      if (yes.disabled) e.preventDefault();
+    });
+    // 閉じたら画面から取り除く（Esc で閉じたときも）
+    dialog.addEventListener("close", () => dialog.remove());
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    // 続けて Enter を押しただけでメンション付きの投稿をしないよう、最初は［いいえ］を選んでおく
+    no.focus();
   }
 
   /** 確定のボタン（候補ごとの表とメンバー別の表で同じもの）。押すと確認なしで確定する */
@@ -205,7 +265,7 @@ export async function summaryPage(pollId: string): Promise<void> {
           void runFixOp(async () => {
             try {
               const r = await request<{ warnings: string[] }>("POST", `/api/polls/${d.poll.id}/fix`, { slotId: s.id });
-              return notice(
+              const message = notice(
                 r.warnings.length ? "warn" : "ok",
                 tr(
                   `${label} を確定しました。チャンネルへのお知らせと Discord イベントの登録は［確定をお知らせする］から行えます。確定後も、参加者は回答を変更できます（変更はこの画面に表示されます）。`,
@@ -213,10 +273,11 @@ export async function summaryPage(pollId: string): Promise<void> {
                 ),
                 ...r.warnings.map((w) => ` ${w}`),
               );
+              return { message, ok: true };
             } catch (e) {
-              return notice("error", errorText(e, "summary", tr("確定できませんでした。", "Couldn't confirm.")));
+              return { message: notice("error", errorText(e, "summary", tr("確定できませんでした。", "Couldn't confirm."))), ok: false };
             }
-          }),
+          }, openAnnounceDialog),
       },
       tr("確定", "Confirm"),
     );
@@ -261,9 +322,9 @@ export async function summaryPage(pollId: string): Promise<void> {
           void runFixOp(async () => {
             try {
               const r = await request<{ warnings: string[] }>("DELETE", `/api/polls/${d.poll.id}/fix/${s.id}`);
-              return notice(r.warnings.length ? "warn" : "ok", tr(`${label} の確定を取り消しました。チャンネルへのお知らせは［確定をお知らせする］から投稿できます。`, `Cancelled the confirmation of ${label}. You can post an announcement to the channel with [Announce the dates].`), ...r.warnings.map((w) => ` ${w}`));
+              return { message: notice(r.warnings.length ? "warn" : "ok", tr(`${label} の確定を取り消しました。チャンネルへのお知らせは［確定をお知らせする］から投稿できます。`, `Cancelled the confirmation of ${label}. You can post an announcement to the channel with [Announce the dates].`), ...r.warnings.map((w) => ` ${w}`)), ok: true };
             } catch (e) {
-              return notice("error", errorText(e, "summary", tr("確定を取り消せませんでした。", "Couldn't cancel the confirmation.")));
+              return { message: notice("error", errorText(e, "summary", tr("確定を取り消せませんでした。", "Couldn't cancel the confirmation."))), ok: false };
             }
           });
         },
