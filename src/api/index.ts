@@ -49,7 +49,7 @@ import { decodeMsg, msg, pick, requestLang, translator, type Lang, type Msg } fr
 import { getRecentTimes, mergeRanges, rangesFromSlots, saveRecentTimesStatement } from "../guilds/recent-times";
 import { getEventDefaults } from "../guilds/settings";
 import { syncAfterAnswer, syncNow } from "../polls/sync";
-import { AnnounceBody, AnswersBody, ChoicesBody, ClientErrorBody, FixBody, OpenPollBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
+import { AnnounceBody, AnswersBody, ChoicesBody, ClientErrorBody, EventsBody, FixBody, OpenPollBody, ParticipantsBody, PatchPollBody, SessionBody, SlotsBody } from "./schemas";
 
 type Vars = { session: SessionRow; poll: PollRow };
 type C = Context<{ Bindings: Env; Variables: Vars }>;
@@ -742,10 +742,7 @@ polls.post("/:id/fix", async (c) => {
   ]);
   const warnings: Msg[] = [];
   await syncNow(c.env, poll.id).catch(() => warnings.push(msg("募集メッセージを更新できませんでした。", "Couldn't update the poll message.")));
-  if (body.event) {
-    const err = await upsertEvent(c.env, poll, slot, body.event);
-    if (err) warnings.push(err);
-  }
+  // Discord イベントは、確定のお知らせ（POST /:id/announce）のときに登録する（body.event は使わない）
   return c.json({ ok: true, warnings: localize(c, warnings) });
 });
 
@@ -827,6 +824,40 @@ polls.post("/:id/announce", async (c) => {
   ];
   if (mention) stmts.push(hitRateLimitStatement(db, MENTION_KEY, 3600, now));
   await db.batch(stmts);
+  // お知らせの投稿はもう済んでいるので、イベントの登録に失敗しても警告にとどめる
+  if (body.event) warnings.push(...(await registerEvents(c.env, poll, fixed, body.event)));
+  return c.json({ ok: true, warnings: localize(c, warnings) });
+});
+
+/**
+ * 確定したすべての日時に、同じ内容（名前・説明・場所）の Discord イベントを、日時だけ変えて登録する（§4.3・§5.6）。
+ * 登録済みのイベントは、この内容に更新する。失敗は警告として返す（同じ警告は 1 つにまとめる）
+ */
+async function registerEvents(env: Env, poll: PollRow, fixed: SlotRow[], ev: { type: "voice" | "external"; channelId: string | null; location: string | null }): Promise<Msg[]> {
+  const warnings: Msg[] = [];
+  const seen = new Set<string>();
+  for (const s of fixed) {
+    const err = await upsertEvent(env, poll, s, ev);
+    if (err && !seen.has(err.ja)) {
+      seen.add(err.ja);
+      warnings.push(err);
+    }
+  }
+  return warnings;
+}
+
+// 確定のお知らせをせずに、Discord イベントだけを登録する（主催者。確定のお知らせの欄の［Discord イベントに登録する］）
+polls.post("/:id/events", async (c) => {
+  requireOrganizer(c);
+  const body = await readJson(c, EventsBody);
+  const { poll } = c.var;
+  const db = c.env.DB;
+  if (!canAnswer(poll.status)) throw new AppError(409, "not_published", msg("公開中の調整だけ Discord イベントを登録できます。", "You can only create Discord events for a published poll."));
+  const fixed = (await getSlots(db, poll.id)).filter((s) => s.fixed_at !== null);
+  if (!fixed.length) throw new AppError(409, "nothing", msg("確定した日時がありません。", "There are no confirmed dates."));
+  // Discord への登録が続かないよう、1 つの調整につき 1 時間に 10 回まで
+  if (!(await hitRateLimit(db, `events:${poll.id}`, 10, 3600, nowSec()))) throw new AppError(429, "rate_limited", msg("Discord イベントの登録は 1 時間に 10 回までです。", "You can create Discord events up to 10 times per hour."));
+  const warnings = await registerEvents(c.env, poll, fixed, body.event);
   return c.json({ ok: true, warnings: localize(c, warnings) });
 });
 

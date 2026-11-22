@@ -104,20 +104,31 @@ export const AnswersBody = v.strictObject({
   ),
 });
 
-export const FixBody = v.strictObject({
-  slotId: id,
-  event: v.nullable(
-    v.strictObject({
-      type: v.picklist(["voice", "external"]),
-      channelId: v.nullable(snowflake),
-      location: v.nullable(singleLine(100)),
-    }),
-  ),
+/** Discord イベントの内容（確定のお知らせのときに登録する。§4.3） */
+const EventBody = v.strictObject({
+  type: v.picklist(["voice", "external"]),
+  channelId: v.nullable(snowflake),
+  location: v.nullable(singleLine(100)),
 });
 
-/** 確定のお知らせ（確定日と取り消しをまとめて投稿する。§4.3） */
+export const FixBody = v.strictObject({
+  slotId: id,
+  // Discord イベントは確定のお知らせのときに登録する。デプロイ前に開いた画面が送ってくる値は受け付けて、使わない
+  event: v.optional(v.nullable(EventBody)),
+});
+
+/**
+ * 確定のお知らせ（確定日と取り消しをまとめて投稿する。§4.3）。
+ * event を渡すと、確定したすべての日時に、同じ内容の Discord イベントを登録する（登録済みならこの内容に更新する）
+ */
 export const AnnounceBody = v.strictObject({
   mention: v.boolean(),
+  event: v.optional(v.nullable(EventBody)),
+});
+
+/** お知らせをせずに、確定したすべての日時へ Discord イベントを登録する（§4.3） */
+export const EventsBody = v.strictObject({
+  event: EventBody,
 });
 
 /**
