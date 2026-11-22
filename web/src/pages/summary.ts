@@ -194,6 +194,8 @@ export async function summaryPage(pollId: string): Promise<void> {
       {
         type: "button",
         class: "btn btn-secondary btn-small",
+        // どの日時の取り消しかを読み上げでも分かるようにする（確定した候補が複数あると、同じ文字のボタンが並ぶため）
+        aria: { label: tr(`${label} の確定を取り消す`, `Cancel confirmation of ${label}`) },
         onClick: async () => {
           const ev = s.hasEvent ? tr("登録した Discord イベントも削除されます。", "The Discord event will also be deleted.") : "";
           if (!confirm(tr(`${label} の確定を取り消します。${ev}よろしいですか？`, `Cancel the confirmation of ${label}? ${ev}`.trim()))) return;

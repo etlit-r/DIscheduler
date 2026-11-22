@@ -236,10 +236,7 @@ export function slotText(slot: SlotTime, pollTz: string, viewerTz: string): { ma
 /**
  * メンバー別の回答の表（行がメンバー、列が候補。保存済みの回答を出す）。畳んだ状態で置き、開くと表を見られる。
  * 集計画面（［メンバー別に表示］）と回答画面（［みんなの回答］）で使う。
- * open・onToggle で、画面を描き直しても開いた状態を保てる
- */
-/**
- * メンバー別の表（候補 × メンバー）。
+ * open・onToggle で、画面を描き直しても開いた状態を保てる。
  * slotAction を渡すと、各候補の見出し（日時）の下に部品を足す（集計画面の主催者向けの［確定］など）
  */
 export function memberMatrix(
