@@ -32,7 +32,8 @@ app.use("*", async (c, next) => {
   await next();
   const res = new Response(c.res.body, c.res);
   for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.headers.set(k, v);
-  if (c.req.method === "GET" && res.ok && ANSWER_PAGE.test(c.req.path)) res.headers.set("Content-Security-Policy", ANSWER_PAGE_CSP);
+  // 状態コードに関係なく付ける（同じ画面の HTML の応答。埋め込むものがなければ frame-src は何もしない）
+  if (c.req.method === "GET" && ANSWER_PAGE.test(c.req.path)) res.headers.set("Content-Security-Policy", ANSWER_PAGE_CSP);
   c.res = res;
 });
 
