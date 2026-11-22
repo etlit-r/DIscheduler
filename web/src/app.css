@@ -289,3 +289,24 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 /* 画面は操作のたびに描き直すので、ブラウザの自動のスクロール調整（scroll anchoring）を止める。
    位置は描き直しの前後で保つ（lib/dom.ts の render） */
 #app { overflow-anchor: none; }
+
+/* 回答画面の右の Google カレンダー（パソコンの幅だけ。ui/gcal.ts）。#app の外に置くので、画面を描き直しても読み込み直さない */
+.side-panel[hidden] { display: none; }
+@media (min-width: 1280px) {
+  body.has-side .app-main {
+    display: grid; grid-template-columns: minmax(0, 860px) minmax(380px, 460px); gap: 24px;
+    justify-content: center; align-items: start; padding-inline: 16px;
+  }
+  body.has-side #app { max-width: none; margin: 0; padding: 0; }
+  .side-panel {
+    position: sticky; top: 76px; height: calc(100vh - 92px);
+    display: flex; flex-direction: column; gap: 8px; min-width: 0;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px;
+  }
+  .side-panel-tools { display: flex; justify-content: flex-end; gap: 8px; }
+  .gcal-frame { flex: 1; width: 100%; min-height: 0; border: 0; border-radius: 8px; background: #fff; }
+  .gcal-form { overflow-y: auto; }
+  .gcal-form input { width: 100%; }
+  .gcal-notes { padding-left: 1.2em; margin: 8px 0 0; display: grid; gap: 4px; }
+}
+@media (max-width: 1279px) { .side-panel, .gcal-toggle { display: none !important; } }
