@@ -562,7 +562,7 @@ Discord には「チャンネルのメンバー一覧」API がないため、�
   - 表示するカレンダーの ID（多くは Gmail のアドレス）は利用者が入力し、そのブラウザの `localStorage`（`dis.gcal`）にだけ保存する。サーバーには送らない。［ID を消す］で消せる。
   - 埋め込みで予定が見えるのは、Google の Cookie が埋め込みに渡るブラウザだけなので、`navigator.userAgentData.brands` に Chromium があり Brave でないときだけボタンを出す（Firefox・Safari では出さない）。シークレットウィンドウなどでは見えないことがあると、欄に書く。
   - 最初の候補の日から 1 週間を、表示中のタイムゾーン（`ctz`）で出す。回答画面は操作のたびに `#app` を描き直すので、欄は `#app` の外（`main` の中）に置き、描き直しで読み込み直さない。幅が狭くなったら欄を取り除く。
-  - CSP は、回答画面の HTML（`GET /p/{id}/answer`）にだけ `frame-src https://calendar.google.com` を足す（security-design §4.2）。
+  - CSP は、回答画面の HTML（`GET /p/{id}/answer`）にだけ `frame-src https://calendar.google.com https://accounts.google.com` を足す（ログインしていないときに埋め込みが移る、Google のログインの案内も許すため。security-design §4.2）。
 - 集計は `GET /api/polls/{id}` で回答画面の表示に必要な情報と一緒に取得する（§8.1）。参加者以外には返さない。
 
 ### 6.5 S4: 集計・確定

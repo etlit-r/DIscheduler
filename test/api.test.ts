@@ -121,7 +121,7 @@ describe("外部の人から見えないこと（§6.6）", () => {
     const csp = answer.headers.get("Content-Security-Policy")!;
     expect(csp).toContain("default-src 'none'");
     expect(csp).toContain("frame-ancestors 'none'");
-    expect(csp).toMatch(/; frame-src https:\/\/calendar\.google\.com$/);
+    expect(csp).toMatch(/; frame-src https:\/\/calendar\.google\.com https:\/\/accounts\.google\.com$/);
     for (const path of [`/p/${pollId}`, `/p/${pollId}/edit`, `/p/${pollId}/done`, `/api/polls/${pollId}`, "/l"]) {
       expect((await call(getReq(path))).headers.get("Content-Security-Policy"), path).not.toContain("frame-src");
     }

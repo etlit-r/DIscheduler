@@ -157,7 +157,7 @@ Cache-Control: no-store            （API・HTML。ハッシュ付き静的ア�
 X-Robots-Tag: noindex, nofollow    （/ と /security を除く）
 ```
 
-- 例外として、回答画面の HTML（`GET /p/{id}/answer`）にだけ `frame-src https://calendar.google.com` を足す（`src/index.ts` の `ANSWER_PAGE_CSP`）。利用者が［Google カレンダーを表示］を押したときだけ、利用者自身の Google カレンダーを埋め込むため（design §6.4）。押すまでは Google に接続しない。表示するカレンダーの ID はブラウザの `localStorage` にだけ保存し、サーバーには送らない。iframe は `sandbox`（スクリプト・同じ出どころ・ポップアップ・フォームだけ許可）と `referrerpolicy="no-referrer"` を付ける。ほかの画面・API・静的ページには `frame-src` を付けない（`default-src 'none'` のまま埋め込みを止める）。
+- 例外として、回答画面の HTML（`GET /p/{id}/answer`）にだけ `frame-src https://calendar.google.com https://accounts.google.com` を足す（`src/index.ts` の `ANSWER_PAGE_CSP`。accounts.google.com は、Google にログインしていないときに埋め込みが移るログインの案内のため）。利用者が［Google カレンダーを表示］を押したときだけ、利用者自身の Google カレンダーを埋め込むため（design §6.4）。押すまでは Google に接続しない。表示するカレンダーの ID はブラウザの `localStorage` にだけ保存し、サーバーには送らない。iframe は `sandbox`（スクリプト・同じ出どころ・ポップアップ・フォームだけ許可）と `referrerpolicy="no-referrer"` を付ける。ほかの画面・API・静的ページには `frame-src` を付けない（`default-src 'none'` のまま埋め込みを止める）。
 - `'unsafe-inline'` / `'unsafe-eval'` は使用しない。インラインスクリプト・インラインスタイル・`eval` を禁止。
 - `Permissions-Policy` では、端末の機能に加えて、広告会社が使う閲覧の傾向の推測と広告の仕組み（Topics API・広告オークション・効果測定）も止める。
 - 値は `src/security-headers.json` にまとめ、Functions の応答（`src/index.ts`）と静的配信（`public/_headers` の `/*`）で同じものを使う。2 つがそろっているかは CI の `npm run check-sync` で確かめる。静的配信では、存在しないパスに `404.html` を 404 で返し、`/app/`（画面の HTML の元）を直接開いたときも `no-store`・`noindex` を付ける。

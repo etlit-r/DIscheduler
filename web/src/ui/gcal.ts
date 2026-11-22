@@ -75,7 +75,8 @@ export function mountGcalPanel(firstStartAt: number | null): GcalPanel {
 
   const wide = matchMedia(WIDE);
   let open = false;
-  let editing = false;
+  /** いま表示に使うカレンダー ID。保存できないブラウザでも、この画面では表示できるよう、保存とは別に持つ */
+  let currentId: string | null = loadId();
   let frame: HTMLIFrameElement | null = null;
 
   const panel = h("aside", { id: "side-panel", class: "side-panel", aria: { label: tr("Google カレンダー", "Google Calendar") } });
@@ -88,7 +89,6 @@ export function mountGcalPanel(firstStartAt: number | null): GcalPanel {
 
   function close(): void {
     open = false;
-    editing = false;
     frame = null;
     panel.replaceChildren();
     panel.hidden = true;
@@ -97,7 +97,7 @@ export function mountGcalPanel(firstStartAt: number | null): GcalPanel {
   }
 
   function form(): HTMLElement {
-    const input = h("input", { type: "text", id: "gcal-id", autocomplete: "off", placeholder: tr("例: name@gmail.com", "e.g. name@gmail.com"), value: loadId() ?? "" });
+    const input = h("input", { type: "text", id: "gcal-id", autocomplete: "off", placeholder: tr("例: name@gmail.com", "e.g. name@gmail.com"), value: currentId ?? "" });
     input.spellcheck = false;
     const error = h("p", { class: "missing-hint small", role: "alert" });
     const submit = () => {
@@ -106,8 +106,8 @@ export function mountGcalPanel(firstStartAt: number | null): GcalPanel {
         error.textContent = tr("カレンダー ID の形が正しくありません（例: name@gmail.com）。", "The calendar ID isn't valid (e.g. name@gmail.com).");
         return;
       }
+      currentId = v;
       saveId(v);
-      editing = false;
       draw();
     };
     input.addEventListener("keydown", (ev) => {
@@ -135,13 +135,13 @@ export function mountGcalPanel(firstStartAt: number | null): GcalPanel {
   }
 
   function draw(): void {
-    const id = editing ? null : loadId();
+    const id = currentId;
     panel.hidden = false;
     document.body.classList.add("has-side");
     const tools = h(
       "div",
       { class: "side-panel-tools" },
-      id ? h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { saveId(null); editing = true; draw(); } }, tr("ID を消す", "Forget ID")) : null,
+      id ? h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { currentId = null; saveId(null); draw(); } }, tr("ID を消す", "Forget ID")) : null,
       h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { close(); toggle.focus(); } }, tr("閉じる", "Close")),
     );
     if (!id) {
@@ -178,8 +178,7 @@ export function mountGcalPanel(firstStartAt: number | null): GcalPanel {
 
   return {
     onTimeZoneChange: () => {
-      const id = loadId();
-      if (frame && id) frame.src = frameSrc(id);
+      if (frame && currentId) frame.src = frameSrc(currentId);
     },
   };
 }
