@@ -47,13 +47,14 @@ export function canEmbedCalendar(): boolean {
 const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (y: number, m: number, d: number) => `${y}${pad(m)}${pad(d)}`;
 
-/** 埋め込みのアドレス。最初の候補の日から 1 週間を、表示中のタイムゾーンで出す */
+/** 埋め込みのアドレス。最初の候補の日を含む月を、月の表示で、表示中のタイムゾーンで出す */
 export function calendarEmbedUrl(calendarId: string, firstStartAt: number | null, tz: string, lang: "ja" | "en"): string {
-  const q = new URLSearchParams({ src: calendarId, ctz: tz, mode: "WEEK", hl: lang, showTitle: "0", showPrint: "0", showCalendars: "0" });
+  const q = new URLSearchParams({ src: calendarId, ctz: tz, mode: "MONTH", hl: lang, showTitle: "0", showPrint: "0", showCalendars: "0" });
   if (firstStartAt !== null) {
     const p = epochToZoned(firstStartAt, tz);
-    const end = new Date(Date.UTC(p.year, p.month - 1, p.day + 7));
-    q.set("dates", `${ymd(p.year, p.month, p.day)}/${ymd(end.getUTCFullYear(), end.getUTCMonth() + 1, end.getUTCDate())}`);
+    // その月の 1 日から、翌月の 1 日まで
+    const next = new Date(Date.UTC(p.year, p.month, 1));
+    q.set("dates", `${ymd(p.year, p.month, 1)}/${ymd(next.getUTCFullYear(), next.getUTCMonth() + 1, 1)}`);
   }
   return `https://calendar.google.com/calendar/embed?${q.toString()}`;
 }
