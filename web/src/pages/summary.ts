@@ -205,7 +205,14 @@ export async function summaryPage(pollId: string): Promise<void> {
           void runFixOp(async () => {
             try {
               const r = await request<{ warnings: string[] }>("POST", `/api/polls/${d.poll.id}/fix`, { slotId: s.id });
-              return notice(r.warnings.length ? "warn" : "ok", tr(`${label} を確定しました。チャンネルへのお知らせと Discord イベントの登録は［確定をお知らせする］から行えます。`, `Confirmed ${label}. You can post the announcement and create Discord events with [Announce the dates].`), ...r.warnings.map((w) => ` ${w}`));
+              return notice(
+                r.warnings.length ? "warn" : "ok",
+                tr(
+                  `${label} を確定しました。チャンネルへのお知らせと Discord イベントの登録は［確定をお知らせする］から行えます。確定後も、参加者は回答を変更できます（変更はこの画面に表示されます）。`,
+                  `Confirmed ${label}. You can post the announcement and create Discord events with [Announce the dates]. Participants can still change their answers (changes are shown on this page).`,
+                ),
+                ...r.warnings.map((w) => ` ${w}`),
+              );
             } catch (e) {
               return notice("error", errorText(e, "summary", tr("確定できませんでした。", "Couldn't confirm.")));
             }

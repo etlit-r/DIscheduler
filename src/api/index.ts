@@ -718,8 +718,6 @@ function refreshFixedStatement(db: D1Database, poll: PollRow, now: number): D1Pr
     .bind(poll.id, now, RETENTION, FIXED_RETENTION);
 }
 
-// 候補を確定する。確定済みの候補はそのまま残し、複数の候補を確定できる（§4.3）。
-// チャンネルへのお知らせはここではせず、主催者が［確定をお知らせする］（POST /announce）でまとめて投稿する
 /**
  * 確定・確定の取り消しを、続けて何度も押せないようにする（1 つの調整につき 10 秒に 5 回まで。2 つを合わせて数える）。
  * 押すたびに募集メッセージを書き換えるので、連打で Discord への書き込みが続かないように。画面でも押したあと 3 秒は押せなくしている
@@ -730,6 +728,8 @@ async function limitFixOps(db: D1Database, pollId: string, now: number): Promise
   }
 }
 
+// 候補を確定する。確定済みの候補はそのまま残し、複数の候補を確定できる（§4.3）。
+// チャンネルへのお知らせはここではせず、主催者が［確定をお知らせする］（POST /announce）でまとめて投稿する
 polls.post("/:id/fix", async (c) => {
   requireOrganizer(c);
   const body = await readJson(c, FixBody);
