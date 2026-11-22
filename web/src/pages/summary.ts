@@ -5,6 +5,9 @@ import { h, notice, render, setTitle } from "../lib/dom";
 import { bestSlotIds, compareSlots, reminderAt, tally, UNANSWERED } from "../../../src/shared/model";
 import { tr } from "../lib/i18n";
 
+/** 確定・確定の取り消しのあと、次に押せるまでの時間 */
+const FIX_COOLDOWN_MS = 3000;
+
 export async function summaryPage(pollId: string): Promise<void> {
   let data: PollData;
   try {
@@ -15,8 +18,10 @@ export async function summaryPage(pollId: string): Promise<void> {
   rememberDonation(data.donationUrl);
   let sortByScore = false;
   // 描き直しても［メンバー別に表示］の開いた状態を保つ
-  let matrixOpen = false;
-  let fixTarget: string | null = null;
+  // ［メンバー別に表示］は最初から開いておく
+  let matrixOpen = true;
+  /** 確定・確定の取り消しの処理中（と、そのあとの少しのあいだ）。両方の表のボタンを押せなくする */
+  let fixBusy = false;
   /** 確定のお知らせの欄で開いている入力欄（お知らせ・イベントの登録。描き直しても開いたままにする） */
   let announceMode: AnnounceMode = null;
   let announceDraft: AnnounceDraft = {};
@@ -67,7 +72,7 @@ export async function summaryPage(pollId: string): Promise<void> {
       body.appendChild(
         h(
           "tr",
-          { class: isFixed ? "is-fixed" : s.id === fixTarget ? "is-selected" : best.has(s.id) ? "is-best" : "" },
+          { class: isFixed ? "is-fixed" : best.has(s.id) ? "is-best" : "" },
           h(
             "th",
             { scope: "row" },
@@ -90,7 +95,7 @@ export async function summaryPage(pollId: string): Promise<void> {
               ? h(
                   "div",
                   { class: "fix-actions" },
-                  isFixed ? unfixButton(d, s, st.main, (m) => void reload(m)) : selectFixButton(s, st.main, "tally"),
+                  isFixed ? unfixButton(d, s, st.main) : fixButton(d, s, st.main),
                 )
               : null,
           ),
@@ -109,8 +114,7 @@ export async function summaryPage(pollId: string): Promise<void> {
       tr("メンバー別に表示", "Show by member"),
       matrixOpen,
       (o) => (matrixOpen = o),
-      canFix ? (s, label) => (s.fixedAt !== null ? unfixButton(d, s, label, (m) => void reload(m)) : selectFixButton(s, label, "matrix")) : undefined,
-      fixTarget,
+      canFix ? (s, label) => (s.fixedAt !== null ? unfixButton(d, s, label) : fixButton(d, s, label)) : undefined,
     );
 
     const unanswered = d.participants.filter((p) => !answered.has(p.userId));
@@ -132,7 +136,6 @@ export async function summaryPage(pollId: string): Promise<void> {
           isOrganizer ? h("a", { class: "btn btn-secondary", href: `/p/${pollId}/edit` }, tr("調整を編集する", "Edit the poll")) : null,
           h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => void reload() }, tr("↻ 更新", "↻ Refresh")),
         ),
-        fixTarget ? fixPanel(d, fixTarget, () => { fixTarget = null; draw(); }, (m) => { fixTarget = null; void reload(m); }) : null,
         isOrganizer
           ? announcePanel(d, announceMode, announceDraft, (m) => {
               announceMode = m;
@@ -170,29 +173,52 @@ export async function summaryPage(pollId: string): Promise<void> {
   }
 
   /**
-   * 確定する日時を選ぶボタン（候補ごとの表とメンバー別の表で同じもの）。押すと確定の欄が開き、ボタンは［確定を解除］に変わる
-   * （押したことが分かるように）。［確定を解除］を押すと選択をやめ、確定の欄を閉じる。確定するのは欄の［この日時で確定］。
-   * 確定の欄は表より上に開閉するので、押したボタンが画面の同じ位置に残るようにスクロールを合わせる（id で描き直し後のボタンを探す）
+   * 確定・確定の取り消しを続けて押せないようにする（押したら終わるまで、終わってからも少しのあいだ、両方の表のボタンを押せなくする）。
+   * サーバーでも 1 つの調整につき 10 秒に 5 回までに制限している（POST /fix・DELETE /fix）
    */
-  function selectFixButton(s: PollData["slots"][number], label: string, where: "tally" | "matrix"): HTMLElement {
-    const selected = fixTarget === s.id;
-    const id = `fix-${where}-${s.id}`;
+  async function runFixOp(op: () => Promise<HTMLElement>): Promise<void> {
+    if (fixBusy) return;
+    fixBusy = true;
+    draw();
+    let m: HTMLElement;
+    try {
+      m = await op();
+    } finally {
+      setTimeout(() => {
+        fixBusy = false;
+        draw();
+      }, FIX_COOLDOWN_MS);
+    }
+    await reload(m);
+  }
+
+  /** 確定のボタン（候補ごとの表とメンバー別の表で同じもの）。押すと確認なしで確定する */
+  function fixButton(d: PollData, s: PollData["slots"][number], label: string): HTMLElement {
     return h(
       "button",
       {
         type: "button",
-        id,
-        class: `btn btn-small ${selected ? "btn-primary" : "btn-secondary"}`,
-        aria: { pressed: String(selected), label: selected ? tr(`${label} の確定を解除`, `Unselect ${label}`) : tr(`${label} で確定`, `Confirm ${label}`) },
-        onClick: () => {
-          const before = document.getElementById(id)?.getBoundingClientRect().top;
-          fixTarget = selected ? null : s.id;
-          draw();
-          const after = document.getElementById(id)?.getBoundingClientRect().top;
-          if (before !== undefined && after !== undefined && after !== before) window.scrollBy({ top: after - before, behavior: "instant" });
-        },
+        class: "btn btn-secondary btn-small",
+        disabled: fixBusy,
+        aria: { label: tr(`${label} で確定`, `Confirm ${label}`) },
+        onClick: () =>
+          void runFixOp(async () => {
+            try {
+              const r = await request<{ warnings: string[] }>("POST", `/api/polls/${d.poll.id}/fix`, { slotId: s.id });
+              return notice(
+                r.warnings.length ? "warn" : "ok",
+                tr(
+                  `${label} を確定しました。チャンネルへのお知らせと Discord イベントの登録は［確定をお知らせする］から行えます。確定後も、参加者は回答を変更できます（変更はこの画面に表示されます）。`,
+                  `Confirmed ${label}. You can post the announcement and create Discord events with [Announce the dates]. Participants can still change their answers (changes are shown on this page).`,
+                ),
+                ...r.warnings.map((w) => ` ${w}`),
+              );
+            } catch (e) {
+              return notice("error", errorText(e, "summary", tr("確定できませんでした。", "Couldn't confirm.")));
+            }
+          }),
       },
-      selected ? tr("確定を解除", "Unselect") : tr("確定", "Confirm"),
+      tr("確定", "Confirm"),
     );
   }
 
@@ -219,30 +245,33 @@ export async function summaryPage(pollId: string): Promise<void> {
   }
 
   // 確定を取り消す（主催者）。Discord イベントも消える。チャンネルへのお知らせは［確定をお知らせする］から（§4.3）
-  function unfixButton(d: PollData, s: PollData["slots"][number], label: string, done: (m: HTMLElement) => void): HTMLElement {
-    const btn = h(
+  function unfixButton(d: PollData, s: PollData["slots"][number], label: string): HTMLElement {
+    return h(
       "button",
       {
         type: "button",
         class: "btn btn-secondary btn-small",
+        disabled: fixBusy,
         // どの日時の取り消しかを読み上げでも分かるようにする（確定した候補が複数あると、同じ文字のボタンが並ぶため）
         aria: { label: tr(`${label} の確定を取り消す`, `Cancel confirmation of ${label}`) },
-        onClick: async () => {
+        onClick: () => {
+          // 取り消すと登録した Discord イベントも消えるので、取り消しだけは確かめる
           const ev = s.hasEvent ? tr("登録した Discord イベントも削除されます。", "The Discord event will also be deleted.") : "";
           if (!confirm(tr(`${label} の確定を取り消します。${ev}よろしいですか？`, `Cancel the confirmation of ${label}? ${ev}`.trim()))) return;
-          btn.disabled = true;
-          try {
-            const r = await request<{ warnings: string[] }>("DELETE", `/api/polls/${d.poll.id}/fix/${s.id}`);
-            done(notice(r.warnings.length ? "warn" : "ok", tr(`${label} の確定を取り消しました。チャンネルへのお知らせは［確定をお知らせする］から投稿できます。`, `Cancelled the confirmation of ${label}. You can post an announcement to the channel with [Announce the dates].`), ...r.warnings.map((w) => ` ${w}`)));
-          } catch (e) {
-            done(notice("error", errorText(e, "summary", tr("確定を取り消せませんでした。", "Couldn't cancel the confirmation."))));
-          }
+          void runFixOp(async () => {
+            try {
+              const r = await request<{ warnings: string[] }>("DELETE", `/api/polls/${d.poll.id}/fix/${s.id}`);
+              return notice(r.warnings.length ? "warn" : "ok", tr(`${label} の確定を取り消しました。チャンネルへのお知らせは［確定をお知らせする］から投稿できます。`, `Cancelled the confirmation of ${label}. You can post an announcement to the channel with [Announce the dates].`), ...r.warnings.map((w) => ` ${w}`));
+            } catch (e) {
+              return notice("error", errorText(e, "summary", tr("確定を取り消せませんでした。", "Couldn't cancel the confirmation.")));
+            }
+          });
         },
       },
       tr("確定を取り消す", "Cancel confirmation"),
     );
-    return btn;
   }
+
 
   draw();
 }
@@ -329,44 +358,6 @@ function eventFields(d: PollData, draft: AnnounceDraft, withCheckbox = true): { 
         ? { type: typeVoice.checked ? "voice" : "external", channelId: typeVoice.checked ? voiceSel.value || null : null, location: location.value.trim() || "Discord" }
         : null,
   };
-}
-
-function fixPanel(d: PollData, slotId: string, cancel: () => void, done: (m: HTMLElement) => void): HTMLElement {
-  const slot = d.slots.find((s) => s.id === slotId)!;
-  const tz = viewerTimeZone();
-  const otherFixed = d.slots.filter((s) => s.fixedAt !== null && s.id !== slotId).length;
-  const status = h("p", { role: "status", class: "muted" });
-  const label = slotText(slot, d.poll.timezone, tz).main;
-  const submit = h(
-    "button",
-    {
-      type: "button",
-      class: "btn btn-primary",
-      onClick: async () => {
-        submit.disabled = true;
-        status.textContent = tr("確定しています…", "Confirming…");
-        try {
-          const r = await request<{ warnings: string[] }>("POST", `/api/polls/${d.poll.id}/fix`, { slotId });
-          done(notice(r.warnings.length ? "warn" : "ok", tr(`${label} を確定しました。チャンネルへのお知らせと Discord イベントの登録は［確定をお知らせする］から行えます。`, `Confirmed ${label}. You can post the announcement and create Discord events with [Announce the dates].`), ...r.warnings.map((w) => ` ${w}`)));
-        } catch (e) {
-          status.textContent = errorText(e, "summary", tr("確定できませんでした。", "Couldn't confirm."));
-          submit.disabled = false;
-        }
-      },
-    },
-    tr("この日時で確定", "Confirm this date"),
-  );
-  return h(
-    "section",
-    { class: "card fix-panel", aria: { label: tr("日時の確定", "Confirm a date") } },
-    h("h2", { class: "card-title" }, tr("日時を確定する", "Confirm the date")),
-    h("p", {}, h("strong", {}, label)),
-    otherFixed ? h("p", { class: "muted small" }, tr(`ほかに確定している日時（${otherFixed} 件）は、そのまま残ります。`, `Other confirmed dates (${otherFixed}) stay as they are.`)) : null,
-    h("p", { class: "muted small" }, tr("確定しても、チャンネルにはまだお知らせしません。お知らせと Discord イベントの登録は、確定のあとに［確定をお知らせする］から行います。", "Confirming doesn't announce anything to the channel yet. After confirming, post the announcement and create Discord events with [Announce the dates].")),
-    h("p", { class: "muted small" }, tr("確定後も、参加者は回答を変更できます。変更があればこの画面に表示されます。", "Participants can still change their answers after confirmation. Any changes are shown on this page.")),
-    h("div", { class: "row row-end" }, h("button", { type: "button", class: "btn btn-secondary", onClick: cancel }, tr("キャンセル", "Cancel")), submit),
-    status,
-  );
 }
 
 /** 確定のお知らせの欄で開いている入力欄（お知らせ・イベントの登録・閉じている） */

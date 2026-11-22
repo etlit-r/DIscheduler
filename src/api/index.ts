@@ -718,6 +718,16 @@ function refreshFixedStatement(db: D1Database, poll: PollRow, now: number): D1Pr
     .bind(poll.id, now, RETENTION, FIXED_RETENTION);
 }
 
+/**
+ * 確定・確定の取り消しを、続けて何度も押せないようにする（1 つの調整につき 10 秒に 5 回まで。2 つを合わせて数える）。
+ * 押すたびに募集メッセージを書き換えるので、連打で Discord への書き込みが続かないように。画面でも押したあと 3 秒は押せなくしている
+ */
+async function limitFixOps(db: D1Database, pollId: string, now: number): Promise<void> {
+  if (!(await hitRateLimit(db, `fix-op:${pollId}`, 5, 10, now))) {
+    throw new AppError(429, "rate_limited", msg("確定と取り消しを続けて押しすぎています。少し待ってからもう一度お試しください。", "You're confirming and cancelling too quickly. Please wait a moment and try again."));
+  }
+}
+
 // 候補を確定する。確定済みの候補はそのまま残し、複数の候補を確定できる（§4.3）。
 // チャンネルへのお知らせはここではせず、主催者が［確定をお知らせする］（POST /announce）でまとめて投稿する
 polls.post("/:id/fix", async (c) => {
@@ -732,6 +742,7 @@ polls.post("/:id/fix", async (c) => {
   if (!slot) throw new AppError(400, "invalid", msg("候補が見つかりません。", "Date option not found."));
   const alreadyFixed = () => new AppError(409, "already_fixed", msg("この候補はすでに確定しています。画面を再読み込みしてください。", "This date is already confirmed. Please reload the page."));
   if (slot.fixed_at !== null) throw alreadyFixed();
+  await limitFixOps(db, poll.id, now);
   // 先に確定の権利を取る（同時に 2 回押されても、イベントの登録などは 1 回だけにする）
   const claimed = await db.prepare("UPDATE slots SET fixed_at = ? WHERE id = ? AND fixed_at IS NULL").bind(now, slot.id).run();
   if (claimed.meta.changes !== 1) throw alreadyFixed();
@@ -757,6 +768,7 @@ polls.delete("/:id/fix/:slotId", async (c) => {
   const slot = slots.find((s) => s.id === c.req.param("slotId"));
   if (!slot) throw new AppError(404, "not_found", msg("候補が見つかりません。画面を再読み込みしてください。", "Date option not found. Please reload the page."));
   if (slot.fixed_at === null) throw new AppError(409, "not_fixed", msg("この候補は確定していません。画面を再読み込みしてください。", "This date isn't confirmed. Please reload the page."));
+  await limitFixOps(db, poll.id, now);
 
   const warnings: Msg[] = [];
   const err = await deleteEvent(c.env, poll, slot);
