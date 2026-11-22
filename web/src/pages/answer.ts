@@ -5,6 +5,7 @@ import { h, notice, render, setTitle } from "../lib/dom";
 import { canAnswer, tally } from "../../../src/shared/model";
 import { formatDate, formatSlotTime, zoneAbbr } from "../lib/time";
 import { staticHref, tr } from "../lib/i18n";
+import { mountGcalPanel } from "../ui/gcal";
 
 export async function answerPage(pollId: string): Promise<void> {
   const app = document.getElementById("app")!;
@@ -39,7 +40,12 @@ export async function answerPage(pollId: string): Promise<void> {
     }
   };
 
-  mountViewerTzSwitch(() => draw());
+  // パソコンの幅で、右に Google カレンダーを表示できるようにする（押すまでは何も表示しない。ui/gcal.ts）
+  const gcal = mountGcalPanel(data.slots.length ? Math.min(...data.slots.map((s) => s.startAt)) : null);
+  mountViewerTzSwitch(() => {
+    draw();
+    gcal.onTimeZoneChange();
+  });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") void reload(message ?? undefined);
   });

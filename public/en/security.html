@@ -81,6 +81,7 @@
           <li>It doesn't store email addresses, IP addresses or avatar images</li>
           <li>It doesn't mention roles or <code>@everyone</code> except when a poll is published, when dates are announced, and in event reminders (these mention the role used to choose the participants, or <code>@everyone</code> without one. Mentions in date announcements, re-announcements and reminders are each limited to 5 per poll per hour)</li>
           <li>It doesn't load outside analytics, ads or CDNs</li>
+          <li>Only when you press [Show Google Calendar] on the answer page (on a computer), your own Google Calendar is loaded directly from Google. Nothing connects to Google until you press it. The calendar ID you enter is stored only in your browser and is never sent to the DIscheduler server</li>
           <!-- donation:start --><li>The donation link is a plain link to an outside service; no scripts or images from the support service are loaded</li><!-- donation:end -->
         </ul>
 
@@ -137,7 +138,7 @@
             </tbody>
           </table>
         </div>
-        <p>Public pages, including this one, are served with the same strict CSP as the app. No outside scripts, fonts or images are loaded.</p>
+        <p>Public pages, including this one, are served with the same strict CSP as the app. No outside scripts, fonts or images are loaded. Embedding Google Calendar is allowed only on the answer page.</p>
 
         <h2 id="commands">Where commands can be used</h2>
         <p>Server admins choose the channels where commands work in Discord's built-in Integrations settings, and who can use them in a channel follows that channel's permissions (both are enforced by Discord). Commands from channels that aren't allowed, or from people without permission, never reach the bot.</p>
@@ -173,6 +174,7 @@
           <table class="data">
             <thead><tr><th scope="col">Date</th><th scope="col">Changes</th></tr></thead>
             <tbody>
+              <tr><td>November 22, 2026</td><td>Added the option to show your own Google Calendar next to the answer page (it connects to Google only when you press the button, and the calendar ID is stored only in your browser)</td></tr>
               <tr><td>November 20, 2026</td><td>Added error records for troubleshooting (deleted after 7 days), including errors in the web pages</td></tr>
               <tr><td>November 16, 2026</td><td>Shortened the retention period (polls with a confirmed date are deleted 10 days after that date, others 3 months after the deadline). The browser is now told to block interest inference by ad networks (such as the Topics API)</td></tr>
               <tr><td>November 14, 2026</td><td>First version published</td></tr>

@@ -19,12 +19,20 @@ export const SECURITY_HEADERS: Record<string, string> = {
   "X-Robots-Tag": "noindex, nofollow",
 };
 
+/**
+ * 回答画面（S3）の HTML だけに付ける CSP。右に Google カレンダーを埋め込めるよう、calendar.google.com の iframe だけを許す
+ * （利用者が［Google カレンダーを表示］を押したときだけ読み込む。web/src/ui/gcal.ts。docs/security-design.md §4.2）
+ */
+export const ANSWER_PAGE_CSP = `${SECURITY_HEADERS["Content-Security-Policy"]}; frame-src https://calendar.google.com`;
+const ANSWER_PAGE = /^\/p\/[A-Za-z0-9_-]{22}\/answer\/?$/;
+
 const app = new Hono<{ Bindings: Env }>();
 
 app.use("*", async (c, next) => {
   await next();
   const res = new Response(c.res.body, c.res);
   for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.headers.set(k, v);
+  if (c.req.method === "GET" && res.ok && ANSWER_PAGE.test(c.req.path)) res.headers.set("Content-Security-Policy", ANSWER_PAGE_CSP);
   c.res = res;
 });
 
