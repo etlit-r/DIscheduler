@@ -124,7 +124,8 @@ export function render(el: Element, ...children: Child[]): void {
     const next = findByFocusKey(el, focusKey);
     if (next instanceof HTMLElement) next.focus({ preventScroll: true });
   }
-  if (window.scrollX !== x || window.scrollY !== y) window.scrollTo(x, y);
+  // ページ全体の scroll-behavior: smooth を使わず、すぐに戻す（動いて見えないように）
+  if (window.scrollX !== x || window.scrollY !== y) window.scrollTo({ left: x, top: y, behavior: "instant" });
 }
 
 /** 描き直したあとに同じ部品を探すための目印（id か、要素の種類と読み上げ用の名前）。el の中の部品でなければ null */

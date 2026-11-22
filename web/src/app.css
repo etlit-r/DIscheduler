@@ -222,8 +222,8 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .matrix th .slot-sub { white-space: normal; min-width: 8em; max-width: 14em; }
 /* 確定した候補の見出し（集計画面。候補ごとの表と同じ色） */
 .matrix thead th.is-fixed { background: var(--c-green-soft); }
-/* メンバー別の表から［確定］を押して確定の欄へ動いたとき、上に固定したヘッダーに隠れないようにする */
-.fix-panel { scroll-margin-top: 76px; }
+/* 確定する日時として選んでいる候補（［確定］を押して、まだ［この日時で確定］を押していない。候補ごとの表とメンバー別の表） */
+.tally-table tr.is-selected th, .tally-table tr.is-selected td, .matrix thead th.is-selected { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .changed-note { display: block; font-size: 0.82rem; color: var(--c-orange); font-weight: 400; }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 8px; }
 .kv dt { color: var(--text-muted); }

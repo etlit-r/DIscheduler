@@ -17,8 +17,6 @@ export async function summaryPage(pollId: string): Promise<void> {
   // 描き直しても［メンバー別に表示］の開いた状態を保つ
   let matrixOpen = false;
   let fixTarget: string | null = null;
-  /** メンバー別の表から［確定］を押したとき、画面の上のほうに出る確定の欄まで動かす */
-  let scrollToFix = false;
   let message: HTMLElement | null = null;
 
   const reload = async (msg?: HTMLElement) => {
@@ -64,7 +62,7 @@ export async function summaryPage(pollId: string): Promise<void> {
       body.appendChild(
         h(
           "tr",
-          { class: isFixed ? "is-fixed" : best.has(s.id) ? "is-best" : "" },
+          { class: isFixed ? "is-fixed" : s.id === fixTarget ? "is-selected" : best.has(s.id) ? "is-best" : "" },
           h(
             "th",
             { scope: "row" },
@@ -87,9 +85,7 @@ export async function summaryPage(pollId: string): Promise<void> {
               ? h(
                   "div",
                   { class: "fix-actions" },
-                  isFixed
-                    ? unfixButton(d, s, st.main, (m) => void reload(m))
-                    : h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { fixTarget = s.id; draw(); } }, tr("確定", "Confirm")),
+                  isFixed ? unfixButton(d, s, st.main, (m) => void reload(m)) : selectFixButton(s, st.main, "tally"),
                 )
               : null,
           ),
@@ -108,12 +104,8 @@ export async function summaryPage(pollId: string): Promise<void> {
       tr("メンバー別に表示", "Show by member"),
       matrixOpen,
       (o) => (matrixOpen = o),
-      canFix
-        ? (s, label) =>
-            s.fixedAt !== null
-              ? unfixButton(d, s, label, (m) => void reload(m))
-              : h("button", { type: "button", class: "btn btn-secondary btn-small", aria: { label: tr(`${label} で確定`, `Confirm ${label}`) }, onClick: () => { fixTarget = s.id; scrollToFix = true; draw(); } }, tr("確定", "Confirm"))
-        : undefined,
+      canFix ? (s, label) => (s.fixedAt !== null ? unfixButton(d, s, label, (m) => void reload(m)) : selectFixButton(s, label, "matrix")) : undefined,
+      fixTarget,
     );
 
     const unanswered = d.participants.filter((p) => !answered.has(p.userId));
@@ -157,12 +149,33 @@ export async function summaryPage(pollId: string): Promise<void> {
         syncPanel(d, () => void reload(notice("ok", tr("募集メッセージを更新しました。", "The poll message was updated.")))),
       ),
     );
-    if (scrollToFix) {
-      scrollToFix = false;
-      const panel = document.querySelector<HTMLElement>(".fix-panel");
-      panel?.scrollIntoView({ block: "start" });
-      panel?.querySelector<HTMLElement>("input, select, button")?.focus({ preventScroll: true });
-    }
+  }
+
+  /**
+   * 確定する日時を選ぶボタン（候補ごとの表とメンバー別の表で同じもの）。押すと確定の欄が開き、ボタンは［確定を解除］に変わる
+   * （押したことが分かるように）。［確定を解除］を押すと選択をやめ、確定の欄を閉じる。確定するのは欄の［この日時で確定］。
+   * 確定の欄は表より上に開閉するので、押したボタンが画面の同じ位置に残るようにスクロールを合わせる（id で描き直し後のボタンを探す）
+   */
+  function selectFixButton(s: PollData["slots"][number], label: string, where: "tally" | "matrix"): HTMLElement {
+    const selected = fixTarget === s.id;
+    const id = `fix-${where}-${s.id}`;
+    return h(
+      "button",
+      {
+        type: "button",
+        id,
+        class: `btn btn-small ${selected ? "btn-primary" : "btn-secondary"}`,
+        aria: { pressed: String(selected), label: selected ? tr(`${label} の確定を解除`, `Unselect ${label}`) : tr(`${label} で確定`, `Confirm ${label}`) },
+        onClick: () => {
+          const before = document.getElementById(id)?.getBoundingClientRect().top;
+          fixTarget = selected ? null : s.id;
+          draw();
+          const after = document.getElementById(id)?.getBoundingClientRect().top;
+          if (before !== undefined && after !== undefined && after !== before) window.scrollBy({ top: after - before, behavior: "instant" });
+        },
+      },
+      selected ? tr("確定を解除", "Unselect") : tr("確定", "Confirm"),
+    );
   }
 
   function remindButton(d: PollData, done: (m: HTMLElement) => void): HTMLElement {

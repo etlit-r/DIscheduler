@@ -237,7 +237,8 @@ export function slotText(slot: SlotTime, pollTz: string, viewerTz: string): { ma
  * メンバー別の回答の表（行がメンバー、列が候補。保存済みの回答を出す）。畳んだ状態で置き、開くと表を見られる。
  * 集計画面（［メンバー別に表示］）と回答画面（［みんなの回答］）で使う。
  * open・onToggle で、画面を描き直しても開いた状態を保てる。
- * slotAction を渡すと、各候補の見出し（日時）の下に部品を足す（集計画面の主催者向けの［確定］など）
+ * slotAction を渡すと、各候補の見出し（日時）の下に部品を足す（集計画面の主催者向けの［確定］など）。
+ * selectedSlotId の候補は、見出しを選択中の色にする（集計画面で確定する日時を選んでいるとき）
  */
 export function memberMatrix(
   d: PollData,
@@ -246,6 +247,7 @@ export function memberMatrix(
   open = false,
   onToggle?: (open: boolean) => void,
   slotAction?: (slot: PollData["slots"][number], label: string) => HTMLElement | null,
+  selectedSlotId: string | null = null,
 ): HTMLElement {
   const choiceById = new Map(d.choices.map((c) => [c.id, c]));
   // 「候補:メンバー」→ 回答。表の各マスで毎回探さないよう、先に索引を作る
@@ -259,7 +261,7 @@ export function memberMatrix(
       const action = slotAction?.(s, main) ?? null;
       return h(
         "th",
-        { scope: "col", class: s.fixedAt !== null ? "is-fixed" : "" },
+        { scope: "col", class: s.fixedAt !== null ? "is-fixed" : s.id === selectedSlotId ? "is-selected" : "" },
         s.fixedAt !== null && slotAction ? h("span", { class: "badge badge-fixed" }, tr("確定", "Confirmed")) : null,
         main,
         action ? h("div", { class: "fix-actions" }, action) : null,
