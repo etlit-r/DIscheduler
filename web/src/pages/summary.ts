@@ -361,16 +361,20 @@ function fixPanel(d: PollData, slotId: string, cancel: () => void, done: (m: HTM
   );
 }
 
+/** 確定のお知らせの欄で開いている入力欄（お知らせ・イベントの登録・閉じている） */
+export type AnnounceMode = "announce" | "event" | null;
+
 /**
  * 確定のお知らせの欄（主催者）。
  * - ［確定をお知らせする］: メンションと Discord イベントの入力欄を出し、［お知らせを投稿する］で投稿する
  * - ［Discord イベントに登録する］: Discord イベントの入力欄だけを出し、お知らせはせずにイベントを登録する
  * mode・setMode で、描き直しても入力欄を開いたままにする
  */
-export type AnnounceMode = "announce" | "event" | null;
-function announcePanel(d: PollData, mode: AnnounceMode, draft: AnnounceDraft, setMode: (mode: AnnounceMode) => void, done: (m: HTMLElement) => void): HTMLElement | null {
+function announcePanel(d: PollData, openMode: AnnounceMode, draft: AnnounceDraft, setMode: (mode: AnnounceMode) => void, done: (m: HTMLElement) => void): HTMLElement | null {
   const tz = viewerTimeZone();
   const fixed = d.slots.filter((s) => s.fixedAt !== null);
+  // イベントの登録の入力欄を開いたまま確定日がなくなったら、閉じた状態に戻す（登録するものがないため）
+  const mode = openMode === "event" && !fixed.length ? null : openMode;
   const cancelled = d.slots.filter((s) => s.fixedAt === null && s.announced);
   if (!fixed.length && !cancelled.length) return null;
   const newly = fixed.filter((s) => !s.announced).length;
