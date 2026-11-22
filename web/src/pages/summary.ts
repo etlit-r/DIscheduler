@@ -20,6 +20,8 @@ export async function summaryPage(pollId: string): Promise<void> {
   /** 確定のお知らせの欄で開いている入力欄（お知らせ・イベントの登録。描き直しても開いたままにする） */
   let announceMode: AnnounceMode = null;
   let announceDraft: AnnounceDraft = {};
+  /** 確定のお知らせを投稿したあとに、運営の支援のお願いを画面のいちばん下に出すか */
+  let showSupport = false;
   let message: HTMLElement | null = null;
 
   const reload = async (msg?: HTMLElement) => {
@@ -137,7 +139,11 @@ export async function summaryPage(pollId: string): Promise<void> {
               // 閉じたら入力中の内容は捨てる（次に開いたときは既定値から）
               if (!m) announceDraft = {};
               draw();
-            }, (m) => void reload(m))
+            }, (m, announced) => {
+              // お知らせを投稿できたら、運営の支援のお願いを画面のいちばん下に出す
+              if (announced) showSupport = true;
+              void reload(m);
+            })
           : null,
         h(
           "div",
@@ -157,6 +163,8 @@ export async function summaryPage(pollId: string): Promise<void> {
           isOrganizer && unanswered.length && d.poll.status !== "draft" && d.poll.status !== "fixed" ? remindButton(d, (m) => void reload(m)) : null,
         ),
         syncPanel(d, () => void reload(notice("ok", tr("募集メッセージを更新しました。", "The poll message was updated.")))),
+        // 運営の支援のお願いは、操作の邪魔にならないよう画面のいちばん下に出す
+        showSupport ? donationLine(d.donationUrl) : null,
       ),
     );
   }
@@ -370,7 +378,7 @@ export type AnnounceMode = "announce" | "event" | null;
  * - ［Discord イベントに登録する］: Discord イベントの入力欄だけを出し、お知らせはせずにイベントを登録する
  * mode・setMode で、描き直しても入力欄を開いたままにする
  */
-function announcePanel(d: PollData, openMode: AnnounceMode, draft: AnnounceDraft, setMode: (mode: AnnounceMode) => void, done: (m: HTMLElement) => void): HTMLElement | null {
+function announcePanel(d: PollData, openMode: AnnounceMode, draft: AnnounceDraft, setMode: (mode: AnnounceMode) => void, done: (m: HTMLElement, announced?: boolean) => void): HTMLElement | null {
   const tz = viewerTimeZone();
   const fixed = d.slots.filter((s) => s.fixedAt !== null);
   // イベントの登録の入力欄を開いたまま確定日がなくなったら、閉じた状態に戻す（登録するものがないため）
@@ -462,7 +470,7 @@ function announcePanel(d: PollData, openMode: AnnounceMode, draft: AnnounceDraft
         try {
           const r = await request<{ warnings: string[] }>("POST", `/api/polls/${d.poll.id}/announce`, { mention: mention.checked, event: ev?.value() ?? null });
           setMode(null);
-          done(h("div", {}, notice(r.warnings.length ? "warn" : "ok", tr("確定のお知らせをチャンネルに投稿しました。", "Posted the announcement to the channel."), ...r.warnings.map((w) => ` ${w}`)), donationLine(d.donationUrl)));
+          done(notice(r.warnings.length ? "warn" : "ok", tr("確定のお知らせをチャンネルに投稿しました。", "Posted the announcement to the channel."), ...r.warnings.map((w) => ` ${w}`)), true);
         } catch (e) {
           status.textContent = errorText(e, "summary", tr("お知らせを投稿できませんでした。", "Couldn't post the announcement."));
           post.disabled = false;
