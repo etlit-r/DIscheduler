@@ -572,6 +572,27 @@ describe("複数の候補の確定と取り消し", () => {
     expect(row!.n).toBe(0);
   });
 
+  it("確定と取り消しは、続けて押しすぎると断る（1 つの調整につき 10 秒に 5 回まで。2 つを合わせて数える）", async () => {
+    mockDiscord();
+    const s = await seedPoll();
+    const org = await login(s.pollId, ORGANIZER, "organizer", "edit");
+    const fix = () => call(jsonReq("POST", `/api/polls/${s.pollId}/fix`, { slotId: s.slotIds[0] }, org));
+    const unfix = () => call(jsonReq("DELETE", `/api/polls/${s.pollId}/fix/${s.slotIds[0]}`, undefined, org));
+    // 10 秒の区切りの始めに時刻を止める（区切りをまたいで数え直さないように）
+    const t0 = (Math.floor(Date.now() / 10000) + 1) * 10000;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(t0);
+    try {
+      const statuses = [(await fix()).status, (await unfix()).status, (await fix()).status, (await unfix()).status, (await fix()).status];
+      expect(statuses).toEqual([200, 200, 200, 200, 200]);
+      expect((await unfix()).status).toBe(429);
+      // 次の 10 秒になれば、また押せる
+      clock.mockReturnValue(t0 + 10000);
+      expect((await unfix()).status).toBe(200);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it("主催者は確定を取り消せる。イベントを消し（お知らせはしない）、確定した候補がなくなれば募集中に戻る", async () => {
     const calls = mockDiscord((c) => (c.method === "POST" && c.path.includes("scheduled-events") ? { id: "700000000000000020" } : {}));
     const s = await seedPoll();
