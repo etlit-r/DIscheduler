@@ -271,8 +271,10 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 }
 
 /* 集計表の確定の操作（確定・確定し直す・確定を取り消す） */
-.fix-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.fix-actions .btn { white-space: nowrap; }
+/* 確定・確定の取り消しのボタン（集計画面の候補ごとの表と、メンバー別の表）。表の行を高くしないよう、読みやすさを保てる範囲で小さくする
+   （高さ 28px。押しやすさの目安の 24px は満たす） */
+.fix-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.fix-actions .btn { white-space: nowrap; min-height: 28px; padding: 2px 10px; font-size: 0.85rem; line-height: 1.2; border-radius: 8px; }
 .tally-table tbody th { min-width: 8em; }
 .tz-note { margin: 0 0 6px; }
 
