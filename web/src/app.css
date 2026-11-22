@@ -294,8 +294,9 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 .side-panel[hidden] { display: none; }
 @media (min-width: 1280px) {
   body.has-side .app-main {
-    display: grid; grid-template-columns: minmax(0, 860px) minmax(380px, 460px); gap: 24px;
-    justify-content: center; align-items: start; padding-inline: 16px;
+    /* 本文は今までの幅、右の欄は残りの幅いっぱいに広げる */
+    display: grid; grid-template-columns: minmax(0, 860px) minmax(380px, 1fr); gap: 24px;
+    align-items: start; padding-inline: 24px;
   }
   body.has-side #app { max-width: none; margin: 0; padding: 0; }
   .side-panel {

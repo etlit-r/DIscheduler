@@ -47,13 +47,14 @@ export function canEmbedCalendar(): boolean {
 const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (y: number, m: number, d: number) => `${y}${pad(m)}${pad(d)}`;
 
-/** 埋め込みのアドレス。最初の候補の日から 1 週間を、表示中のタイムゾーンで出す */
+/** 埋め込みのアドレス。最初の候補の日を含む月を、月の表示で、表示中のタイムゾーンで出す */
 export function calendarEmbedUrl(calendarId: string, firstStartAt: number | null, tz: string, lang: "ja" | "en"): string {
-  const q = new URLSearchParams({ src: calendarId, ctz: tz, mode: "WEEK", hl: lang, showTitle: "0", showPrint: "0", showCalendars: "0" });
+  const q = new URLSearchParams({ src: calendarId, ctz: tz, mode: "MONTH", hl: lang, showTitle: "0", showPrint: "0", showCalendars: "0" });
   if (firstStartAt !== null) {
     const p = epochToZoned(firstStartAt, tz);
-    const end = new Date(Date.UTC(p.year, p.month - 1, p.day + 7));
-    q.set("dates", `${ymd(p.year, p.month, p.day)}/${ymd(end.getUTCFullYear(), end.getUTCMonth() + 1, end.getUTCDate())}`);
+    // その月の 1 日から、翌月の 1 日まで
+    const next = new Date(Date.UTC(p.year, p.month, 1));
+    q.set("dates", `${ymd(p.year, p.month, 1)}/${ymd(next.getUTCFullYear(), next.getUTCMonth() + 1, 1)}`);
   }
   return `https://calendar.google.com/calendar/embed?${q.toString()}`;
 }
@@ -77,6 +78,8 @@ export function mountGcalPanel(firstStartAt: number | null): GcalPanel {
   let open = false;
   /** いま表示に使うカレンダー ID。保存できないブラウザでも、この画面では表示できるよう、保存とは別に持つ */
   let currentId: string | null = loadId();
+  /** ［ID を入力しなおす］で、入力欄を出しているか（ID は入れ直すまで残す） */
+  let editing = false;
   let frame: HTMLIFrameElement | null = null;
 
   const panel = h("aside", { id: "side-panel", class: "side-panel", aria: { label: tr("Google カレンダー", "Google Calendar") } });
@@ -89,6 +92,7 @@ export function mountGcalPanel(firstStartAt: number | null): GcalPanel {
 
   function close(): void {
     open = false;
+    editing = false;
     frame = null;
     panel.replaceChildren();
     panel.hidden = true;
@@ -102,12 +106,21 @@ export function mountGcalPanel(firstStartAt: number | null): GcalPanel {
     const error = h("p", { class: "missing-hint small", role: "alert" });
     const submit = () => {
       const v = input.value.trim();
+      // 空にして［表示する］を押したら、保存した ID を消す
+      if (!v && currentId) {
+        currentId = null;
+        saveId(null);
+        editing = false;
+        draw();
+        return;
+      }
       if (!isCalendarId(v)) {
         error.textContent = tr("カレンダー ID の形が正しくありません（例: name@gmail.com）。", "The calendar ID isn't valid (e.g. name@gmail.com).");
         return;
       }
       currentId = v;
       saveId(v);
+      editing = false;
       draw();
     };
     input.addEventListener("keydown", (ev) => {
@@ -130,18 +143,21 @@ export function mountGcalPanel(firstStartAt: number | null): GcalPanel {
         h("li", {}, tr("ID は Google カレンダーの「設定 → マイカレンダーの設定 → カレンダーの統合 → カレンダー ID」で確かめられます。", "You can find the ID in Google Calendar under Settings → Settings for my calendars → Integrate calendar → Calendar ID.")),
         h("li", {}, tr("このブラウザで Google にログインしていると、予定が見えます。シークレットウィンドウや、サードパーティの Cookie を止める設定では見えないことがあります。", "Your events appear if you're signed in to Google in this browser. They may not appear in an incognito window or if third-party cookies are blocked.")),
         h("li", {}, tr("ID はこのブラウザにだけ保存し、DIscheduler のサーバーには送りません。表示している間は、ブラウザが Google に直接接続します。", "The ID is saved only in this browser and is never sent to the DIscheduler server. While the calendar is shown, your browser connects to Google directly.")),
+        currentId ? h("li", {}, tr("欄を空にして［表示する］を押すと、保存した ID を消せます。", "To remove the saved ID, clear the field and press [Show].")) : null,
       ),
     );
   }
 
   function draw(): void {
-    const id = currentId;
+    const id = editing ? null : currentId;
     panel.hidden = false;
     document.body.classList.add("has-side");
     const tools = h(
       "div",
       { class: "side-panel-tools" },
-      id ? h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { currentId = null; saveId(null); draw(); } }, tr("ID を消す", "Forget ID")) : null,
+      id ? h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { editing = true; draw(); } }, tr("ID を入力しなおす", "Change ID")) : null,
+      // 入力しなおしている途中なら、元のカレンダーに戻れる
+      editing && currentId ? h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { editing = false; draw(); } }, tr("カレンダーに戻る", "Back to calendar")) : null,
       h("button", { type: "button", class: "btn btn-secondary btn-small", onClick: () => { close(); toggle.focus(); } }, tr("閉じる", "Close")),
     );
     if (!id) {
@@ -178,7 +194,7 @@ export function mountGcalPanel(firstStartAt: number | null): GcalPanel {
 
   return {
     onTimeZoneChange: () => {
-      if (frame && currentId) frame.src = frameSrc(currentId);
+      if (frame && currentId && !editing) frame.src = frameSrc(currentId);
     },
   };
 }
