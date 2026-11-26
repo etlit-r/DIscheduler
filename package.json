@@ -11,15 +11,15 @@
     "prepare:local": "DISCORD_APPLICATION_ID=100000000000000001 bash scripts/prepare-public.sh public dist"
   },
   "dependencies": {
-    "hono": "4.13.18",
+    "hono": "4.13.19",
     "valibot": "1.5.0"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "1.8.1",
-    "@cloudflare/workers-types": "5.20261112.1",
+    "@cloudflare/vitest-plugin": "1.8.5",
+    "@cloudflare/workers-types": "5.20261119.1",
     "typescript": "7.0.2",
     "vite": "8.3.8",
-    "vitest": "5.1.0",
-    "wrangler": "4.161.0"
+    "vitest": "5.1.1",
+    "wrangler": "4.165.0"
   }
 }
