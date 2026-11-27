@@ -321,11 +321,14 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 
 /* 確定のあとのポップアップから「確定のお知らせ」の欄へ動いたとき、上に固定したヘッダーに隠れないようにする */
 .announce-panel { scroll-margin-top: 76px; }
-/* 「確定のお知らせ」の欄（主催者だけ）は、確定のあとに必ず操作する欄なので、ほかの欄と背景色を変えて目立たせる
-   （強調色を薄く混ぜた背景・強調色の枠と左の太い線。明るい表示・暗い表示とも強調色から作る） */
+/* 「確定のお知らせ」の欄（主催者だけ）は、確定のあとに必ず操作する欄なので、ほかの欄と背景色を変えて目立たせる。
+   テーマ色（紫）だと周りになじむので、黄色の背景・枠と左の太い線にする（選択肢の「△」と同じ黄色の組） */
 .announce-panel {
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  border-left: 6px solid var(--accent);
+  background: var(--c-yellow-soft);
+  border: 1px solid color-mix(in srgb, var(--c-yellow) 60%, transparent);
+  border-left: 6px solid var(--c-yellow);
 }
-.announce-panel .card-title { color: var(--accent); }
+/* 暗い表示の薄い黄色（--c-yellow-soft）は茶色に近く目立たないので、明るい黄色を多めに混ぜる */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .announce-panel { background: color-mix(in srgb, var(--c-yellow) 30%, var(--surface)); }
+}
