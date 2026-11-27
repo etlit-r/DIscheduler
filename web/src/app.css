@@ -318,3 +318,6 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 
 /* 確定のお知らせの欄の中の小見出し（［Discord イベントに登録する］の入力欄） */
 .card-subtitle { margin: 12px 0 4px; font-size: 1rem; }
+
+/* 確定のあとのポップアップから「確定のお知らせ」の欄へ動いたとき、上に固定したヘッダーに隠れないようにする */
+.announce-panel { scroll-margin-top: 76px; }
