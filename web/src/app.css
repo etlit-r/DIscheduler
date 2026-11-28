@@ -339,9 +339,10 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
   border: 1px solid color-mix(in srgb, var(--c-yellow) 60%, transparent);
   border-left: 6px solid var(--c-yellow);
 }
-/* 暗い表示の薄い黄色（--c-yellow-soft）は茶色に近く目立たないので、明るい黄色を多めに混ぜる */
+/* 暗い表示では、黄色みを少しだけ帯びた落ち着いた色にする（黄色を多く混ぜると、周りの暗い画面の中で明るすぎるため）。
+   目立たせるのは、黄色の枠と左の太い線で行う */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .announce-panel { background: color-mix(in srgb, var(--c-yellow) 30%, var(--surface)); }
+  :root:not([data-theme="light"]) .announce-panel { background: #2c2b29; }
 }
 
 /* ポップアップの見出しの左に添える絵（Discord イベントの登録を聞くときのカレンダー） */
