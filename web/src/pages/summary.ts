@@ -197,11 +197,6 @@ export async function summaryPage(pollId: string): Promise<void> {
   }
 
   /**
-   * 確定したあと、ポップアップ（モーダルのダイアログ）で「確定をお知らせしますか？」と聞く（§4.3）。
-   * ［はい］でチャンネルに確定のお知らせを投稿し（Discord イベントは登録しない）、続けて「Discord イベントに登録しますか？」と聞く。
-   * そこで［はい］なら、「確定のお知らせ」の欄の［Discord イベントに登録する］を押した状態にしてスクロールする。［いいえ］なら何もしない
-   */
-  /**
    * ［はい］［いいえ］で答えるポップアップ（モーダルのダイアログ）。押した答えを返す（Esc で閉じたら［いいえ］）。
    * 続けて Enter を押しただけで進まないよう、最初は［いいえ］を選んでおく。icon を渡すと、見出しの左に絵を添える
    */
@@ -227,6 +222,11 @@ export async function summaryPage(pollId: string): Promise<void> {
     });
   }
 
+  /**
+   * 確定したあと、ポップアップ（モーダルのダイアログ）で「確定をお知らせしますか？」と聞く（§4.3）。
+   * ［はい］でチャンネルに確定のお知らせを投稿し（Discord イベントは登録しない）、続けて「Discord イベントに登録しますか？」と聞く。
+   * そこで［はい］なら、「確定のお知らせ」の欄の［Discord イベントに登録する］を押した状態にしてスクロールする。［いいえ］なら何もしない
+   */
   function openAnnounceDialog(): void {
     const d = data;
     const status = h("p", { class: "dialog-error", role: "alert" });

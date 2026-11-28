@@ -260,6 +260,8 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 @media (prefers-reduced-motion: reduce) {
   .btn-attention { animation: none; }
 }
+/* キーボードで選んでいるときは点滅させず、いつものフォーカスの枠を出す（点滅で枠が消えて、どこにいるか分からなくならないように） */
+.btn-attention:focus-visible { animation: none; outline-color: var(--accent); }
 .slot-list, .member-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .slot-list li, .member-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; }
 .choice-summary { display: flex; flex-wrap: wrap; gap: 8px; }
