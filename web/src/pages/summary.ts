@@ -195,9 +195,30 @@ export async function summaryPage(pollId: string): Promise<void> {
 
   /**
    * 確定したあと、ポップアップ（モーダルのダイアログ）で「確定をお知らせしますか？」と聞く（§4.3）。
-   * ［はい］でチャンネルに確定のお知らせを投稿し（Discord イベントは登録しない）、
-   * 続けて登録できるよう「確定のお知らせ」の欄の［Discord イベントに登録する］までスクロールする。［いいえ］なら何もしない
+   * ［はい］でチャンネルに確定のお知らせを投稿し（Discord イベントは登録しない）、続けて「Discord イベントに登録しますか？」と聞く。
+   * そこで［はい］なら、「確定のお知らせ」の欄の［Discord イベントに登録する］を押した状態にしてスクロールする。［いいえ］なら何もしない
    */
+  /**
+   * ［はい］［いいえ］で答えるポップアップ（モーダルのダイアログ）。押した答えを返す（Esc で閉じたら［いいえ］）。
+   * 続けて Enter を押しただけで進まないよう、最初は［いいえ］を選んでおく
+   */
+  function askYesNo(title: string, body: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      let answer = false;
+      const dialog = h("dialog", { class: "modal", aria: { labelledby: "yesno-title" } });
+      const no = h("button", { type: "button", class: "btn btn-secondary", onClick: () => dialog.close() }, tr("いいえ", "No"));
+      const yes = h("button", { type: "button", class: "btn btn-primary", onClick: () => { answer = true; dialog.close(); } }, tr("はい", "Yes"));
+      dialog.append(h("h2", { id: "yesno-title", class: "modal-title" }, title), h("p", {}, body), h("div", { class: "row row-end" }, no, yes));
+      dialog.addEventListener("close", () => {
+        dialog.remove();
+        resolve(answer);
+      });
+      document.body.appendChild(dialog);
+      dialog.showModal();
+      no.focus();
+    });
+  }
+
   function openAnnounceDialog(): void {
     const d = data;
     const status = h("p", { class: "dialog-error", role: "alert" });
@@ -219,10 +240,19 @@ export async function summaryPage(pollId: string): Promise<void> {
             dialog.close();
             showSupport = true;
             await reload(notice(r.warnings.length ? "warn" : "ok", tr("確定のお知らせをチャンネルに投稿しました。", "Posted the announcement to the channel."), ...r.warnings.map((w) => ` ${w}`)));
-            // 続けて Discord イベントを登録できるよう、ボタンまで動かす
-            const ev = document.getElementById("events-open");
-            ev?.scrollIntoView({ block: "center" });
-            ev?.focus({ preventScroll: true });
+            // 続けて Discord イベントにも登録するかを聞き、［はい］なら「確定のお知らせ」の欄の
+            // ［Discord イベントに登録する］を押した状態（イベントの入力欄を開いた状態）にして、そこまで動かす
+            if (data.slots.some((x) => x.fixedAt !== null) && (await askYesNo(
+              tr("Discord イベントに登録しますか？", "Create Discord events?"),
+              tr("確定した日時それぞれに、同じ内容（調整のタイトル・説明・場所）の Discord イベントを登録できます。［はい］を押すと、場所を選ぶ欄を開きます。", "You can create a Discord event with the same details (poll title, description and location) for each confirmed date. Press [Yes] to open the fields for choosing the location."),
+            ))) {
+              announceMode = "event";
+              announceDraft = {};
+              draw();
+              const form = document.querySelector<HTMLElement>(".announce-panel");
+              form?.scrollIntoView({ block: "start" });
+              form?.querySelector<HTMLElement>("input:checked, input, select")?.focus({ preventScroll: true });
+            }
           } catch (e) {
             status.textContent = errorText(e, "summary", tr("お知らせを投稿できませんでした。", "Couldn't post the announcement."));
             status.hidden = false;
