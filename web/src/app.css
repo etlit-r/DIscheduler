@@ -341,3 +341,7 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .announce-panel { background: color-mix(in srgb, var(--c-yellow) 30%, var(--surface)); }
 }
+
+/* ポップアップの見出しの左に添える絵（Discord イベントの登録を聞くときのカレンダー） */
+.modal-title-icon { display: flex; align-items: center; gap: 10px; }
+.modal-icon { flex: none; width: 1.6em; height: 1.6em; color: var(--accent); }

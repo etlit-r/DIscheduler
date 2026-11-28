@@ -1,12 +1,15 @@
 // S4: 集計・確定（docs/design.md §6.5）
 import { loadPoll, request, type PollData } from "../lib/api";
 import { choiceMark, dateTimeText, donationLine, memberMatrix, mountViewerTzSwitch, rememberDonation, showError, slotText, STATUS_LABEL, statusBanner, syncPanel, viewerTimeZone, errorText } from "../ui/common";
-import { h, notice, render, setTitle } from "../lib/dom";
+import { h, lineIcon, notice, render, setTitle } from "../lib/dom";
 import { bestSlotIds, compareSlots, reminderAt, tally, UNANSWERED } from "../../../src/shared/model";
 import { tr } from "../lib/i18n";
 
 /** 確定・確定の取り消しのあと、次に押せるまでの時間 */
 const FIX_COOLDOWN_MS = 3000;
+
+/** カレンダーの絵（Lucide の calendar と同じ形。Discord イベントの登録を聞くポップアップに添える） */
+const CALENDAR_PATHS = ["M8 2v4", "M16 2v4", "M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z", "M3 10h18"] as const;
 
 export async function summaryPage(pollId: string): Promise<void> {
   let data: PollData;
@@ -200,15 +203,20 @@ export async function summaryPage(pollId: string): Promise<void> {
    */
   /**
    * ［はい］［いいえ］で答えるポップアップ（モーダルのダイアログ）。押した答えを返す（Esc で閉じたら［いいえ］）。
-   * 続けて Enter を押しただけで進まないよう、最初は［いいえ］を選んでおく
+   * 続けて Enter を押しただけで進まないよう、最初は［いいえ］を選んでおく。icon を渡すと、見出しの左に絵を添える
    */
-  function askYesNo(title: string, body: string): Promise<boolean> {
+  function askYesNo(title: string, body: string, icon?: SVGSVGElement): Promise<boolean> {
     return new Promise((resolve) => {
       let answer = false;
       const dialog = h("dialog", { class: "modal", aria: { labelledby: "yesno-title" } });
       const no = h("button", { type: "button", class: "btn btn-secondary", onClick: () => dialog.close() }, tr("いいえ", "No"));
       const yes = h("button", { type: "button", class: "btn btn-primary", onClick: () => { answer = true; dialog.close(); } }, tr("はい", "Yes"));
-      dialog.append(h("h2", { id: "yesno-title", class: "modal-title" }, title), h("p", {}, body), h("div", { class: "row row-end" }, no, yes));
+      const heading = h("h2", { id: "yesno-title", class: "modal-title" }, title);
+      if (icon) {
+        heading.classList.add("modal-title-icon");
+        heading.prepend(icon);
+      }
+      dialog.append(heading, h("p", {}, body), h("div", { class: "row row-end" }, no, yes));
       dialog.addEventListener("close", () => {
         dialog.remove();
         resolve(answer);
@@ -245,6 +253,7 @@ export async function summaryPage(pollId: string): Promise<void> {
             if (data.slots.some((x) => x.fixedAt !== null) && (await askYesNo(
               tr("Discord イベントに登録しますか？", "Create Discord events?"),
               tr("確定した日時それぞれに、同じ内容（調整のタイトル・説明・場所）の Discord イベントを登録できます。［はい］を押すと、場所を選ぶ欄を開きます。", "You can create a Discord event with the same details (poll title, description and location) for each confirmed date. Press [Yes] to open the fields for choosing the location."),
+              lineIcon("modal-icon", CALENDAR_PATHS),
             ))) {
               announceMode = "event";
               announceDraft = {};
