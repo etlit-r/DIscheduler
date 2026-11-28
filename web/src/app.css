@@ -242,14 +242,23 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; accent-
 /* 日付を選んだあと、［＋ 選択した日時を候補に追加］を押すよう促す */
 .add-prompt, .card .add-prompt { margin: 12px 0 6px; font-weight: 700; color: var(--emphasis); }
 .add-prompt::before { content: "▼ "; }
-.btn-attention { animation: attention-ring 1.6s ease-out infinite; }
-@keyframes attention-ring {
-  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); }
-  70% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent); }
-  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+/* 日付を選んだあと、［＋ 選択した日時を候補に追加］を押すよう促す: 黄色の太い線で囲み、線をゆっくり点滅させる
+   （光が広がる動きは目立ちにくいので、はっきりした黄色の線にする。動きを減らす設定では点滅させず、線だけ出す） */
+.btn-attention {
+  outline: 4px solid var(--attention-line);
+  outline-offset: 3px;
+  animation: attention-blink 2.4s ease-in-out infinite;
+}
+@keyframes attention-blink {
+  0%, 100% { outline-color: var(--attention-line); }
+  50% { outline-color: transparent; }
+}
+:root { --attention-line: #eab308; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --attention-line: #facc15; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .btn-attention { animation: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent); }
+  .btn-attention { animation: none; }
 }
 .slot-list, .member-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .slot-list li, .member-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; }
